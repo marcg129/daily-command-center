@@ -80,7 +80,7 @@ import type { AudienceHistorySeries } from "@/lib/audience-charts";
 import { AI_PROVIDER_LABELS, DEFAULT_LOCAL_AI_URLS, isAiReady } from "@/lib/ai-providers";
 import { sortFeedStories, selectNewsletterTopics, newsletterSourceOptions } from "@/lib/feed-priority";
 import { sortIndustryItems, type IndustrySortOrder } from "@/lib/industry";
-import { completeTaskItems, visibleTaskItems } from "@/lib/tasks";
+import { completeTaskItems, updateTaskItem, visibleTaskItems } from "@/lib/tasks";
 import { QuickTaskAdd, TaskAttentionPanel, TaskHorizon, TaskRow } from "@/components/task-surface";
 import {
   applyArchiveToPayload,
@@ -1907,15 +1907,17 @@ function NewslettersView({
 
 function TasksView({ tasks, setTasks, workspaceId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId }) {
   const visible = visibleTaskItems(tasks, workspaceId);
-  const open = visible.filter((task) => !task.done);
-  const completed = visible.filter((task) => task.done).toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
+  const open = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "OPEN" || (task.status ?? "OPEN") === "WAITING");
+  const completed = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "DONE").toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
+  const cancelled = visible.filter((task) => task.status === "CANCELLED");
   const complete = (task: Task) => setTasks((values) => completeTaskItems(values, task.id, { expectedDue: task.due }));
   return <div className="view">
     <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`} title="Tasks" description={workspaceId === "personal" ? "Personal work and visible Indelitech commitments, managed as the same records." : "Indelitech-owned work only, with business attention and deadlines in view."} />
     <QuickTaskAdd workspaceId={workspaceId} onAdd={(task) => setTasks((values) => [task, ...values])} />
     <div className="task-summary reveal delay-1"><div><b>{open.length}</b><span>open tasks</span></div><div><b>{open.filter((task) => task.due === localDateValue()).length}</b><span>due today</span></div><div><b>{open.filter((task) => task.recurrence !== "One-time").length}</b><span>repeating</span></div><div><b>{completed.length}</b><span>completed</span></div></div>
-    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} onComplete={() => complete(task)} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
+    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} onComplete={() => complete(task)} onChange={(patch) => setTasks((values) => updateTaskItem(values, task.id, patch))} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
     {completed.length > 0 && <details className="completed-list"><summary>{completed.length} completed</summary>{completed.map((task) => <div className="completed-row" key={task.id}><CheckCircle2 size={16} /><div className="completed-copy"><s>{task.title}</s><small>{task.completedAt ? `Completed ${formatDate(task.completedAt)}` : "Completed"} · was due {formatTaskDue(task.due)}{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}{task.seriesId !== undefined ? " · recurring occurrence" : ""}</small></div>{task.seriesId === undefined && <button aria-label={`Delete completed ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button>}</div>)}</details>}
+    {cancelled.length > 0 && <details className="completed-list"><summary>{cancelled.length} cancelled</summary>{cancelled.map((task) => <div className="completed-row" key={task.id}><X size={16} /><div className="completed-copy"><s>{task.title}</s><small>Cancelled · record preserved{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}</small></div><button aria-label={`Delete cancelled ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button></div>)}</details>}
   </div>;
 }
 
