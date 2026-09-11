@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { createAuthorizedHostedTaskCaptureService } from "@/lib/runtime/authorized-hosted-task-capture";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import type { HostedTaskRepository } from "@/lib/runtime/hosted-task-repository";
@@ -10,6 +11,7 @@ import {
   type AuthenticatedSession,
 } from "@/lib/runtime/session";
 import { FakeWorkspaceResolver } from "@/lib/runtime/workspace-resolver";
+import { CloudflareAccessSessionProvider } from "@/lib/server/cloudflare-access-session-provider";
 
 const now = new Date("2026-09-11T18:00:00.000Z");
 const aliceId = principalId("principal-alice");
@@ -170,4 +172,51 @@ test("an authorized Indelitech capture rolls up to Personal and replay remains i
   assert.equal(first.task.taskId, replay.task.taskId);
   assert.deepEqual(state.visibility.get(first.task.taskId), ["indelitech", "personal"]);
   assert.equal(state.creates, 1);
+});
+
+test("a verified Access principal captures only into its granted workspace", async () => {
+  const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true });
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = "integration-key";
+  const access = new CloudflareAccessSessionProvider({
+    teamDomain: "https://daily-command-center.cloudflareaccess.com",
+    audience: "hosted-capture",
+    clock: { now: () => now },
+    keyResolver: createLocalJWKSet({ keys: [jwk] }),
+  });
+  const assertion = await new SignJWT({ type: "app", sub: "access-user" })
+    .setProtectedHeader({ alg: "RS256", kid: "integration-key" })
+    .setIssuer("https://daily-command-center.cloudflareaccess.com")
+    .setAudience("hosted-capture")
+    .setIssuedAt(Math.floor(now.getTime() / 1_000))
+    .setExpirationTime(Math.floor(now.getTime() / 1_000) + 3_600)
+    .sign(privateKey);
+  const state = memoryRepository();
+  const capture = createAuthorizedHostedTaskCaptureService(
+    access,
+    new FakeWorkspaceResolver(new Map([
+      [principalId("cf-user:access-user"), new Set<ProductWorkspaceId>(["personal"])],
+    ])),
+    state.repository,
+    { now: () => now },
+  );
+
+  const result = await capture({
+    sessionIdentity: assertion,
+    requestedWorkspaceId: "personal",
+    capture: { ...personalCapture, requestId: "verified-access" },
+  });
+  assert.equal(result.created, true);
+  assert.equal(state.creates, 1);
+
+  await assert.rejects(
+    capture({
+      sessionIdentity: assertion,
+      requestedWorkspaceId: "indelitech",
+      capture: { ...personalCapture, requestId: "access-denied", workspaceId: "indelitech" },
+    }),
+    /Workspace access denied/,
+  );
+  assert.equal(state.creates, 1);
+  assert.equal(state.tasks.has("capture:access-denied"), false);
 });
