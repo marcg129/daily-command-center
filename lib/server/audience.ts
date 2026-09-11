@@ -1,7 +1,5 @@
 import "server-only";
 
-import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
-import path from "node:path";
 import type { AudienceMetric, AudiencePrimaryMetric } from "@/lib/types";
 import {
   AUDIENCE_SNAPSHOT_VERSION,
@@ -13,6 +11,9 @@ import {
 } from "@/lib/audience-growth";
 import type { StoredSettings } from "@/lib/server/settings";
 import { snapshotsPath } from "@/lib/server/settings";
+import { legacyRequestContext, type RequestContext } from "@/lib/runtime/context";
+import type { SnapshotRepository } from "@/lib/runtime/snapshot-repository";
+import { LocalJsonSnapshotRepository } from "@/lib/server/local-json-snapshot-repository";
 import { safeFetchText } from "@/lib/server/safe-fetch";
 import { fetchPinned } from "@/lib/server/pinned-fetch";
 import {
@@ -61,31 +62,34 @@ const linkedInHeaders = {
   "Upgrade-Insecure-Requests": "1",
 };
 
-async function readSnapshots(): Promise<AudienceSnapshotHistory> {
-  try {
-    return parseAudienceSnapshots(
-      JSON.parse(await readFile(snapshotsPath(), "utf8")) as unknown,
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      return { version: AUDIENCE_SNAPSHOT_VERSION, accounts: {} };
-    throw new Error(
-      "Audience snapshot history could not be read safely. Restore snapshots.json from a backup or move the corrupt file aside.",
-      { cause: error },
-    );
-  }
+const localAudienceSnapshots = new LocalJsonSnapshotRepository(
+  snapshotsPath,
+  parseAudienceSnapshots,
+  () => ({ version: AUDIENCE_SNAPSHOT_VERSION, accounts: {} }),
+  "Audience snapshot history could not be read safely. Restore snapshots.json from a backup or move the corrupt file aside.",
+);
+
+async function readSnapshots(
+  context: RequestContext = legacyRequestContext(),
+  repository: SnapshotRepository<AudienceSnapshotHistory> = localAudienceSnapshots,
+) {
+  return repository.read(context);
 }
 
-export async function readAudienceHistory(settings: StoredSettings) {
-  return configuredAudienceHistory(settings.audience.accounts, await readSnapshots());
+export async function readAudienceHistory(
+  settings: StoredSettings,
+  context: RequestContext = legacyRequestContext(),
+  repository: SnapshotRepository<AudienceSnapshotHistory> = localAudienceSnapshots,
+) {
+  return configuredAudienceHistory(settings.audience.accounts, await readSnapshots(context, repository));
 }
 
-async function writeSnapshots(snapshots: AudienceSnapshotHistory) {
-  const target = snapshotsPath();
-  await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-  const temporary = `${target}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(snapshots, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, target);
+async function writeSnapshots(
+  snapshots: AudienceSnapshotHistory,
+  context: RequestContext = legacyRequestContext(),
+  repository: SnapshotRepository<AudienceSnapshotHistory> = localAudienceSnapshots,
+) {
+  await repository.write(context, snapshots);
 }
 
 async function fetchJson<T>(url: string, headers?: HeadersInit): Promise<T> {

@@ -35,12 +35,16 @@ import {
   revalidateMentionSummaryBackfill,
   selectMentionSummaryBackfill,
 } from "@/lib/mention-summary-backfill";
-import {
-  readCollectorSnapshot,
-  writeCollectorSnapshot,
-} from "@/lib/collector-cache";
+
+import { legacyRequestContext } from "@/lib/runtime/context";
+import { LocalCollectorSnapshotRepository } from "@/lib/server/local-collector-snapshot-repository";
 
 export const runtime = "nodejs";
+
+const collectorSnapshots = new LocalCollectorSnapshotRepository(getDatabase);
+const collectorContext = legacyRequestContext();
+
+
 
 const MENTION_WINDOW_DAYS = 7;
 const searchProviders = ["Google News", "Bing News"] as const;
@@ -477,8 +481,8 @@ export async function GET(request: Request) {
   const scope = mentionsCacheScope(settings);
   const forceRefresh = new URL(request.url).searchParams.get("refresh") === "1";
   if (!forceRefresh) {
-    const cached = readCollectorSnapshot<LiveFeedResponse>(
-      getDatabase(),
+    const cached = await collectorSnapshots.read<LiveFeedResponse>(
+      collectorContext,
       "mentions",
       scope,
     );
@@ -495,8 +499,8 @@ export async function GET(request: Request) {
   const response = await collectMentions(settings);
   if (response.ok) {
     const payload = await response.clone().json() as LiveFeedResponse;
-    const saved = writeCollectorSnapshot(
-      getDatabase(),
+    const saved = await collectorSnapshots.write(
+      collectorContext,
       "mentions",
       scope,
       payload,

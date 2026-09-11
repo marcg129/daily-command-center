@@ -14,8 +14,6 @@ import os from "node:os";
 import path from "node:path";
 import type {
   AiKeyProvider,
-  LocalAiProvider,
-  AudienceAccountInput,
   PublicSettings,
   SettingsUpdate,
 } from "@/lib/types";
@@ -32,36 +30,9 @@ import {
 import { isValidPublicProfileUrl } from "@/lib/public-metrics";
 import { AI_KEY_PROVIDERS, DEFAULT_LOCAL_AI_URLS, aiEnvironmentKey, cleanAiModelOverride, isAiKeyProvider, isLocalAiProvider, isValidAiModelId, localAiBaseUrl } from "@/lib/ai-providers";
 import { defaultBriefSections, normalizeBriefSections } from "@/lib/daily-brief-snapshot";
-
-type StoredAudienceAccount = Omit<
-  AudienceAccountInput,
-  "credentialSet" | "clearCredential"
-> & {
-  credential: string;
-};
-
-export type StoredSettings = {
-  general: { workspaceName: string };
-  industry: PublicSettings["industry"];
-  mentions: PublicSettings["mentions"];
-  newsletters: {
-    googleClientId: string;
-    googleClientSecret: string;
-    connectedEmail: string;
-    refreshToken: string;
-    accessToken: string;
-    accessTokenExpiresAt: number;
-    gmailQuery: string;
-  };
-  audience: { accounts: StoredAudienceAccount[] };
-  ai: {
-    provider: PublicSettings["ai"]["provider"];
-    model: string;
-    apiKeys: Record<AiKeyProvider, string>;
-    localBaseUrls: Record<LocalAiProvider, string>;
-  };
-  dailyBrief: PublicSettings["dailyBrief"];
-};
+import { publicSettingsFromStored } from "@/lib/runtime/public-settings";
+import type { StoredSettings } from "@/lib/runtime/settings";
+export type { StoredSettings } from "@/lib/runtime/settings";
 
 const defaults: StoredSettings = {
   general: { workspaceName: "Control Center" },
@@ -212,62 +183,7 @@ export async function writeSettings(settings: StoredSettings) {
 }
 
 export function toPublicSettings(settings: StoredSettings): PublicSettings {
-  const aiKeySource = (provider: AiKeyProvider) =>
-    settings.ai.apiKeys[provider]?.trim()
-      ? "settings" as const
-      : environmentAiApiKey(provider)
-        ? "environment" as const
-        : "none" as const;
-  return {
-    general: settings.general,
-    industry: settings.industry,
-    mentions: settings.mentions,
-    newsletters: {
-      googleClientId: settings.newsletters.googleClientId,
-      googleClientSecretSet: Boolean(settings.newsletters.googleClientSecret),
-      connected: Boolean(
-        settings.newsletters.refreshToken &&
-          settings.newsletters.connectedEmail,
-      ),
-      connectedEmail: settings.newsletters.connectedEmail,
-      gmailQuery: settings.newsletters.gmailQuery,
-    },
-    audience: {
-      accounts: settings.audience.accounts.map(
-        ({ credential, ...account }) => ({
-          ...account,
-          profileUrl:
-            account.profileUrl &&
-            isValidPublicProfileUrl(account.platform, account.profileUrl)
-              ? account.profileUrl
-              : "",
-          credentialSet: Boolean(credential),
-        }),
-      ),
-    },
-    ai: {
-      provider: settings.ai.provider,
-      model: settings.ai.model,
-      localBaseUrls: { ...DEFAULT_LOCAL_AI_URLS, ...settings.ai.localBaseUrls },
-      keySet: {
-        openai: Boolean(configuredAiApiKey(settings, "openai")),
-        anthropic: Boolean(configuredAiApiKey(settings, "anthropic")),
-        gemini: Boolean(configuredAiApiKey(settings, "gemini")),
-        xai: Boolean(configuredAiApiKey(settings, "xai")),
-        lmstudio: Boolean(configuredAiApiKey(settings, "lmstudio")),
-        ollama: Boolean(configuredAiApiKey(settings, "ollama")),
-      },
-      keySource: {
-        openai: aiKeySource("openai"),
-        anthropic: aiKeySource("anthropic"),
-        gemini: aiKeySource("gemini"),
-        xai: aiKeySource("xai"),
-        lmstudio: aiKeySource("lmstudio"),
-        ollama: aiKeySource("ollama"),
-      },
-    },
-    dailyBrief: settings.dailyBrief,
-  };
+  return publicSettingsFromStored(settings, environmentAiApiKey);
 }
 
 export function configuredAiApiKey(
