@@ -51,6 +51,16 @@ export function taskIsOverdue(task: TaskItem, now = new Date()) {
   return isTaskOverdue(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
 }
 
+export function taskIsActive(task: TaskItem) {
+  const status = task.status ?? (task.done ? "DONE" : "OPEN");
+  return status === "OPEN" || status === "WAITING";
+}
+
+export function taskBaseType(task: Pick<TaskItem, "recurrence" | "due">): TaskType {
+  if (RECURRING_RECURRENCES.has(task.recurrence)) return "RECURRING";
+  return task.due ? "DEADLINE" : "ONE_TIME";
+}
+
 export function sortTaskAttention(tasks: TaskItem[], now = new Date()) {
   return tasks.filter((task) => attentionClass(task, now) > 0).toSorted((a, b) => {
     const aClass = attentionClass(a, now); const bClass = attentionClass(b, now);
@@ -84,7 +94,13 @@ export function taskAttentionLabel(task: TaskItem, now = new Date()) {
 
 export function taskHorizon(tasks: TaskItem[], now = new Date()) {
   const groups = new Map<HorizonGroup, TaskItem[]>(VISIBLE_HORIZON_GROUPS.map((group) => [group, []]));
-  for (const task of sortTaskAttention(tasks, now)) {
+  const dueDriven = tasks.filter(taskIsActive).toSorted((a, b) => {
+    const aDue = hostedShape(a, now).dueAt || "9999";
+    const bDue = hostedShape(b, now).dueAt || "9999";
+    return aDue.localeCompare(bDue) ||
+      (a.createdAt || "").localeCompare(b.createdAt || "") || String(a.id).localeCompare(String(b.id));
+  });
+  for (const task of dueDriven) {
     const group = taskHorizonGroup(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
     if (group !== "LATER_OR_UNSCHEDULED") groups.get(group)!.push(task);
   }
@@ -109,7 +125,13 @@ export function markTaskWaiting(tasks: TaskItem[], taskId: TaskItem["id"], perso
   return updateTaskItem(tasks, taskId, { status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: new Date(followUpAt).toISOString() }, now);
 }
 export function resumeTask(tasks: TaskItem[], taskId: TaskItem["id"], now = new Date()) {
-  return updateTaskItem(tasks, taskId, { status: "OPEN", followUpAt: undefined }, now); // Keep person as useful context.
+  return tasks.map((task) => task.id === taskId ? {
+    ...task,
+    status: "OPEN",
+    type: taskBaseType(task),
+    followUpAt: undefined,
+    updatedAt: now.toISOString(),
+  } : task); // Keep person as useful context.
 }
 export function cancelTask(tasks: TaskItem[], taskId: TaskItem["id"], now = new Date()) {
   return updateTaskItem(tasks, taskId, { status: "CANCELLED", done: false }, now);
@@ -222,10 +244,12 @@ export function completeTaskItems(
           ),
           done: false,
           status: "OPEN" as const,
+          type: taskBaseType(candidate),
           completedAt: undefined,
           remindAt: undefined,
           followUpAt: undefined,
           recurrenceAnchorDay,
+          updatedAt: completedAt,
         }
       : candidate,
   );
