@@ -1,4 +1,4 @@
-import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, requireHostedContext, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
+import { requireHostedContext, taskVisibleInWorkspace, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import type { HostedTaskRepository } from "@/lib/runtime/hosted-task-repository";
 import type { HostedTask } from "@/lib/runtime/hosted-tasks";
@@ -8,10 +8,6 @@ const columns = `task_id, primary_workspace_id, title, context, category, projec
  due_at, due_is_date_only, remind_at, follow_up_at, estimated_duration, recurrence, series_id, recurrence_anchor_day, dependency, created_at,
  completed_at, source, source_context, last_notified_at, updated_at`;
 const selectedColumns = columns.split(",").map((column) => `t.${column.trim()}`).join(", ");
-
-function visibilityAllowed(primary: ProductWorkspaceId, viewing: ProductWorkspaceId) {
-  return primary === viewing || (primary === INDELITECH_WORKSPACE_ID && viewing === PERSONAL_WORKSPACE_ID);
-}
 
 function fromRow(row: TaskRow): HostedTask {
   return {
@@ -45,7 +41,7 @@ export class D1TaskRepository implements HostedTaskRepository {
     const rows = (await this.database.prepare(`SELECT ${selectedColumns} FROM tasks t JOIN task_visibility v ON v.task_id=t.task_id
       WHERE v.workspace_id=? AND (t.primary_workspace_id=? OR (t.primary_workspace_id='indelitech' AND ?='personal'))
       ORDER BY t.updated_at DESC, t.task_id`).bind(workspaceId, workspaceId, workspaceId).all<TaskRow>()).results ?? [];
-    return rows.map(fromRow).filter((task) => visibilityAllowed(task.primaryWorkspaceId, workspaceId));
+    return rows.map(fromRow).filter((task) => taskVisibleInWorkspace(task.primaryWorkspaceId, workspaceId));
   }
 
   async get(context: RequestContext, taskId: string) {
@@ -55,14 +51,14 @@ export class D1TaskRepository implements HostedTaskRepository {
       .bind(taskId, workspaceId, workspaceId, workspaceId).first<TaskRow>();
     if (!row) return null;
     const task = fromRow(row);
-    return visibilityAllowed(task.primaryWorkspaceId, workspaceId) ? task : null;
+    return taskVisibleInWorkspace(task.primaryWorkspaceId, workspaceId) ? task : null;
   }
 
   async create(context: RequestContext, task: HostedTask, visibleIn: readonly ProductWorkspaceId[]) {
     const workspaceId = requireHostedContext(context);
     if (task.primaryWorkspaceId !== workspaceId) throw new Error("A task must be created by its primary workspace.");
     const visibility = [...new Set(visibleIn)];
-    if (!visibility.includes(workspaceId) || visibility.some((target) => !visibilityAllowed(workspaceId, target))) {
+    if (!visibility.includes(workspaceId) || visibility.some((target) => !taskVisibleInWorkspace(workspaceId, target))) {
       throw new Error("Invalid task visibility.");
     }
     const placeholders = Array.from({ length: 25 }, () => "?").join(",");

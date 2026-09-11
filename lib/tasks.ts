@@ -1,44 +1,109 @@
 import type { TaskItem } from "./types";
+import {
+  isProductWorkspaceId,
+  PERSONAL_WORKSPACE_ID,
+  taskVisibleInWorkspace,
+  type ProductWorkspaceId,
+} from "./runtime/context";
+import { effectivePriorityRank, isTaskOverdue, taskHorizonGroup, type HorizonGroup } from "./runtime/hosted-tasks";
 
 const RECURRENCES = new Set(["One-time", "Daily", "Weekly", "Monthly"]);
 const RECURRING_RECURRENCES = new Set(["Daily", "Weekly", "Monthly"]);
 const RAPID_COMPLETION_GUARD_MS = 750;
+export const PRODUCT_TIME_ZONE = "America/New_York";
+export const VISIBLE_HORIZON_GROUPS: readonly HorizonGroup[] = [
+  "OVERDUE", "TODAY", "NEXT_7_DAYS", "DAYS_8_14", "DAYS_15_30", "DAYS_31_45",
+];
 
-function localDateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+export function normalizeTaskPriority(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
+  if (typeof value !== "string") return "MEDIUM";
+  return ({ low: "LOW", normal: "MEDIUM", medium: "MEDIUM", high: "HIGH" } as const)[value.toLowerCase() as "low" | "normal" | "medium" | "high"] ?? "MEDIUM";
+}
+
+export function visibleTaskItems(tasks: TaskItem[], workspaceId: ProductWorkspaceId) {
+  return tasks.filter((task) => taskVisibleInWorkspace(task.primaryWorkspaceId ?? PERSONAL_WORKSPACE_ID, workspaceId));
+}
+
+function productDateValue(date: Date) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: PRODUCT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function hostedShape(task: TaskItem, now: Date) {
+  return {
+    dueAt: task.due === "Today"
+      ? productDateValue(now)
+      : /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : null,
+    dueIsDateOnly: true,
+    status: task.done ? "DONE" as const : "OPEN" as const,
+    priority: normalizeTaskPriority(task.priority),
+  };
+}
+
+export function taskIsOverdue(task: TaskItem, now = new Date()) {
+  return isTaskOverdue(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
+}
+
+export function sortTaskAttention(tasks: TaskItem[], now = new Date()) {
+  return tasks.filter((task) => !task.done).toSorted((a, b) => {
+    const rank = effectivePriorityRank(hostedShape(b, now), now, PRODUCT_TIME_ZONE) - effectivePriorityRank(hostedShape(a, now), now, PRODUCT_TIME_ZONE);
+    return rank || (a.due || "9999").localeCompare(b.due || "9999") ||
+      (a.createdAt || "").localeCompare(b.createdAt || "") || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+export function taskHorizon(tasks: TaskItem[], now = new Date()) {
+  const groups = new Map<HorizonGroup, TaskItem[]>(VISIBLE_HORIZON_GROUPS.map((group) => [group, []]));
+  for (const task of sortTaskAttention(tasks, now)) {
+    const group = taskHorizonGroup(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
+    if (group !== "LATER_OR_UNSCHEDULED") groups.get(group)!.push(task);
+  }
+  return groups;
+}
+
+export function createTaskItem(input: Pick<TaskItem, "title" | "due" | "priority"> & Partial<Pick<TaskItem, "description" | "recurrence">>, workspaceId: ProductWorkspaceId, id: TaskItem["id"] = crypto.randomUUID(), now = new Date()): TaskItem {
+  return { id, title: input.title.trim(), description: input.description?.trim() || "No additional details.", due: input.due,
+    recurrence: input.recurrence || "One-time", priority: normalizeTaskPriority(input.priority), primaryWorkspaceId: workspaceId,
+    done: false, createdAt: now.toISOString() };
+}
+
+function dateValue(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-function dateFromTaskValue(value: string, fallback: Date) {
+function dateFromTaskValue(value: string, fallbackValue: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(
-      fallback.getFullYear(),
-      fallback.getMonth(),
-      fallback.getDate(),
-      12,
-    );
+    return dateFromTaskValue(fallbackValue, fallbackValue);
   }
   const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day, 12);
+  return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
 function addRecurrence(date: Date, recurrence: string, anchorDay?: number) {
   const next = new Date(date);
-  if (recurrence === "Daily") next.setDate(next.getDate() + 1);
-  if (recurrence === "Weekly") next.setDate(next.getDate() + 7);
+  if (recurrence === "Daily") next.setUTCDate(next.getUTCDate() + 1);
+  if (recurrence === "Weekly") next.setUTCDate(next.getUTCDate() + 7);
   if (recurrence === "Monthly") {
-    const desiredDay = anchorDay || next.getDate();
-    next.setDate(1);
-    next.setMonth(next.getMonth() + 1);
-    const finalDay = new Date(
-      next.getFullYear(),
-      next.getMonth() + 1,
+    const desiredDay = anchorDay || next.getUTCDate();
+    next.setUTCDate(1);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const finalDay = new Date(Date.UTC(
+      next.getUTCFullYear(),
+      next.getUTCMonth() + 1,
       0,
       12,
-    ).getDate();
-    next.setDate(Math.min(desiredDay, finalDay));
+    )).getUTCDate();
+    next.setUTCDate(Math.min(desiredDay, finalDay));
   }
   return next;
 }
@@ -49,17 +114,18 @@ export function nextRecurringDue(
   now = new Date(),
   anchorDay?: number,
 ) {
-  if (!RECURRING_RECURRENCES.has(recurrence)) return localDateValue(now);
-  let next = dateFromTaskValue(value, now);
-  const today = dateFromTaskValue(localDateValue(now), now);
+  const todayValue = productDateValue(now);
+  if (!RECURRING_RECURRENCES.has(recurrence)) return todayValue;
+  let next = dateFromTaskValue(value, todayValue);
+  const today = dateFromTaskValue(todayValue, todayValue);
   const recurrenceAnchor =
     recurrence === "Monthly" && Number.isInteger(anchorDay) && anchorDay! >= 1 && anchorDay! <= 31
       ? anchorDay
-      : next.getDate();
+      : next.getUTCDate();
   do {
     next = addRecurrence(next, recurrence, recurrenceAnchor);
   } while (next <= today);
-  return localDateValue(next);
+  return dateValue(next);
 }
 
 export function completeTaskItems(
@@ -100,7 +166,7 @@ export function completeTaskItems(
   };
   const recurrenceAnchorDay =
     task.recurrence === "Monthly"
-      ? task.recurrenceAnchorDay || dateFromTaskValue(task.due, now).getDate()
+      ? task.recurrenceAnchorDay || dateFromTaskValue(task.due, productDateValue(now)).getUTCDate()
       : undefined;
   const advanced = tasks.map((candidate) =>
     candidate.id === taskId
@@ -119,6 +185,10 @@ export function completeTaskItems(
       : candidate,
   );
   return [occurrence, ...advanced];
+}
+
+export function recurringTaskRequiresDue(recurrence: string) {
+  return RECURRING_RECURRENCES.has(recurrence);
 }
 
 function taskIdentity(task: Pick<TaskItem, "id">) {
@@ -176,7 +246,10 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
       ),
       due: cleanText(candidate.due, "Today"),
       recurrence: RECURRENCES.has(recurrence) ? recurrence : "One-time",
-      priority: cleanText(candidate.priority, "Normal"),
+      priority: normalizeTaskPriority(candidate.priority),
+      primaryWorkspaceId: isProductWorkspaceId(candidate.primaryWorkspaceId)
+        ? candidate.primaryWorkspaceId
+        : PERSONAL_WORKSPACE_ID,
       done: candidate.done === true,
       createdAt: cleanText(candidate.createdAt) || undefined,
       completedAt: cleanText(candidate.completedAt) || undefined,

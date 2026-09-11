@@ -49,8 +49,11 @@ export function createWorkspaceHandlers(dependencies: WorkspaceRouteDependencies
     async GET() {
       try {
         const context = dependencies.context();
+        const saved = await dependencies.repository.read(context);
         return Response.json({
-          ...await dependencies.repository.read(context),
+          ...saved,
+          // Normalize legacy ownership/priority on read; the client's next normal save persists it.
+          tasks: cleanTaskItems(saved.tasks),
           initialized: await dependencies.repository.isInitialized(context),
           legacyBrowserImportAllowed: dependencies.legacyImportAllowed(),
         });
@@ -79,4 +82,3 @@ export function createWorkspaceHandlers(dependencies: WorkspaceRouteDependencies
     },
   };
 }
-
