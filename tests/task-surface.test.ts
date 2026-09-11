@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, taskVisibleInWorkspace } from "../lib/runtime/context";
-import { cleanTaskItems, completeTaskItems, createTaskItem, normalizeTaskPriority, sortTaskAttention, taskHorizon, taskIsOverdue, visibleTaskItems } from "../lib/tasks";
+import { cleanTaskItems, completeTaskItems, createTaskItem, nextRecurringDue, normalizeTaskPriority, recurringTaskRequiresDue, sortTaskAttention, taskHorizon, taskIsOverdue, visibleTaskItems } from "../lib/tasks";
 import type { TaskItem } from "../lib/types";
 
 function item(overrides: Partial<TaskItem> = {}): TaskItem {
@@ -59,4 +59,23 @@ test("45-day horizon honors every boundary and excludes completed, unscheduled, 
   assert.deepEqual([...horizon].map(([group, tasks]) => [group, tasks.length]), [["OVERDUE",1],["TODAY",1],["NEXT_7_DAYS",2],["DAYS_8_14",2],["DAYS_15_30",2],["DAYS_31_45",2]]);
   const excluded = taskHorizon([item({ due: "2026-10-27" }), item({ id: "none", due: "" }), item({ id: "done", done: true })], now);
   assert.equal([...excluded.values()].flat().length, 0);
+});
+
+test("legacy Today due values remain in the product day's horizon", () => {
+  const now = new Date("2026-09-12T01:00:00Z");
+  const [legacy] = cleanTaskItems([{ id: "legacy", title: "Legacy task" }]);
+  assert.equal(legacy.due, "Today");
+  assert.deepEqual(taskHorizon([legacy], now).get("TODAY")?.map(({ id }) => id), ["legacy"]);
+  assert.equal(taskIsOverdue(legacy, now), false);
+});
+
+test("recurrence advances from the New York product date at a UTC boundary", () => {
+  const beforeNewYorkMidnight = new Date("2026-09-12T01:00:00Z");
+  assert.equal(nextRecurringDue("2026-09-11", "Daily", beforeNewYorkMidnight), "2026-09-12");
+});
+
+test("only recurring schedules require a due date", () => {
+  assert.equal(recurringTaskRequiresDue("One-time"), false);
+  for (const recurrence of ["Daily", "Weekly", "Monthly"])
+    assert.equal(recurringTaskRequiresDue(recurrence), true);
 });

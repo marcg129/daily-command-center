@@ -5,6 +5,7 @@ import { CalendarDays, Check, ListTodo, RefreshCw, Trash2 } from "lucide-react";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   createTaskItem,
+  recurringTaskRequiresDue,
   sortTaskAttention,
   taskHorizon,
   taskIsOverdue,
@@ -29,21 +30,23 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
   const [more, setMore] = useState(false);
   const [description, setDescription] = useState("");
   const [recurrence, setRecurrence] = useState("One-time");
+  const dueRequired = recurringTaskRequiresDue(recurrence);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || (recurrence !== "One-time" && !due)) return;
+    if (!title.trim() || (dueRequired && !due)) return;
     onAdd(createTaskItem({ title, due, priority, description, recurrence }, workspaceId));
     setTitle(""); setDue(""); setPriority("MEDIUM"); setDescription(""); setRecurrence("One-time"); setMore(false);
   };
   return <form className="quick-task-add reveal" onSubmit={submit}>
     <div className="quick-task-main">
       <label><span>Quick add to {workspaceId === "personal" ? "Personal" : "Indelitech"}</span><input aria-label="Task title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to get done?" /></label>
-      <label><span>Due (optional)</span><input aria-label="Due date" type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label>
+      <label><span>Due {dueRequired ? "(required for repeats)" : "(optional)"}</span><input aria-label="Due date" type="date" value={due} required={dueRequired} aria-describedby={dueRequired && !due ? "recurring-due-help" : undefined} onChange={(event) => setDue(event.target.value)} /></label>
       <label><span>Priority</span><select aria-label="Priority" value={priority} onChange={(event) => setPriority(event.target.value as "LOW" | "MEDIUM" | "HIGH")}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select></label>
       <button className="button button-primary"><ListTodo size={15} /> Add task</button>
     </div>
     <button type="button" className="text-button" onClick={() => setMore((value) => !value)}>{more ? "Fewer options" : "More options"}</button>
-    {more && <div className="quick-task-more"><label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional context" /></label><label><span>Repeats</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>{recurrence !== "One-time" && !due && <small role="alert">Choose a due date for a recurring task.</small>}</div>}
+    {more && <div className="quick-task-more"><label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional context" /></label><label><span>Repeats</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label></div>}
+    {dueRequired && !due && <small id="recurring-due-help" role="alert">Choose a due date for a recurring task.</small>}
   </form>;
 }
 
