@@ -502,3 +502,14 @@ footer { width: min(1380px, calc(100vw - 48px)); min-height: 58px; display: flex
   .personal-horizon-card { grid-template-columns: 1fr; }
   .personal-horizon-card .button { grid-column: 1; justify-self: stretch; }
 }
+
+/* Workspace-aware task surface */
+.quick-task-add { margin: -8px 0 18px; padding: 18px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
+.quick-task-main { display: grid; grid-template-columns: minmax(220px,1fr) 150px 120px auto; align-items: end; gap: 10px; }
+.quick-task-add label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: .07em; }
+.quick-task-add input, .quick-task-add select, .quick-task-add textarea { width: 100%; min-height: 40px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); font: 10px var(--sans); text-transform: none; }
+.quick-task-add > .text-button { margin-top: 12px; }.quick-task-more { display: grid; grid-template-columns: 1fr 150px; gap: 10px; margin-top: 12px; }.quick-task-more small { grid-column: 1/-1; color: var(--coral-dark); }
+.workspace-task-badge { display: inline-flex; margin-left: 8px; padding: 2px 6px; border: 1px solid var(--line-dark); border-radius: 999px; color: var(--teal-dark); font: 700 7px var(--mono); text-transform: uppercase; letter-spacing: .05em; }
+.task-row.is-overdue { border-left: 3px solid var(--coral-dark); }.task-row.is-overdue .task-copy > small { color: var(--coral-dark); font-weight: 700; }.task-copy > small { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; }
+.task-attention-panel, .task-horizon { padding: 24px; }.attention-list, .horizon-groups { display: grid; gap: 6px; margin: 14px 0; }.attention-list button, .horizon-groups button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); text-align: left; cursor: pointer; }.attention-list button > span:first-child { display: grid; flex: 1; gap: 4px; }.attention-list small, .horizon-groups small { color: var(--muted); font-size: 8px; }.horizon-groups button { display: grid; grid-template-columns: 95px 24px 1fr; }.today-task-stack { display: grid; gap: 16px; }
+@media (max-width: 700px) { .quick-task-main, .quick-task-more { grid-template-columns: 1fr; }.quick-task-main .button { width: 100%; }.horizon-groups button { grid-template-columns: 85px 22px 1fr; }.task-attention-panel, .task-horizon { padding: 19px; } }

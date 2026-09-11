@@ -1,8 +1,64 @@
 import type { TaskItem } from "./types";
+import {
+  isProductWorkspaceId,
+  PERSONAL_WORKSPACE_ID,
+  taskVisibleInWorkspace,
+  type ProductWorkspaceId,
+} from "./runtime/context";
+import { effectivePriorityRank, isTaskOverdue, taskHorizonGroup, type HorizonGroup } from "./runtime/hosted-tasks";
 
 const RECURRENCES = new Set(["One-time", "Daily", "Weekly", "Monthly"]);
 const RECURRING_RECURRENCES = new Set(["Daily", "Weekly", "Monthly"]);
 const RAPID_COMPLETION_GUARD_MS = 750;
+export const PRODUCT_TIME_ZONE = "America/New_York";
+export const VISIBLE_HORIZON_GROUPS: readonly HorizonGroup[] = [
+  "OVERDUE", "TODAY", "NEXT_7_DAYS", "DAYS_8_14", "DAYS_15_30", "DAYS_31_45",
+];
+
+export function normalizeTaskPriority(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
+  if (typeof value !== "string") return "MEDIUM";
+  return ({ low: "LOW", normal: "MEDIUM", medium: "MEDIUM", high: "HIGH" } as const)[value.toLowerCase() as "low" | "normal" | "medium" | "high"] ?? "MEDIUM";
+}
+
+export function visibleTaskItems(tasks: TaskItem[], workspaceId: ProductWorkspaceId) {
+  return tasks.filter((task) => taskVisibleInWorkspace(task.primaryWorkspaceId ?? PERSONAL_WORKSPACE_ID, workspaceId));
+}
+
+function hostedShape(task: TaskItem) {
+  return {
+    dueAt: /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : null,
+    dueIsDateOnly: true,
+    status: task.done ? "DONE" as const : "OPEN" as const,
+    priority: normalizeTaskPriority(task.priority),
+  };
+}
+
+export function taskIsOverdue(task: TaskItem, now = new Date()) {
+  return isTaskOverdue(hostedShape(task), now, PRODUCT_TIME_ZONE);
+}
+
+export function sortTaskAttention(tasks: TaskItem[], now = new Date()) {
+  return tasks.filter((task) => !task.done).toSorted((a, b) => {
+    const rank = effectivePriorityRank(hostedShape(b), now, PRODUCT_TIME_ZONE) - effectivePriorityRank(hostedShape(a), now, PRODUCT_TIME_ZONE);
+    return rank || (a.due || "9999").localeCompare(b.due || "9999") ||
+      (a.createdAt || "").localeCompare(b.createdAt || "") || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+export function taskHorizon(tasks: TaskItem[], now = new Date()) {
+  const groups = new Map<HorizonGroup, TaskItem[]>(VISIBLE_HORIZON_GROUPS.map((group) => [group, []]));
+  for (const task of sortTaskAttention(tasks, now)) {
+    const group = taskHorizonGroup(hostedShape(task), now, PRODUCT_TIME_ZONE);
+    if (group !== "LATER_OR_UNSCHEDULED") groups.get(group)!.push(task);
+  }
+  return groups;
+}
+
+export function createTaskItem(input: Pick<TaskItem, "title" | "due" | "priority"> & Partial<Pick<TaskItem, "description" | "recurrence">>, workspaceId: ProductWorkspaceId, id: TaskItem["id"] = crypto.randomUUID(), now = new Date()): TaskItem {
+  return { id, title: input.title.trim(), description: input.description?.trim() || "No additional details.", due: input.due,
+    recurrence: input.recurrence || "One-time", priority: normalizeTaskPriority(input.priority), primaryWorkspaceId: workspaceId,
+    done: false, createdAt: now.toISOString() };
+}
 
 function localDateValue(date: Date) {
   const year = date.getFullYear();
@@ -176,7 +232,10 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
       ),
       due: cleanText(candidate.due, "Today"),
       recurrence: RECURRENCES.has(recurrence) ? recurrence : "One-time",
-      priority: cleanText(candidate.priority, "Normal"),
+      priority: normalizeTaskPriority(candidate.priority),
+      primaryWorkspaceId: isProductWorkspaceId(candidate.primaryWorkspaceId)
+        ? candidate.primaryWorkspaceId
+        : PERSONAL_WORKSPACE_ID,
       done: candidate.done === true,
       createdAt: cleanText(candidate.createdAt) || undefined,
       completedAt: cleanText(candidate.completedAt) || undefined,
