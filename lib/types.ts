@@ -277,6 +277,14 @@ export type TaskItem = {
   remindAt?: string;
   followUpAt?: string;
   person?: string;
+  category?: string;
+  project?: string;
+  estimatedDuration?: "5m" | "15m" | "30m" | "1h" | "2h+" | "Project";
+  dependency?: string;
+  source?: string;
+  sourceContext?: string;
+  /** Immutable normalized input signature used only for structured-capture idempotency. */
+  captureFingerprint?: string;
   updatedAt?: string;
   createdAt?: string;
   completedAt?: string;
