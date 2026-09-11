@@ -2,22 +2,27 @@ name: Cloudflare toolchain proof (non-production)
 
 on:
   push:
-    branches:
-      - milestone/1b-d-ci-proof
+    branches: [milestone/1b-d-ci-proof]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  VINEXT_VERSION: 1.0.0-beta.9
+  WRANGLER_VERSION: 4.131.0
+  PROOF_DIR: .tmp/cloudflare-proof
+
 jobs:
   cloudflare-proof:
-    name: Compatibility and local D1 diagnostics
+    name: vinext and genuine local D1 proof
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js 24.19.0
         uses: actions/setup-node@v6
@@ -25,165 +30,203 @@ jobs:
           node-version: 24.19.0
           cache: npm
 
-      - name: Initialize diagnostic report
+      - name: Initialize proof report
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .tmp/cloudflare-proof
-          {
-            echo "Node version=$(node --version)"
-            echo "npm version=$(npm --version)"
-            echo "npm registry=$(npm config get registry)"
-            echo "vinext resolved version=NOT_RUN"
-            echo "vinext check=NOT_RUN"
-            echo "Wrangler resolved version=NOT_RUN"
-            echo "Wrangler executable=NOT_RUN"
-            echo "local D1 migrations=NOT_RUN"
-            echo "basic local D1 verification=NOT_RUN"
-          } > .tmp/cloudflare-proof/result.txt
-          node --version
-          npm --version
-          npm config get registry
+          mkdir -p "$PROOF_DIR"
+          printf '%s\n' \
+            "Node version=$(node --version)" \
+            "vinext pinned version=$VINEXT_VERSION" \
+            "Wrangler pinned version=$WRANGLER_VERSION" \
+            "ordinary Next build=NOT_RUN" \
+            "vinext init=NOT_RUN" \
+            "vinext build=NOT_RUN" \
+            "vinext dev smoke=NOT_RUN" \
+            "local D1 migrations=NOT_RUN" \
+            "D1 semantic proof=NOT_RUN" \
+            "repository binding proof=NOT_RUN" > "$PROOF_DIR/result.txt"
 
       - name: Install locked dependencies
         run: npm ci
-
       - name: Lint
         run: npm run lint
-
-      - name: Test
+      - name: Test 232 existing tests
         run: npm test
-
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Ordinary Next.js production build
+        run: |
+          npm run build
+          sed -i 's/ordinary Next build=NOT_RUN/ordinary Next build=PASS/' "$PROOF_DIR/result.txt"
 
-      - name: Build
-        run: npm run build
-
-      - name: Resolve exact diagnostic tool versions
+      - name: Record registry versions (informational only)
         shell: bash
         run: |
           set -euo pipefail
-          VINEXT_VERSION="$(npm view vinext version)"
-          WRANGLER_VERSION="$(npm view wrangler version)"
-          test -n "$VINEXT_VERSION"
-          test -n "$WRANGLER_VERSION"
-          echo "VINEXT_VERSION=$VINEXT_VERSION" | tee -a "$GITHUB_ENV"
-          echo "WRANGLER_VERSION=$WRANGLER_VERSION" | tee -a "$GITHUB_ENV"
+          latest_vinext="$(npm view vinext version)"
+          latest_wrangler="$(npm view wrangler version)"
+          {
+            echo "vinext registry latest=$latest_vinext"
+            echo "Wrangler registry latest=$latest_wrangler"
+            if [ "$latest_vinext" != "$VINEXT_VERSION" ]; then echo "vinext registry differs from pin=YES"; else echo "vinext registry differs from pin=NO"; fi
+            if [ "$latest_wrangler" != "$WRANGLER_VERSION" ]; then echo "Wrangler registry differs from pin=YES"; else echo "Wrangler registry differs from pin=NO"; fi
+          } | tee -a "$PROOF_DIR/result.txt"
 
-      - name: Run vinext compatibility checker
-        id: vinext
-        continue-on-error: true
+      - name: Run pinned vinext compatibility checker
         shell: bash
-        run: npx --yes "vinext@${VINEXT_VERSION}" check
+        run: npx --yes "vinext@$VINEXT_VERSION" check 2>&1 | tee "$PROOF_DIR/vinext-check.txt"
 
-      - name: Check Wrangler executable
-        id: wrangler
-        continue-on-error: true
-        shell: bash
-        run: npx --yes "wrangler@${WRANGLER_VERSION}" --version
-
-      - name: Prepare disposable local D1 configuration
-        if: steps.wrangler.outcome == 'success'
+      - name: Initialize vinext in an isolated exact-commit worktree
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .tmp/cloudflare-proof/migrations .tmp/cloudflare-proof/state
-          cp migrations/000{1,2,3,4}_*.sql .tmp/cloudflare-proof/migrations/
-          cat > .tmp/cloudflare-proof/wrangler.toml <<'EOF'
+          worktree="$PROOF_DIR/vinext-worktree"
+          git worktree add --detach "$worktree" HEAD
+          before="$PWD/$PROOF_DIR/vinext-before.txt"
+          after="$PWD/$PROOF_DIR/vinext-after.txt"
+          patch="$PWD/$PROOF_DIR/vinext-init.patch"
+          (cd "$worktree" && git status --short > "$before")
+          (cd "$worktree" && npx --yes "vinext@$VINEXT_VERSION" init --skip-check --platform=cloudflare)
+          (cd "$worktree" && git status --short > "$after" && git add -N . && git diff --binary > "$patch")
+          node -e '
+            const fs = require("node:fs");
+            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            console.log(JSON.stringify({
+              scripts: p.scripts,
+              dependencies: p.dependencies,
+              devDependencies: p.devDependencies,
+            }, null, 2));
+          ' "$worktree/package.json" > "$PROOF_DIR/vinext-package-summary.json"
+          sed -i 's/vinext init=NOT_RUN/vinext init=PASS/' "$PROOF_DIR/result.txt"
+          {
+            echo "vinext initialized worktree commit=$(git -C "$worktree" rev-parse HEAD)"
+            echo "vinext files after initialization:"
+            cat "$after"
+            echo "vinext generated scripts and dependencies:"
+            cat "$PROOF_DIR/vinext-package-summary.json"
+          } | tee -a "$PROOF_DIR/result.txt"
+
+      - name: Build both production paths in initialized worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          worktree="$PROOF_DIR/vinext-worktree"
+          (cd "$worktree" && npm run build)
+          build_script="$(node -e 'const p=require(process.argv[1]); for (const n of ["build:vinext","build:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
+          (cd "$worktree" && npm run "$build_script") 2>&1 | tee "$PROOF_DIR/vinext-build.txt"
+          find "$worktree" -maxdepth 3 -type d \( -name dist -o -name .vinext -o -name .worker-next \) -print | tee "$PROOF_DIR/vinext-build-output.txt"
+          test -s "$PROOF_DIR/vinext-build-output.txt"
+          sed -i 's/vinext build=NOT_RUN/vinext build=PASS/' "$PROOF_DIR/result.txt"
+
+      - name: Smoke-test vinext development runtime on loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          worktree="$PROOF_DIR/vinext-worktree"
+          dev_script="$(node -e 'const p=require(process.argv[1]); for (const n of ["dev:vinext","dev:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
+          (cd "$worktree" && npm run "$dev_script" -- --host 127.0.0.1 --port 4173) > "$PROOF_DIR/vinext-dev.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            code="$(curl --silent --output "$PROOF_DIR/vinext-root.html" --write-out '%{http_code}' http://127.0.0.1:4173/ || true)"
+            [ "$code" = 200 ] && break
+            sleep 1
+          done
+          test "${code:-}" = 200
+          sed -i 's/vinext dev smoke=NOT_RUN/vinext dev smoke=PASS/' "$PROOF_DIR/result.txt"
+
+      - name: Prepare disposable local D1 Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROOF_DIR/migrations" "$PROOF_DIR/state"
+          cp migrations/000{1,2,3,4}_*.sql "$PROOF_DIR/migrations/"
+          cat > "$PROOF_DIR/wrangler.toml" <<'EOF'
           name = "daily-command-center-ci-proof"
+          main = "../../scripts/cloudflare-proof-worker.ts"
           compatibility_date = "2026-09-11"
+          compatibility_flags = ["nodejs_compat"]
 
           [[d1_databases]]
           binding = "DB"
           database_name = "daily-command-center-ci"
-          # Deliberately fake and local/test-only; this is not a Cloudflare resource ID.
           database_id = "00000000-0000-0000-0000-000000000000"
           migrations_dir = "./migrations"
           EOF
+          npx --yes "wrangler@$WRANGLER_VERSION" --version | tee -a "$PROOF_DIR/result.txt"
 
-      - name: Apply migrations 0001 through 0004 to local D1
-        id: migrations
-        if: steps.wrangler.outcome == 'success'
-        continue-on-error: true
+      - name: Apply migrations 0001 through 0004 to genuine local D1
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes "wrangler@${WRANGLER_VERSION}" d1 migrations apply DB \
-            --local \
-            --persist-to .tmp/cloudflare-proof/state \
-            --config .tmp/cloudflare-proof/wrangler.toml
+          npx --yes "wrangler@$WRANGLER_VERSION" d1 migrations apply DB --local \
+            --persist-to "$PROOF_DIR/state" --config "$PROOF_DIR/wrangler.toml"
+          sed -i 's/local D1 migrations=NOT_RUN/local D1 migrations=PASS/' "$PROOF_DIR/result.txt"
 
-      - name: Verify local D1 schema, seed data, and visibility policy
-        id: d1_verify
-        if: steps.migrations.outcome == 'success'
-        continue-on-error: true
+      - name: Exercise actual env.DB binding, rollback, constraints, and repositories
         shell: bash
         run: |
           set -euo pipefail
-          WRANGLER=(npx --yes "wrangler@${WRANGLER_VERSION}" d1 execute DB --local --persist-to .tmp/cloudflare-proof/state --config .tmp/cloudflare-proof/wrangler.toml)
+          npx --yes "wrangler@$WRANGLER_VERSION" dev --local --ip 127.0.0.1 --port 8789 \
+            --persist-to "$PROOF_DIR/state" --config "$PROOF_DIR/wrangler.toml" > "$PROOF_DIR/d1-worker.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            code="$(curl --silent --output "$PROOF_DIR/d1-proof.json" --write-out '%{http_code}' http://127.0.0.1:8789/proof || true)"
+            [ "$code" = 200 ] && break
+            sleep 1
+          done
+          test "${code:-}" = 200
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1])); if (!p.ok || !p.results.every(x=>x.endsWith("=PASS"))) throw Error(JSON.stringify(p)); console.log(p.results.join("\n"))' \
+            "$PROOF_DIR/d1-proof.json" | tee "$PROOF_DIR/d1-semantic-proof.txt"
+          sed -i 's/D1 semantic proof=NOT_RUN/D1 semantic proof=PASS/; s/repository binding proof=NOT_RUN/repository binding proof=PASS/' "$PROOF_DIR/result.txt"
 
-          "${WRANGLER[@]}" --command "
-            CREATE TABLE ci_assertions (ok INTEGER NOT NULL CHECK (ok = 1));
-            INSERT INTO ci_assertions
-            SELECT CASE WHEN
-              (SELECT count(*) FROM workspaces WHERE (workspace_id = 'personal' AND name = 'Personal') OR (workspace_id = 'indelitech' AND name = 'Indelitech')) = 2
-              AND (SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_visibility', 'collector_snapshots', 'secret_metadata', 'workspace_domain_records')) = 5
-            THEN 1 ELSE 0 END;
-            INSERT INTO tasks (task_id, primary_workspace_id, title, type, priority, status, due_is_date_only, created_at, source, updated_at)
-            VALUES ('ci-personal-task', 'personal', 'Disposable CI task', 'ONE_TIME', 'LOW', 'OPEN', 0, CURRENT_TIMESTAMP, 'CI', CURRENT_TIMESTAMP);
-          "
-
-          if "${WRANGLER[@]}" --command "INSERT INTO task_visibility (task_id, workspace_id) VALUES ('ci-personal-task', 'indelitech');"; then
-            echo "ERROR: Personal-to-Indelitech visibility was unexpectedly accepted." >&2
-            exit 1
-          fi
-          echo "Personal-to-Indelitech visibility trigger rejected the disposable row as expected."
-
-      - name: Write final diagnostic report
-        if: always()
+      - name: Capture read-only dependency vulnerability inventory
         shell: bash
-        env:
-          VINEXT_OUTCOME: ${{ steps.vinext.outcome }}
-          WRANGLER_OUTCOME: ${{ steps.wrangler.outcome }}
-          MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
-          D1_VERIFY_OUTCOME: ${{ steps.d1_verify.outcome }}
         run: |
-          set -euo pipefail
-          status() { if [ "$1" = "success" ]; then echo PASS; elif [ -z "$1" ] || [ "$1" = "skipped" ]; then echo NOT_RUN; else echo FAIL; fi; }
-          mkdir -p .tmp/cloudflare-proof
-          {
-            echo "Node version=$(node --version)"
-            echo "npm version=$(npm --version)"
-            echo "npm registry=$(npm config get registry)"
-            echo "vinext resolved version=${VINEXT_VERSION:-NOT_RESOLVED}"
-            echo "vinext check=$(status "$VINEXT_OUTCOME")"
-            echo "Wrangler resolved version=${WRANGLER_VERSION:-NOT_RESOLVED}"
-            echo "Wrangler executable=$(status "$WRANGLER_OUTCOME")"
-            echo "local D1 migrations=$(status "$MIGRATIONS_OUTCOME")"
-            echo "basic local D1 verification=$(status "$D1_VERIFY_OUTCOME")"
-          } > .tmp/cloudflare-proof/result.txt
-          cat .tmp/cloudflare-proof/result.txt
+          set +e
+          npm audit --json > "$PROOF_DIR/npm-audit.json"
+          audit_exit=$?
+          set -e
+          node - "$PROOF_DIR/npm-audit.json" "$PROOF_DIR/npm-audit-summary.txt" <<'NODE'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (report.error) throw new Error(`npm audit did not produce an inventory: ${report.error.summary || report.error}`);
+          const lines = Object.entries(report.vulnerabilities || {}).map(([name, item]) => {
+            const installed = [...new Set(item.nodes.map(node => {
+              try { return JSON.parse(fs.readFileSync(`${node}/package.json`, "utf8")).version; } catch { return "unresolved"; }
+            }))];
+            return JSON.stringify({ package: name, severity: item.severity, direct: item.isDirect, installed,
+              vulnerableRange: item.range, patched: item.fixAvailable,
+              breakingUpgradeRequired: typeof item.fixAvailable === "object" ? item.fixAvailable.isSemVerMajor : null,
+              reachability: "requires application/runtime review", via: item.via });
+          });
+          fs.writeFileSync(process.argv[3], lines.join("\n") + "\n");
+          console.log(`npm audit exit=${process.env.audit_exit || "recorded"}; vulnerabilities=${lines.length}`);
+          NODE
+          exit 0
 
-      - name: Upload diagnostic report
+      - name: Upload all proof artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: cloudflare-proof-result
-          path: .tmp/cloudflare-proof/result.txt
-          if-no-files-found: error
+          name: cloudflare-proof
+          path: |
+            .tmp/cloudflare-proof/result.txt
+            .tmp/cloudflare-proof/vinext-check.txt
+            .tmp/cloudflare-proof/vinext-init.patch
+            .tmp/cloudflare-proof/vinext-after.txt
+            .tmp/cloudflare-proof/vinext-build.txt
+            .tmp/cloudflare-proof/vinext-build-output.txt
+            .tmp/cloudflare-proof/vinext-dev.log
+            .tmp/cloudflare-proof/d1-semantic-proof.txt
+            .tmp/cloudflare-proof/d1-proof.json
+            .tmp/cloudflare-proof/d1-worker.log
+            .tmp/cloudflare-proof/npm-audit.json
+            .tmp/cloudflare-proof/npm-audit-summary.txt
+          if-no-files-found: warn
 
-      - name: Enforce diagnostic results
+      - name: Print final proof result
         if: always()
-        shell: bash
-        env:
-          VINEXT_OUTCOME: ${{ steps.vinext.outcome }}
-          WRANGLER_OUTCOME: ${{ steps.wrangler.outcome }}
-          MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
-          D1_VERIFY_OUTCOME: ${{ steps.d1_verify.outcome }}
-        run: |
-          set -euo pipefail
-          test "$VINEXT_OUTCOME" = success
-          test "$WRANGLER_OUTCOME" = success
-          test "$MIGRATIONS_OUTCOME" = success
-          test "$D1_VERIFY_OUTCOME" = success
+        run: cat "$PROOF_DIR/result.txt"
