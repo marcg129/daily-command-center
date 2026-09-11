@@ -7,7 +7,9 @@ import {
   createTaskItem,
   recurringTaskRequiresDue,
   sortTaskAttention,
+  taskBaseType,
   taskHorizon,
+  taskIsActive,
   taskIsOverdue,
   taskAttentionLabel,
   VISIBLE_HORIZON_GROUPS,
@@ -54,7 +56,7 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
 
 export function TaskAttentionPanel({ tasks, workspaceId, onOpen }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpen: () => void }) {
   const attention = sortTaskAttention(tasks).slice(0, 5);
-  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Highest priority</h2></div><b>{tasks.filter((task) => !task.done).length}</b></div>
+  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Highest priority</h2></div><b>{tasks.filter(taskIsActive).length}</b></div>
     {attention.length ? <div className="attention-list">{attention.map((task) => <button key={task.id} onClick={onOpen}><span><b>{task.title}</b><small>{taskAttentionLabel(task)} · {task.priority}</small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">No active tasks.</p>}
     <button className="text-button" onClick={onOpen}>Open task list</button>
   </section>;
@@ -88,7 +90,7 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
     <details className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
       <strong>Task actions</strong>
-      {status === "WAITING" ? <button onClick={() => onChange({ status: "OPEN", followUpAt: undefined })}>Resume</button> : <fieldset><legend>Mark waiting</legend><input aria-label="Waiting for person" placeholder="Waiting for" value={person} onChange={(event) => setPerson(event.target.value)} /><input aria-label="Follow-up date and time" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><button disabled={!person.trim() || !followUp} onClick={() => { const iso = convert(followUp); if (iso) onChange({ status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: iso }); }}>Mark waiting</button></fieldset>}
+      {status === "WAITING" ? <button onClick={() => onChange({ status: "OPEN", type: taskBaseType(task), followUpAt: undefined })}>Resume</button> : <fieldset><legend>Mark waiting</legend><input aria-label="Waiting for person" placeholder="Waiting for" value={person} onChange={(event) => setPerson(event.target.value)} /><input aria-label="Follow-up date and time" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><button disabled={!person.trim() || !followUp} onClick={() => { const iso = convert(followUp); if (iso) onChange({ status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: iso }); }}>Mark waiting</button></fieldset>}
       <fieldset><legend><Bell size={12} /> Reminder timing</legend><input aria-label="Reminder date and time" type="datetime-local" value={reminder} onChange={(event) => setReminder(event.target.value)} /><button disabled={!reminder} onClick={() => { const iso = convert(reminder); if (iso) onChange({ remindAt: iso }); }}>Set / change reminder</button><div className="task-presets"><button onClick={() => setPreset("LATER_TODAY")}>Later today</button><button onClick={() => setPreset("TOMORROW_MORNING")}>Tomorrow morning</button><button onClick={() => setPreset("NEXT_BUSINESS_DAY")}>Next business day</button></div></fieldset>
       <fieldset><legend>Edit details</legend><input aria-label="Edit task title" value={title} onChange={(event) => setTitle(event.target.value)} /><textarea aria-label="Edit task description" value={description} onChange={(event) => setDescription(event.target.value)} /><label>Due date<input aria-label="Change due date" type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><button onClick={() => onChange({ title: title.trim() || task.title, description, due })}>Save details</button></fieldset>
       {error && <small role="alert">{error}</small>}
