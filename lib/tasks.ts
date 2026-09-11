@@ -5,12 +5,12 @@ import {
   taskVisibleInWorkspace,
   type ProductWorkspaceId,
 } from "./runtime/context";
-import { effectivePriorityRank, isTaskOverdue, taskHorizonGroup, type HorizonGroup } from "./runtime/hosted-tasks";
+import { isTaskOverdue, TASK_STATUSES, TASK_TYPES, taskHorizonGroup, type HorizonGroup, type TaskStatus, type TaskType } from "./runtime/hosted-tasks";
+import { PRODUCT_TIME_ZONE } from "./product-time";
 
 const RECURRENCES = new Set(["One-time", "Daily", "Weekly", "Monthly"]);
 const RECURRING_RECURRENCES = new Set(["Daily", "Weekly", "Monthly"]);
 const RAPID_COMPLETION_GUARD_MS = 750;
-export const PRODUCT_TIME_ZONE = "America/New_York";
 export const VISIBLE_HORIZON_GROUPS: readonly HorizonGroup[] = [
   "OVERDUE", "TODAY", "NEXT_7_DAYS", "DAYS_8_14", "DAYS_15_30", "DAYS_31_45",
 ];
@@ -42,7 +42,7 @@ function hostedShape(task: TaskItem, now: Date) {
       ? productDateValue(now)
       : /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : null,
     dueIsDateOnly: true,
-    status: task.done ? "DONE" as const : "OPEN" as const,
+    status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),
     priority: normalizeTaskPriority(task.priority),
   };
 }
@@ -51,17 +51,56 @@ export function taskIsOverdue(task: TaskItem, now = new Date()) {
   return isTaskOverdue(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
 }
 
+export function taskIsActive(task: TaskItem) {
+  const status = task.status ?? (task.done ? "DONE" : "OPEN");
+  return status === "OPEN" || status === "WAITING";
+}
+
+export function taskBaseType(task: Pick<TaskItem, "recurrence" | "due">): TaskType {
+  if (RECURRING_RECURRENCES.has(task.recurrence)) return "RECURRING";
+  return task.due ? "DEADLINE" : "ONE_TIME";
+}
+
 export function sortTaskAttention(tasks: TaskItem[], now = new Date()) {
-  return tasks.filter((task) => !task.done).toSorted((a, b) => {
-    const rank = effectivePriorityRank(hostedShape(b, now), now, PRODUCT_TIME_ZONE) - effectivePriorityRank(hostedShape(a, now), now, PRODUCT_TIME_ZONE);
-    return rank || (a.due || "9999").localeCompare(b.due || "9999") ||
+  return tasks.filter((task) => attentionClass(task, now) > 0).toSorted((a, b) => {
+    const aClass = attentionClass(a, now); const bClass = attentionClass(b, now);
+    const rank = bClass - aClass;
+    return rank || attentionTime(a, aClass).localeCompare(attentionTime(b, bClass)) ||
       (a.createdAt || "").localeCompare(b.createdAt || "") || String(a.id).localeCompare(String(b.id));
   });
 }
 
+function parsedAt(value?: string) { const time = value ? Date.parse(value) : NaN; return Number.isFinite(time) ? time : undefined; }
+function attentionClass(task: TaskItem, now: Date) {
+  const status = task.status ?? (task.done ? "DONE" : "OPEN");
+  if (status === "DONE" || status === "CANCELLED") return 0;
+  if (status === "WAITING") return (parsedAt(task.followUpAt) ?? Infinity) <= now.getTime() ? 5 : 0;
+  if (taskIsOverdue(task, now)) return 6;
+  if ((parsedAt(task.remindAt) ?? Infinity) <= now.getTime()) return 4;
+  return { HIGH: 3, MEDIUM: 2, LOW: 1 }[normalizeTaskPriority(task.priority)];
+}
+function attentionTime(task: TaskItem, attention: number) {
+  if (attention === 5) return task.followUpAt || "9999";
+  if (attention === 4) return task.remindAt || "9999";
+  return task.due || "9999";
+}
+
+export function taskAttentionLabel(task: TaskItem, now = new Date()) {
+  if (taskIsOverdue(task, now)) return "Overdue";
+  if ((task.status ?? (task.done ? "DONE" : "OPEN")) === "WAITING" && (parsedAt(task.followUpAt) ?? Infinity) <= now.getTime()) return "Follow-up due";
+  if ((parsedAt(task.remindAt) ?? Infinity) <= now.getTime()) return "Reminder due";
+  return task.due || "No due date";
+}
+
 export function taskHorizon(tasks: TaskItem[], now = new Date()) {
   const groups = new Map<HorizonGroup, TaskItem[]>(VISIBLE_HORIZON_GROUPS.map((group) => [group, []]));
-  for (const task of sortTaskAttention(tasks, now)) {
+  const dueDriven = tasks.filter(taskIsActive).toSorted((a, b) => {
+    const aDue = hostedShape(a, now).dueAt || "9999";
+    const bDue = hostedShape(b, now).dueAt || "9999";
+    return aDue.localeCompare(bDue) ||
+      (a.createdAt || "").localeCompare(b.createdAt || "") || String(a.id).localeCompare(String(b.id));
+  });
+  for (const task of dueDriven) {
     const group = taskHorizonGroup(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
     if (group !== "LATER_OR_UNSCHEDULED") groups.get(group)!.push(task);
   }
@@ -71,7 +110,31 @@ export function taskHorizon(tasks: TaskItem[], now = new Date()) {
 export function createTaskItem(input: Pick<TaskItem, "title" | "due" | "priority"> & Partial<Pick<TaskItem, "description" | "recurrence">>, workspaceId: ProductWorkspaceId, id: TaskItem["id"] = crypto.randomUUID(), now = new Date()): TaskItem {
   return { id, title: input.title.trim(), description: input.description?.trim() || "No additional details.", due: input.due,
     recurrence: input.recurrence || "One-time", priority: normalizeTaskPriority(input.priority), primaryWorkspaceId: workspaceId,
-    done: false, createdAt: now.toISOString() };
+    done: false, status: "OPEN", type: input.recurrence && input.recurrence !== "One-time" ? "RECURRING" : input.due ? "DEADLINE" : "ONE_TIME", createdAt: now.toISOString(), updatedAt: now.toISOString() };
+}
+
+export function updateTaskItem(tasks: TaskItem[], taskId: TaskItem["id"], patch: Partial<TaskItem>, now = new Date()) {
+  return tasks.map((task) => task.id === taskId ? { ...task, ...patch, updatedAt: now.toISOString() } : task);
+}
+export function setTaskReminder(tasks: TaskItem[], taskId: TaskItem["id"], remindAt: string, now = new Date()) {
+  if (!Number.isFinite(Date.parse(remindAt))) throw new Error("Reminder must be an ISO timestamp.");
+  return updateTaskItem(tasks, taskId, { remindAt: new Date(remindAt).toISOString() }, now);
+}
+export function markTaskWaiting(tasks: TaskItem[], taskId: TaskItem["id"], person: string, followUpAt: string, now = new Date()) {
+  if (!person.trim() || !Number.isFinite(Date.parse(followUpAt))) throw new Error("Waiting requires a person and follow-up time.");
+  return updateTaskItem(tasks, taskId, { status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: new Date(followUpAt).toISOString() }, now);
+}
+export function resumeTask(tasks: TaskItem[], taskId: TaskItem["id"], now = new Date()) {
+  return tasks.map((task) => task.id === taskId ? {
+    ...task,
+    status: "OPEN",
+    type: taskBaseType(task),
+    followUpAt: undefined,
+    updatedAt: now.toISOString(),
+  } : task); // Keep person as useful context.
+}
+export function cancelTask(tasks: TaskItem[], taskId: TaskItem["id"], now = new Date()) {
+  return updateTaskItem(tasks, taskId, { status: "CANCELLED", done: false }, now);
 }
 
 function dateValue(date: Date) {
@@ -136,7 +199,7 @@ export function completeTaskItems(
     occurrenceId?: TaskItem["id"];
     expectedDue?: string;
   } = {},
-) {
+): TaskItem[] {
   const task = tasks.find((candidate) => candidate.id === taskId);
   if (
     !task ||
@@ -154,13 +217,14 @@ export function completeTaskItems(
   const completedAt = now.toISOString();
   if (!RECURRING_RECURRENCES.has(task.recurrence)) {
     return tasks.map((candidate) =>
-      candidate.id === taskId ? { ...candidate, done: true, completedAt } : candidate,
+      candidate.id === taskId ? { ...candidate, done: true, status: "DONE" as const, completedAt, updatedAt: completedAt } : candidate,
     );
   }
   const occurrence: TaskItem = {
     ...task,
     id: options.occurrenceId || crypto.randomUUID(),
     done: true,
+    status: "DONE",
     completedAt,
     seriesId: task.id,
   };
@@ -179,8 +243,13 @@ export function completeTaskItems(
             recurrenceAnchorDay,
           ),
           done: false,
+          status: "OPEN" as const,
+          type: taskBaseType(candidate),
           completedAt: undefined,
+          remindAt: undefined,
+          followUpAt: undefined,
           recurrenceAnchorDay,
+          updatedAt: completedAt,
         }
       : candidate,
   );
@@ -237,6 +306,10 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
     const title = cleanText(candidate.title).trim();
     if (!title) return [];
     const recurrence = cleanText(candidate.recurrence, "One-time");
+    const due = cleanText(candidate.due, "Today");
+    const status: TaskStatus = TASK_STATUSES.includes(candidate.status as TaskStatus) ? candidate.status as TaskStatus : candidate.done === true ? "DONE" : "OPEN";
+    const type: TaskType = TASK_TYPES.includes(candidate.type as TaskType) ? candidate.type as TaskType : recurrence !== "One-time" ? "RECURRING" : due ? "DEADLINE" : "ONE_TIME";
+    const cleanIso = (input: unknown) => typeof input === "string" && Number.isFinite(Date.parse(input)) ? new Date(input).toISOString() : undefined;
     return [{
       id: cleanId(candidate.id),
       title,
@@ -244,13 +317,19 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
         candidate.description,
         "No additional details.",
       ),
-      due: cleanText(candidate.due, "Today"),
+      due,
       recurrence: RECURRENCES.has(recurrence) ? recurrence : "One-time",
       priority: normalizeTaskPriority(candidate.priority),
       primaryWorkspaceId: isProductWorkspaceId(candidate.primaryWorkspaceId)
         ? candidate.primaryWorkspaceId
         : PERSONAL_WORKSPACE_ID,
-      done: candidate.done === true,
+      done: status === "DONE",
+      status,
+      type,
+      remindAt: cleanIso(candidate.remindAt),
+      followUpAt: cleanIso(candidate.followUpAt),
+      person: cleanText(candidate.person).trim() || undefined,
+      updatedAt: cleanIso(candidate.updatedAt),
       createdAt: cleanText(candidate.createdAt) || undefined,
       completedAt: cleanText(candidate.completedAt) || undefined,
       seriesId:
