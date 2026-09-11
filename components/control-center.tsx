@@ -11,6 +11,7 @@ import {
   AtSign,
   Bookmark,
   Cable,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -84,9 +85,22 @@ import {
   applyArchiveToPayload,
   type CachedFeedPayload,
 } from "@/lib/live-response";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { WorkspacePageShell } from "@/components/workspace-page-shell";
+import type { ProductWorkspaceId } from "@/lib/runtime/context";
+import {
+  DEFAULT_WORKSPACE_ID,
+  WORKSPACES,
+  WORKSPACE_SELECTION_STORAGE_KEY,
+  isWorkspacePageAvailable,
+  parseWorkspaceId,
+  type WorkspacePageId,
+} from "@/lib/workspace-ui";
 
 type Tab =
   | "today"
+  | "calendar"
+  | "news"
   | "industry"
   | "mentions"
   | "reminders"
@@ -141,15 +155,15 @@ const emptySettings: PublicSettings = {
   dailyBrief: { sourceLabels: [], lookbackDays: 7, sections: { industry: 5, mentions: 5, newsletters: 5 } },
 };
 
-const nav: { id: Tab; label: string; icon: typeof Activity }[] = [
-  { id: "today", label: "Today", icon: LayoutDashboard },
-  { id: "industry", label: "Industry", icon: Radio },
-  { id: "mentions", label: "Mentions", icon: AtSign },
-  { id: "reminders", label: "Reminders", icon: Bookmark },
-  { id: "audience", label: "Audience", icon: Users },
-  { id: "newsletters", label: "Newsletters", icon: Newspaper },
-  { id: "tasks", label: "Tasks", icon: ListTodo },
-];
+const navigationIcons = {
+  today: LayoutDashboard,
+  tasks: ListTodo,
+  calendar: CalendarDays,
+  news: Newspaper,
+  intel: Radio,
+  mentions: AtSign,
+  settings: Settings2,
+};
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -644,6 +658,39 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
+function PersonalTodayView({ tasks, goTo }: { tasks: Task[]; goTo: (tab: Tab) => void }) {
+  const openTasks = tasks.filter((task) => !task.done);
+  const dueToday = openTasks.filter((task) => isTaskDueToday(task.due));
+  return (
+    <div className="view">
+      <PageHeading
+        eyebrow="Personal · Today"
+        title="What needs my attention today?"
+        description="A calm starting point for personal priorities, with business roll-up and calendar context arriving in the next task milestone."
+        action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>}
+      />
+      <div className="personal-today-grid reveal delay-1">
+        <Panel className="personal-focus-card">
+          <p className="eyebrow">Current focus</p>
+          <strong>{dueToday.length}</strong>
+          <h2>{dueToday.length === 1 ? "task due today" : "tasks due today"}</h2>
+          <p>{openTasks.length} open across the current local task list.</p>
+          <button className="text-button" onClick={() => goTo("tasks")}>Review tasks <ArrowRight size={14} /></button>
+        </Panel>
+        <Panel className="personal-horizon-card">
+          <CalendarDays size={24} />
+          <div>
+            <p className="eyebrow">On the horizon</p>
+            <h2>Calendar context is next</h2>
+            <p>No calendar account is connected and no events are fabricated. The unified calendar shell is ready for the future integration.</p>
+          </div>
+          <button className="button button-ghost" onClick={() => goTo("calendar")}>View calendar shell</button>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 function TodayView({
   settings,
   tasks,
@@ -674,9 +721,9 @@ function TodayView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow={today}
-        title="Good morning."
-        description="A quiet starting point for the sources, signals, and work you choose to track."
+        eyebrow={`Indelitech · ${today}`}
+        title="Business priorities, in focus."
+        description="Operational attention for Indelitech: active work, market intelligence, and configured business signals."
         action={
           <button
             className="button button-ghost"
@@ -896,9 +943,9 @@ function IndustryView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Live source desk"
-        title="Industry"
-        description="A bounded briefing of the most useful watched-site and topic updates from the last 24 hours."
+        eyebrow="Indelitech · Intelligence"
+        title="Intel"
+        description="MSP, cybersecurity, and SMB technology intelligence from the business sources and topics you configure."
         action={
           <button
             className="button button-primary"
@@ -1150,9 +1197,9 @@ function MentionsView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Seven-day web radar"
+        eyebrow="Indelitech · Seven-day web radar"
         title="Mentions"
-        description="Verified third-party pages from the past week, matched to the identities you configure and deduplicated against your local archive."
+        description="Indelitech brand and company mentions from verified third-party pages, matched to configured identities and deduplicated locally."
         action={
           <button
             className="button button-ghost"
@@ -1919,9 +1966,11 @@ function NewslettersView({
 function TasksView({
   tasks,
   setTasks,
+  workspaceId,
 }: {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  workspaceId: ProductWorkspaceId;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -1972,9 +2021,11 @@ function TasksView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Execution"
+        eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`}
         title="Tasks"
-        description="One-time and repeating work, with enough detail to make the next action obvious."
+        description={workspaceId === "personal"
+          ? "Your personal task home. A safe Indelitech roll-up will join this view in the task-engine milestone."
+          : "Indelitech-only work, with enough detail to make the next business action obvious."}
         action={
           <button
             className="button button-primary"
@@ -2244,9 +2295,11 @@ function settingsDraft(settings: PublicSettings): SettingsDraft {
 function SettingsView({
   settings,
   onSaved,
+  workspaceId,
 }: {
   settings: PublicSettings;
   onSaved: (settings: PublicSettings) => void;
+  workspaceId: ProductWorkspaceId;
 }) {
   const router = useRouter();
   const [section, setSection] = useState<SettingsSection>("general");
@@ -2418,9 +2471,9 @@ function SettingsView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Make it yours"
+        eyebrow={`${WORKSPACES[workspaceId].displayName} workspace`}
         title="Settings"
-        description="A fresh install starts empty. Choose exactly what the dashboard reads and tracks."
+        description={`Configure how ${WORKSPACES[workspaceId].displayName} looks and works. Existing settings remain shared until their storage model is workspace-scoped.`}
         action={
           <button
             className="button button-primary"
@@ -3372,6 +3425,7 @@ function SettingsView({
 
 export function ControlCenter() {
   const [activeTab, setActiveTab] = useState<Tab>("today");
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<ProductWorkspaceId>(DEFAULT_WORKSPACE_ID);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settings, setSettings] = useState<PublicSettings>(emptySettings);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -3387,16 +3441,21 @@ export function ControlCenter() {
   const workspaceSaveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
+    window.queueMicrotask(() => {
+      try {
+        setActiveWorkspaceId(parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY)));
+      } catch {
+        setActiveWorkspaceId(DEFAULT_WORKSPACE_ID);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     window.queueMicrotask(() => {
-      const requested = new URLSearchParams(window.location.search).get(
-        "tab",
-      ) as Tab | null;
-      if (
-        requested &&
-        [...nav.map((item) => item.id), "settings"].includes(requested)
-      )
-        setActiveTab(requested);
+      const requested = new URLSearchParams(window.location.search).get("tab") as WorkspacePageId | null;
+      const persistedWorkspace = parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY));
+      if (requested && isWorkspacePageAvailable(persistedWorkspace, requested)) setActiveTab(requested);
     });
     const load = async () => {
       try {
@@ -3528,6 +3587,20 @@ export function ControlCenter() {
     window.history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const selectWorkspace = (workspaceId: ProductWorkspaceId) => {
+    setActiveWorkspaceId(workspaceId);
+    setMobileOpen(false);
+    if (!isWorkspacePageAvailable(workspaceId, activeTab as WorkspacePageId)) setActiveTab("today");
+    try {
+      window.localStorage.setItem(WORKSPACE_SELECTION_STORAGE_KEY, workspaceId);
+    } catch {
+      // Workspace selection persistence is optional UI convenience only.
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("workspace", workspaceId);
+    if (!isWorkspacePageAvailable(workspaceId, activeTab as WorkspacePageId)) url.searchParams.set("tab", "today");
+    window.history.replaceState({}, "", url);
+  };
   const addReminder = (title: string, note: string, url?: string) => {
     let source = "Manual";
     if (url) {
@@ -3594,17 +3667,15 @@ export function ControlCenter() {
   ].filter(Boolean).length;
   const current = useMemo(
     () =>
-      activeTab === "settings"
-        ? "Settings"
-        : nav.find((item) => item.id === activeTab)?.label,
-    [activeTab],
+      WORKSPACES[activeWorkspaceId].navigation.find((item) => item.id === activeTab)?.label,
+    [activeTab, activeWorkspaceId],
   );
 
   if (bootstrapStatus === "loading")
     return (
       <div className="app-loading">
         <Activity />
-        <span>Opening Control Center</span>
+        <span>Opening Daily Command Center</span>
       </div>
     );
   if (bootstrapStatus === "error")
@@ -3613,7 +3684,7 @@ export function ControlCenter() {
         <Panel className="recovery-panel">
           <CircleAlert size={30} />
           <p className="eyebrow">Local data protected</p>
-          <h1>Control Center could not open safely</h1>
+          <h1>Daily Command Center could not open safely</h1>
           <p>{bootstrapError}</p>
           <p>
             No settings, tasks, or reminders were overwritten. Retry the read,
@@ -3635,22 +3706,23 @@ export function ControlCenter() {
       </div>
     );
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-workspace={activeWorkspaceId} data-workspace-theme={WORKSPACES[activeWorkspaceId].themeKey}>
       <header className="topbar">
-        <div
+        <button
+          type="button"
           className="brand-lockup"
           onClick={() => goTo("today")}
-          role="button"
-          tabIndex={0}
+          aria-label="Open Today"
         >
           <span className="brand-mark">
             <Activity size={18} />
           </span>
           <span>
-            <b>{settings.general.workspaceName.toUpperCase()}</b>
-            <small>CONTROL CENTER</small>
+            <b>DAILY COMMAND CENTER</b>
+            <small>MARC&apos;S COMMAND CENTER</small>
           </span>
-        </div>
+        </button>
+        <WorkspaceSwitcher value={activeWorkspaceId} onChange={selectWorkspace} />
         <button
           className="mobile-menu"
           onClick={() => setMobileOpen((value) => !value)}
@@ -3662,13 +3734,14 @@ export function ControlCenter() {
           className={classNames("main-nav", mobileOpen && "is-open")}
           aria-label="Main navigation"
         >
-          {nav.map((item) => {
-            const Icon = item.icon;
+          {WORKSPACES[activeWorkspaceId].navigation.map((item) => {
+            const Icon = navigationIcons[item.icon];
             return (
               <button
                 key={item.id}
                 className={activeTab === item.id ? "active" : ""}
                 onClick={() => goTo(item.id)}
+                aria-current={activeTab === item.id ? "page" : undefined}
               >
                 <Icon size={15} />
                 <span>{item.label}</span>
@@ -3709,7 +3782,10 @@ export function ControlCenter() {
             <span>{workspaceSaveError}</span>
           </div>
         )}
-        {activeTab === "today" && (
+        {activeTab === "today" && activeWorkspaceId === "personal" && (
+          <PersonalTodayView tasks={tasks} goTo={goTo} />
+        )}
+        {activeTab === "today" && activeWorkspaceId === "indelitech" && (
           <TodayView
             settings={settings}
             tasks={tasks}
@@ -3724,6 +3800,26 @@ export function ControlCenter() {
               addReminder(story.title, story.summary, story.url)
             }
             openSettings={() => openSettings("industry")}
+          />
+        )}{" "}
+        {activeTab === "calendar" && (
+          <WorkspacePageShell
+            eyebrow={`${WORKSPACES[activeWorkspaceId].displayName} · Calendar`}
+            title="Calendar"
+            description={activeWorkspaceId === "personal" ? "A future unified view of personal and relevant Indelitech commitments." : "A focused business calendar for Indelitech operations."}
+            icon={<CalendarDays size={25} />}
+            emptyTitle={activeWorkspaceId === "personal" ? "Your unified calendar will live here" : "Your business calendar will live here"}
+            emptyDescription="Calendar integration is intentionally deferred. No Google account is connected and no placeholder events are shown."
+          />
+        )}{" "}
+        {activeTab === "news" && activeWorkspaceId === "personal" && (
+          <WorkspacePageShell
+            eyebrow="Personal · News"
+            title="News"
+            description="A future personal news and intelligence feed shaped around your interests."
+            icon={<Newspaper size={25} />}
+            emptyTitle="A useful personal briefing, not recycled business news"
+            emptyDescription="Personal sources and curation are intentionally deferred so this view never misrepresents the existing Indelitech industry feed."
           />
         )}{" "}
         {activeTab === "mentions" && (
@@ -3765,11 +3861,12 @@ export function ControlCenter() {
           />
         )}{" "}
         {activeTab === "tasks" && (
-          <TasksView tasks={tasks} setTasks={setTasks} />
+          <TasksView tasks={tasks} setTasks={setTasks} workspaceId={activeWorkspaceId} />
         )}{" "}
         {activeTab === "settings" && (
           <SettingsView
             settings={settings}
+            workspaceId={activeWorkspaceId}
             onSaved={(saved) => {
               clearLiveDataCache();
               setSettings(saved);
@@ -3778,9 +3875,9 @@ export function ControlCenter() {
         )}
       </main>
       <footer>
-        <span>{settings.general.workspaceName}</span>
+        <span>Marc&apos;s Daily Command Center</span>
         <i />
-        <span>{current}</span>
+        <span>{WORKSPACES[activeWorkspaceId].displayName} · {current}</span>
         <small>Local-only · Saved to this computer</small>
       </footer>
       {toast && (
