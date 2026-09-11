@@ -6,7 +6,7 @@ import type { HostedTask } from "@/lib/runtime/hosted-tasks";
 type TaskRow = Record<string, unknown>;
 const columns = `task_id, primary_workspace_id, title, context, category, project, person, type, priority, status,
  due_at, due_is_date_only, remind_at, follow_up_at, estimated_duration, recurrence, series_id, recurrence_anchor_day, dependency, created_at,
- completed_at, source, source_context, last_notified_at, updated_at`;
+ completed_at, source, source_context, last_notified_at, updated_at, capture_fingerprint, estimated_duration_label`;
 const selectedColumns = columns.split(",").map((column) => `t.${column.trim()}`).join(", ");
 
 function fromRow(row: TaskRow): HostedTask {
@@ -23,6 +23,8 @@ function fromRow(row: TaskRow): HostedTask {
     dependency: row.dependency as string | null, createdAt: String(row.created_at), completedAt: row.completed_at as string | null,
     source: String(row.source), sourceContext: row.source_context as string | null,
     lastNotifiedAt: row.last_notified_at as string | null, updatedAt: String(row.updated_at),
+    captureFingerprint: row.capture_fingerprint as string | null,
+    estimatedDurationLabel: row.estimated_duration_label as HostedTask["estimatedDurationLabel"],
   };
 }
 
@@ -30,7 +32,8 @@ function values(task: HostedTask) {
   return [task.taskId, task.primaryWorkspaceId, task.title, task.context, task.category, task.project, task.person,
     task.type, task.priority, task.status, task.dueAt, task.dueIsDateOnly ? 1 : 0, task.remindAt, task.followUpAt,
     task.estimatedDuration, task.recurrence, task.seriesId, task.recurrenceAnchorDay, task.dependency, task.createdAt, task.completedAt, task.source,
-    task.sourceContext, task.lastNotifiedAt, task.updatedAt];
+    task.sourceContext, task.lastNotifiedAt, task.updatedAt, task.captureFingerprint ?? null,
+    task.estimatedDurationLabel ?? null];
 }
 
 export class D1TaskRepository implements HostedTaskRepository {
@@ -61,7 +64,7 @@ export class D1TaskRepository implements HostedTaskRepository {
     if (!visibility.includes(workspaceId) || visibility.some((target) => !taskVisibleInWorkspace(workspaceId, target))) {
       throw new Error("Invalid task visibility.");
     }
-    const placeholders = Array.from({ length: 25 }, () => "?").join(",");
+    const placeholders = Array.from({ length: values(task).length }, () => "?").join(",");
     const statements = [this.database.prepare(`INSERT INTO tasks (${columns}) VALUES (${placeholders})`).bind(...values(task)),
       ...visibility.map((target) => this.database.prepare("INSERT INTO task_visibility (task_id, workspace_id) VALUES (?, ?)").bind(task.taskId, target))];
     const results = await this.database.batch(statements);
@@ -73,12 +76,15 @@ export class D1TaskRepository implements HostedTaskRepository {
     const workspaceId = requireHostedContext(context);
     const existing = await this.get(context, task.taskId);
     if (!existing || existing.primaryWorkspaceId !== task.primaryWorkspaceId || task.createdAt !== existing.createdAt) throw new Error("Task access denied.");
-    const mutable = values(task).slice(2);
+    if (existing.captureFingerprint != null && task.captureFingerprint != null && task.captureFingerprint !== existing.captureFingerprint)
+      throw new Error("Task capture fingerprint is immutable.");
+    const saved = { ...task, captureFingerprint: existing.captureFingerprint ?? task.captureFingerprint ?? null };
+    const mutable = values(saved).slice(2);
     const result = await this.database.prepare(`UPDATE tasks SET title=?, context=?, category=?, project=?, person=?, type=?, priority=?, status=?, due_at=?,
       due_is_date_only=?, remind_at=?, follow_up_at=?, estimated_duration=?, recurrence=?, series_id=?, recurrence_anchor_day=?, dependency=?, created_at=?, completed_at=?, source=?,
-      source_context=?, last_notified_at=?, updated_at=? WHERE task_id=? AND EXISTS (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`)
+      source_context=?, last_notified_at=?, updated_at=?, capture_fingerprint=?, estimated_duration_label=? WHERE task_id=? AND EXISTS (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`)
       .bind(...mutable, task.taskId, workspaceId).run();
     if (!result.success) throw new Error("D1 task update failed.");
-    return task;
+    return saved;
   }
 }

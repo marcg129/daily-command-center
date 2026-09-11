@@ -160,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$PROOF_DIR/migrations" "$PROOF_DIR/state"
-          cp migrations/000{1,2,3,4}_*.sql "$PROOF_DIR/migrations/"
+          cp migrations/000{1,2,3,4,5}_*.sql "$PROOF_DIR/migrations/"
           cat > "$PROOF_DIR/wrangler.toml" <<'EOF'
           name = "daily-command-center-ci-proof"
           main = "../../scripts/cloudflare-proof-worker.ts"
@@ -175,7 +175,7 @@ jobs:
           EOF
           npx --yes "wrangler@$WRANGLER_VERSION" --version | tee -a "$PROOF_DIR/result.txt"
 
-      - name: Apply migrations 0001 through 0004 to genuine local D1
+      - name: Apply migrations 0001 through 0005 to genuine local D1
         shell: bash
         run: |
           set -euo pipefail

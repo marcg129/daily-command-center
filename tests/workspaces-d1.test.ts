@@ -24,7 +24,7 @@ class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql"])
+    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql", "0005_task_capture_metadata.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -35,6 +35,7 @@ function task(overrides: Partial<HostedTask> = {}): HostedTask {
   return { taskId: "task-1", primaryWorkspaceId: INDELITECH_WORKSPACE_ID, title: "Ship proposal", context: null,
     category: null, project: null, person: null, type: "DEADLINE", priority: "LOW", status: "OPEN",
     dueAt: "2026-09-10", dueIsDateOnly: true, remindAt: null, followUpAt: null, estimatedDuration: null,
+    estimatedDurationLabel: null, captureFingerprint: null,
     recurrence: null, seriesId: null, recurrenceAnchorDay: null, dependency: null,
     createdAt: "2026-09-01T00:00:00.000Z", completedAt: null,
     source: "manual", sourceContext: null, lastNotifiedAt: null, updatedAt: "2026-09-01T00:00:00.000Z", ...overrides };
@@ -60,6 +61,41 @@ test("D1 tasks share Indelitech to Personal without duplication and update one r
   assert.equal(indelitechView?.seriesId, "series-root");
   assert.equal(indelitechView?.recurrenceAnchorDay, 20);
   assert.equal((d1.sqlite.prepare("SELECT count(*) count FROM tasks").get() as { count: number }).count, 1);
+  d1.sqlite.close();
+});
+
+test("migration 0005 preserves rows and adds nullable capture metadata", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec("PRAGMA foreign_keys=ON");
+  for (const name of ["0001_workspaces.sql", "0002_tasks.sql"])
+    sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+  sqlite.prepare(`INSERT INTO tasks (task_id, primary_workspace_id, title, type, priority, status, due_is_date_only,
+    created_at, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    "before-0005", "personal", "Existing", "ONE_TIME", "MEDIUM", "OPEN", 0,
+    "2026-09-01T00:00:00Z", "manual", "2026-09-01T00:00:00Z",
+  );
+  sqlite.exec(readFileSync(new URL("../migrations/0005_task_capture_metadata.sql", import.meta.url), "utf8"));
+  const migrated = sqlite.prepare("SELECT capture_fingerprint, estimated_duration_label FROM tasks").get() as Record<string, unknown>;
+  assert.equal(migrated.capture_fingerprint, null); assert.equal(migrated.estimated_duration_label, null);
+  assert.throws(() => sqlite.prepare("UPDATE tasks SET estimated_duration_label='45m'").run(), /CHECK constraint failed/);
+  sqlite.close();
+});
+
+test("D1 task capture metadata round-trips and a non-null fingerprint is immutable", async () => {
+  const d1 = new TestD1(); const repository = new D1TaskRepository(d1);
+  const captured = task({ captureFingerprint: "original", estimatedDuration: 120, estimatedDurationLabel: "2h+" });
+  await repository.create({ workspaceId: "indelitech" }, captured, [INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID]);
+  assert.equal((await repository.get({ workspaceId: "indelitech" }, captured.taskId))?.captureFingerprint, "original");
+  assert.equal((await repository.list({ workspaceId: "personal" }))[0].estimatedDurationLabel, "2h+");
+  const same = await repository.update({ workspaceId: "indelitech" }, { ...captured, title: "Edited", captureFingerprint: "original" });
+  assert.equal(same.title, "Edited");
+  await assert.rejects(
+    repository.update({ workspaceId: "indelitech" }, { ...same, captureFingerprint: "replacement" }),
+    /fingerprint is immutable/,
+  );
+  const preserved = await repository.update({ workspaceId: "indelitech" }, { ...same, captureFingerprint: null });
+  assert.equal(preserved.captureFingerprint, "original");
+  assert.equal((await repository.get({ workspaceId: "indelitech" }, captured.taskId))?.captureFingerprint, "original");
   d1.sqlite.close();
 });
 
