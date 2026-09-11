@@ -9,7 +9,8 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?
 const TYPES = ["ONE_TIME", "DEADLINE", "FOLLOW_UP", "WAITING", "RECURRING", "BACKLOG"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 const RECURRENCES = ["One-time", "Daily", "Weekly", "Monthly"] as const;
-const DURATIONS = ["5m", "15m", "30m", "1h", "2h+", "Project"] as const;
+export const CAPTURE_DURATIONS = ["5m", "15m", "30m", "1h", "2h+", "Project"] as const;
+export type CaptureDuration = typeof CAPTURE_DURATIONS[number];
 const ALLOWED_KEYS = new Set([
   "requestId", "workspaceId", "title", "context", "category", "project", "person", "type",
   "priority", "due", "remindAt", "followUpAt", "estimatedDuration", "recurrence",
@@ -29,7 +30,7 @@ export type StructuredTaskCapture = {
   due?: string | null;
   remindAt?: string | null;
   followUpAt?: string | null;
-  estimatedDuration?: typeof DURATIONS[number];
+  estimatedDuration?: CaptureDuration;
   recurrence?: typeof RECURRENCES[number];
   dependency?: string;
   sourceContext?: string;
@@ -101,7 +102,7 @@ export function parseStructuredTaskCapture(value: unknown): StructuredTaskCaptur
     due: due || null,
     remindAt: timestamp(input.remindAt, "remindAt") || null,
     followUpAt: followUpAt || null,
-    estimatedDuration: enumValue(input.estimatedDuration, DURATIONS, "estimatedDuration"),
+    estimatedDuration: enumValue(input.estimatedDuration, CAPTURE_DURATIONS, "estimatedDuration"),
     recurrence,
     dependency: optionalText(input.dependency, "dependency"),
     sourceContext: optionalText(input.sourceContext, "sourceContext"),
@@ -109,7 +110,7 @@ export function parseStructuredTaskCapture(value: unknown): StructuredTaskCaptur
 }
 
 /** Stable, runtime-neutral signature of every normalized capture contract field. */
-function captureFingerprint(input: StructuredTaskCapture) {
+export function captureFingerprint(input: StructuredTaskCapture) {
   const recurrence = input.recurrence ?? "One-time";
   const due = input.due ?? "";
   return JSON.stringify({
@@ -132,13 +133,17 @@ function captureFingerprint(input: StructuredTaskCapture) {
   });
 }
 
+export function captureTaskId(input: Pick<StructuredTaskCapture, "requestId">) {
+  return `capture:${input.requestId}`;
+}
+
 function taskFromCapture(input: StructuredTaskCapture, now: string): TaskItem {
   const recurrence = input.recurrence ?? "One-time";
   const due = input.due ?? "";
   const recurring = recurrence !== "One-time";
   const type = recurring ? "RECURRING" : input.type ?? (due ? "DEADLINE" : "ONE_TIME");
   return {
-    id: `capture:${input.requestId}`, title: input.title, description: input.context || "No additional details.",
+    id: captureTaskId(input), title: input.title, description: input.context || "No additional details.",
     due, recurrence, priority: input.priority ?? "MEDIUM", primaryWorkspaceId: input.workspaceId,
     done: false, type, status: type === "WAITING" ? "WAITING" : "OPEN",
     remindAt: input.remindAt || undefined, followUpAt: input.followUpAt || undefined,
@@ -156,7 +161,7 @@ function interpretation(task: TaskItem): CaptureInterpretation {
 export function createStructuredTaskCaptureService(repository: TaskMutationRepository, clock: Clock) {
   return async (value: unknown): Promise<TaskCaptureResult> => {
     const input = parseStructuredTaskCapture(value);
-    const existing = (await repository.read()).find((task) => task.id === `capture:${input.requestId}`);
+    const existing = (await repository.read()).find((task) => task.id === captureTaskId(input));
     const now = clock.now().toISOString();
     const candidate = taskFromCapture(input, now);
     if (existing) {

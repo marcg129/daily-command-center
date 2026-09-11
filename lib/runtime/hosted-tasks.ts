@@ -1,4 +1,5 @@
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
+import type { CaptureDuration } from "@/lib/runtime/task-capture";
 
 export const TASK_TYPES = ["ONE_TIME", "DEADLINE", "FOLLOW_UP", "WAITING", "RECURRING", "BACKLOG"] as const;
 export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
@@ -12,6 +13,7 @@ export type HostedTask = {
   category: string | null; project: string | null; person: string | null; type: TaskType;
   priority: TaskPriority; status: TaskStatus; dueAt: string | null; dueIsDateOnly: boolean;
   remindAt: string | null; followUpAt: string | null; estimatedDuration: number | null;
+  estimatedDurationLabel?: CaptureDuration | null; captureFingerprint?: string | null;
   recurrence: string | null; seriesId: string | null; recurrenceAnchorDay: number | null;
   dependency: string | null; createdAt: string; completedAt: string | null;
   source: string; sourceContext: string | null; lastNotifiedAt: string | null; updatedAt: string;
