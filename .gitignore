@@ -9,6 +9,7 @@
 .env*
 !.env.example
 /.control-center/
+/.tmp/
 
 # logs and system files
 *.log
