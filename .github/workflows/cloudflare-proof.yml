@@ -1,0 +1,189 @@
+name: Cloudflare toolchain proof (non-production)
+
+on:
+  push:
+    branches:
+      - milestone/1b-d-ci-proof
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloudflare-proof:
+    name: Compatibility and local D1 diagnostics
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24.19.0
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Initialize diagnostic report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/cloudflare-proof
+          {
+            echo "Node version=$(node --version)"
+            echo "npm version=$(npm --version)"
+            echo "npm registry=$(npm config get registry)"
+            echo "vinext resolved version=NOT_RUN"
+            echo "vinext check=NOT_RUN"
+            echo "Wrangler resolved version=NOT_RUN"
+            echo "Wrangler executable=NOT_RUN"
+            echo "local D1 migrations=NOT_RUN"
+            echo "basic local D1 verification=NOT_RUN"
+          } > .tmp/cloudflare-proof/result.txt
+          node --version
+          npm --version
+          npm config get registry
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Resolve exact diagnostic tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          VINEXT_VERSION="$(npm view vinext version)"
+          WRANGLER_VERSION="$(npm view wrangler version)"
+          test -n "$VINEXT_VERSION"
+          test -n "$WRANGLER_VERSION"
+          echo "VINEXT_VERSION=$VINEXT_VERSION" | tee -a "$GITHUB_ENV"
+          echo "WRANGLER_VERSION=$WRANGLER_VERSION" | tee -a "$GITHUB_ENV"
+
+      - name: Run vinext compatibility checker
+        id: vinext
+        continue-on-error: true
+        shell: bash
+        run: npx --yes "vinext@${VINEXT_VERSION}" check
+
+      - name: Check Wrangler executable
+        id: wrangler
+        continue-on-error: true
+        shell: bash
+        run: npx --yes "wrangler@${WRANGLER_VERSION}" --version
+
+      - name: Prepare disposable local D1 configuration
+        if: steps.wrangler.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/cloudflare-proof/migrations .tmp/cloudflare-proof/state
+          cp migrations/000{1,2,3,4}_*.sql .tmp/cloudflare-proof/migrations/
+          cat > .tmp/cloudflare-proof/wrangler.toml <<'EOF'
+          name = "daily-command-center-ci-proof"
+          compatibility_date = "2026-09-11"
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "daily-command-center-ci"
+          # Deliberately fake and local/test-only; this is not a Cloudflare resource ID.
+          database_id = "00000000-0000-0000-0000-000000000000"
+          migrations_dir = "./migrations"
+          EOF
+
+      - name: Apply migrations 0001 through 0004 to local D1
+        id: migrations
+        if: steps.wrangler.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes "wrangler@${WRANGLER_VERSION}" d1 migrations apply DB \
+            --local \
+            --persist-to .tmp/cloudflare-proof/state \
+            --config .tmp/cloudflare-proof/wrangler.toml
+
+      - name: Verify local D1 schema, seed data, and visibility policy
+        id: d1_verify
+        if: steps.migrations.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRANGLER=(npx --yes "wrangler@${WRANGLER_VERSION}" d1 execute DB --local --persist-to .tmp/cloudflare-proof/state --config .tmp/cloudflare-proof/wrangler.toml)
+
+          "${WRANGLER[@]}" --command "
+            CREATE TABLE ci_assertions (ok INTEGER NOT NULL CHECK (ok = 1));
+            INSERT INTO ci_assertions
+            SELECT CASE WHEN
+              (SELECT count(*) FROM workspaces WHERE (workspace_id = 'personal' AND name = 'Personal') OR (workspace_id = 'indelitech' AND name = 'Indelitech')) = 2
+              AND (SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_visibility', 'collector_snapshots', 'secret_metadata', 'workspace_domain_records')) = 5
+            THEN 1 ELSE 0 END;
+            INSERT INTO tasks (task_id, primary_workspace_id, title, type, priority, status, due_is_date_only, created_at, source, updated_at)
+            VALUES ('ci-personal-task', 'personal', 'Disposable CI task', 'ONE_TIME', 'LOW', 'OPEN', 0, CURRENT_TIMESTAMP, 'CI', CURRENT_TIMESTAMP);
+          "
+
+          if "${WRANGLER[@]}" --command "INSERT INTO task_visibility (task_id, workspace_id) VALUES ('ci-personal-task', 'indelitech');"; then
+            echo "ERROR: Personal-to-Indelitech visibility was unexpectedly accepted." >&2
+            exit 1
+          fi
+          echo "Personal-to-Indelitech visibility trigger rejected the disposable row as expected."
+
+      - name: Write final diagnostic report
+        if: always()
+        shell: bash
+        env:
+          VINEXT_OUTCOME: ${{ steps.vinext.outcome }}
+          WRANGLER_OUTCOME: ${{ steps.wrangler.outcome }}
+          MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
+          D1_VERIFY_OUTCOME: ${{ steps.d1_verify.outcome }}
+        run: |
+          set -euo pipefail
+          status() { if [ "$1" = "success" ]; then echo PASS; elif [ -z "$1" ] || [ "$1" = "skipped" ]; then echo NOT_RUN; else echo FAIL; fi; }
+          mkdir -p .tmp/cloudflare-proof
+          {
+            echo "Node version=$(node --version)"
+            echo "npm version=$(npm --version)"
+            echo "npm registry=$(npm config get registry)"
+            echo "vinext resolved version=${VINEXT_VERSION:-NOT_RESOLVED}"
+            echo "vinext check=$(status "$VINEXT_OUTCOME")"
+            echo "Wrangler resolved version=${WRANGLER_VERSION:-NOT_RESOLVED}"
+            echo "Wrangler executable=$(status "$WRANGLER_OUTCOME")"
+            echo "local D1 migrations=$(status "$MIGRATIONS_OUTCOME")"
+            echo "basic local D1 verification=$(status "$D1_VERIFY_OUTCOME")"
+          } > .tmp/cloudflare-proof/result.txt
+          cat .tmp/cloudflare-proof/result.txt
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: cloudflare-proof-result
+          path: .tmp/cloudflare-proof/result.txt
+          if-no-files-found: error
+
+      - name: Enforce diagnostic results
+        if: always()
+        shell: bash
+        env:
+          VINEXT_OUTCOME: ${{ steps.vinext.outcome }}
+          WRANGLER_OUTCOME: ${{ steps.wrangler.outcome }}
+          MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
+          D1_VERIFY_OUTCOME: ${{ steps.d1_verify.outcome }}
+        run: |
+          set -euo pipefail
+          test "$VINEXT_OUTCOME" = success
+          test "$WRANGLER_OUTCOME" = success
+          test "$MIGRATIONS_OUTCOME" = success
+          test "$D1_VERIFY_OUTCOME" = success
