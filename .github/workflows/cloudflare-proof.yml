@@ -136,31 +136,31 @@ jobs:
               --write-out '%{http_code}' \
               http://localhost:4173/ || true)"
             [ "$code" = 200 ] && break
-          
+
             if ! kill -0 "$pid" 2>/dev/null; then
               echo "vinext dev exited before smoke test completed" >&2
               cat "$PROOF_DIR/vinext-dev.log" >&2
               exit 1
             fi
-          
+
             sleep 1
           done
-          
+
           if [ "${code:-}" != 200 ]; then
             echo "vinext smoke HTTP status=${code:-none}" >&2
             cat "$PROOF_DIR/vinext-dev.log" >&2
             test ! -f "$PROOF_DIR/vinext-root.html" || cat "$PROOF_DIR/vinext-root.html" >&2
             exit 1
           fi
-          
+
           sed -i 's/vinext dev smoke=NOT_RUN/vinext dev smoke=PASS/' "$PROOF_DIR/result.txt"
-          
+
       - name: Prepare disposable local D1 Worker
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$PROOF_DIR/migrations" "$PROOF_DIR/state"
-          cp migrations/000{1,2,3,4,5}_*.sql "$PROOF_DIR/migrations/"
+          cp migrations/000{1,2,3,4,5,6}_*.sql "$PROOF_DIR/migrations/"
           cat > "$PROOF_DIR/wrangler.toml" <<'EOF'
           name = "daily-command-center-ci-proof"
           main = "../../scripts/cloudflare-proof-worker.ts"
@@ -175,7 +175,7 @@ jobs:
           EOF
           npx --yes "wrangler@$WRANGLER_VERSION" --version | tee -a "$PROOF_DIR/result.txt"
 
-      - name: Apply migrations 0001 through 0005 to genuine local D1
+      - name: Apply migrations 0001 through 0006 to genuine local D1
         shell: bash
         run: |
           set -euo pipefail
