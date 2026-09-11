@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Control Center",
-  description: "A self-hosted dashboard for signals, mentions, newsletters, audience, reminders, and tasks.",
+  title: "Marc's Daily Command Center",
+  description: "Personal focus and Indelitech operations in one daily workspace.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
