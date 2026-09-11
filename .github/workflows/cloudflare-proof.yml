@@ -89,15 +89,23 @@ jobs:
           (cd "$worktree" && git status --short > "$before")
           (cd "$worktree" && npx --yes "vinext@$VINEXT_VERSION" init --skip-check --platform=cloudflare)
           (cd "$worktree" && git status --short > "$after" && git add -N . && git diff --binary > "$patch")
+          node -e '
+            const fs = require("node:fs");
+            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            console.log(JSON.stringify({
+              scripts: p.scripts,
+              dependencies: p.dependencies,
+              devDependencies: p.devDependencies,
+            }, null, 2));
+          ' "$worktree/package.json" > "$PROOF_DIR/vinext-package-summary.json"
+          sed -i 's/vinext init=NOT_RUN/vinext init=PASS/' "$PROOF_DIR/result.txt"
           {
-            echo "vinext init=PASS"
             echo "vinext initialized worktree commit=$(git -C "$worktree" rev-parse HEAD)"
             echo "vinext files after initialization:"
             cat "$after"
             echo "vinext generated scripts and dependencies:"
-            node -e 'const p=require(process.argv[1]); console.log(JSON.stringify({scripts:p.scripts,dependencies:p.dependencies,devDependencies:p.devDependencies},null,2))' "$worktree/package.json"
+            cat "$PROOF_DIR/vinext-package-summary.json"
           } | tee -a "$PROOF_DIR/result.txt"
-          sed -i '/vinext init=NOT_RUN/d' "$PROOF_DIR/result.txt"
 
       - name: Build both production paths in initialized worktree
         shell: bash
@@ -105,7 +113,7 @@ jobs:
           set -euo pipefail
           worktree="$PROOF_DIR/vinext-worktree"
           (cd "$worktree" && npm run build)
-          build_script="$(node -e 'const p=require(process.argv[1]); for (const n of ["build:vinext","build:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
+          build_script="$(node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); for (const n of ["build:vinext","build:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
           (cd "$worktree" && npm run "$build_script") 2>&1 | tee "$PROOF_DIR/vinext-build.txt"
           find "$worktree" -maxdepth 3 -type d \( -name dist -o -name .vinext -o -name .worker-next \) -print | tee "$PROOF_DIR/vinext-build-output.txt"
           test -s "$PROOF_DIR/vinext-build-output.txt"
@@ -116,7 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           worktree="$PROOF_DIR/vinext-worktree"
-          dev_script="$(node -e 'const p=require(process.argv[1]); for (const n of ["dev:vinext","dev:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
+          dev_script="$(node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); for (const n of ["dev:vinext","dev:cloudflare"]) if (p.scripts?.[n]) { console.log(n); process.exit(0) } process.exit(1)' "$worktree/package.json")"
           (cd "$worktree" && npm run "$dev_script" -- --host 127.0.0.1 --port 4173) > "$PROOF_DIR/vinext-dev.log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
