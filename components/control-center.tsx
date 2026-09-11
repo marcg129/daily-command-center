@@ -80,7 +80,8 @@ import type { AudienceHistorySeries } from "@/lib/audience-charts";
 import { AI_PROVIDER_LABELS, DEFAULT_LOCAL_AI_URLS, isAiReady } from "@/lib/ai-providers";
 import { sortFeedStories, selectNewsletterTopics, newsletterSourceOptions } from "@/lib/feed-priority";
 import { sortIndustryItems, type IndustrySortOrder } from "@/lib/industry";
-import { completeTaskItems } from "@/lib/tasks";
+import { completeTaskItems, visibleTaskItems } from "@/lib/tasks";
+import { QuickTaskAdd, TaskAttentionPanel, TaskHorizon, TaskRow } from "@/components/task-surface";
 import {
   applyArchiveToPayload,
   type CachedFeedPayload,
@@ -259,9 +260,6 @@ function formatTaskDue(value: string) {
   }).format(date);
 }
 
-function isTaskDueToday(value: string) {
-  return value === "Today" || value === localDateValue();
-}
 
 function readLegacyList<T>(key: string): T[] {
   try {
@@ -659,33 +657,12 @@ function newsletterSetupReady(settings: PublicSettings) {
 }
 
 function PersonalTodayView({ tasks, goTo }: { tasks: Task[]; goTo: (tab: Tab) => void }) {
-  const openTasks = tasks.filter((task) => !task.done);
-  const dueToday = openTasks.filter((task) => isTaskDueToday(task.due));
   return (
     <div className="view">
-      <PageHeading
-        eyebrow="Personal · Today"
-        title="What needs my attention today?"
-        description="A calm starting point for personal priorities, with business roll-up and calendar context arriving in the next task milestone."
-        action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>}
-      />
+      <PageHeading eyebrow="Personal · Today" title="What needs my attention today?" description="Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
       <div className="personal-today-grid reveal delay-1">
-        <Panel className="personal-focus-card">
-          <p className="eyebrow">Current focus</p>
-          <strong>{dueToday.length}</strong>
-          <h2>{dueToday.length === 1 ? "task due today" : "tasks due today"}</h2>
-          <p>{openTasks.length} open across the current local task list.</p>
-          <button className="text-button" onClick={() => goTo("tasks")}>Review tasks <ArrowRight size={14} /></button>
-        </Panel>
-        <Panel className="personal-horizon-card">
-          <CalendarDays size={24} />
-          <div>
-            <p className="eyebrow">On the horizon</p>
-            <h2>Calendar context is next</h2>
-            <p>No calendar account is connected and no events are fabricated. The unified calendar shell is ready for the future integration.</p>
-          </div>
-          <button className="button button-ghost" onClick={() => goTo("calendar")}>View calendar shell</button>
-        </Panel>
+        <TaskAttentionPanel tasks={tasks} workspaceId="personal" onOpen={() => goTo("tasks")} />
+        <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
     </div>
   );
@@ -704,7 +681,7 @@ function TodayView({
   openSettings: (section?: SettingsSection) => void;
   addBriefTask: (item: DailyBriefItem) => void;
 }) {
-  const openTasks = tasks.filter((task) => !task.done).slice(0, 3);
+  const businessTasks = visibleTaskItems(tasks, "indelitech");
   const industryConfigured =
     settings.industry.sources.length + settings.industry.keywords.length > 0;
   const configured = [
@@ -762,45 +739,10 @@ function TodayView({
         goTo={goTo}
       />
       <div className="today-grid reveal delay-2">
-        <Panel className="priority-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Focus</p>
-              <h2>Open tasks</h2>
-            </div>
-            <span className="progress-count">
-              {tasks.filter((task) => !task.done).length}
-            </span>
-          </div>
-          {openTasks.length ? (
-            <div className="priority-list">
-              {openTasks.map((task, index) => (
-                <button
-                  key={task.id}
-                  className="priority-row"
-                  onClick={() => goTo("tasks")}
-                >
-                  <span className="check-box">{index + 1}</span>
-                  <span>
-                    <b>{task.title}</b>
-                    <small>
-                      {formatTaskDue(task.due)} · {task.recurrence}
-                    </small>
-                  </span>
-                  <ArrowRight size={16} />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="inline-empty">
-              <ListTodo size={20} />
-              <p>No open tasks yet.</p>
-            </div>
-          )}
-          <button className="text-button" onClick={() => goTo("tasks")}>
-            Open task list <ArrowRight size={14} />
-          </button>
-        </Panel>
+        <div className="today-task-stack">
+          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpen={() => goTo("tasks")} />
+          <TaskHorizon tasks={businessTasks} onOpen={() => goTo("tasks")} />
+        </div>
         <Panel className="setup-progress">
           <div className="panel-header">
             <div>
@@ -1963,248 +1905,18 @@ function NewslettersView({
   );
 }
 
-function TasksView({
-  tasks,
-  setTasks,
-  workspaceId,
-}: {
-  tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
-  workspaceId: ProductWorkspaceId;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [due, setDue] = useState(localDateValue);
-  const [recurrence, setRecurrence] = useState("One-time");
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!title.trim() || !due) return;
-    setTasks((values) => [
-      {
-        id: crypto.randomUUID(),
-        title: title.trim(),
-        description: description.trim() || "No additional details.",
-        due,
-        recurrence,
-        priority: "Normal",
-        done: false,
-        createdAt: new Date().toISOString(),
-      },
-      ...values,
-    ]);
-    setTitle("");
-    setDescription("");
-    setDue(localDateValue());
-    setRecurrence("One-time");
-    setShowForm(false);
-  };
-  const complete = (task: Task) =>
-    setTasks((values) =>
-      completeTaskItems(values, task.id, { expectedDue: task.due }),
-    );
-  const open = tasks.filter((task) => !task.done);
-  const completed = tasks
-    .filter((task) => task.done)
-    .sort((a, b) =>
-      (b.completedAt || b.createdAt || "").localeCompare(
-        a.completedAt || a.createdAt || "",
-      ),
-    );
-  const completedToday = completed.filter(
-    (task) =>
-      task.completedAt &&
-      localDateValue(new Date(task.completedAt)) === localDateValue(),
-  );
-  const dueToday = open.filter((task) => isTaskDueToday(task.due));
-  const todayTotal = dueToday.length + completedToday.length;
-  return (
-    <div className="view">
-      <PageHeading
-        eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`}
-        title="Tasks"
-        description={workspaceId === "personal"
-          ? "Your personal task home. A safe Indelitech roll-up will join this view in the task-engine milestone."
-          : "Your current task list in the Indelitech workspace. Business-only task scoping arrives in the next task milestone."}
-        action={
-          <button
-            className="button button-primary"
-            onClick={() => setShowForm(true)}
-          >
-            <Plus size={16} /> Add task
-          </button>
-        }
-      />
-      {showForm && (
-        <form className="task-form reveal" onSubmit={submit}>
-          <div>
-            <p className="eyebrow">New task</p>
-            <input
-              autoFocus
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="What needs to get done?"
-            />
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Add a description (optional)"
-            />
-          </div>
-          <div className="task-fields">
-            <label>
-              Due
-              <input
-                type="date"
-                required
-                value={due}
-                onChange={(event) => setDue(event.target.value)}
-              />
-            </label>
-            <label>
-              Repeats
-              <select
-                value={recurrence}
-                onChange={(event) => setRecurrence(event.target.value)}
-              >
-                <option>One-time</option>
-                <option>Daily</option>
-                <option>Weekly</option>
-                <option>Monthly</option>
-              </select>
-            </label>
-          </div>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="button button-ghost"
-              onClick={() => setShowForm(false)}
-            >
-              Cancel
-            </button>
-            <button className="button button-primary">Add task</button>
-          </div>
-        </form>
-      )}
-      <div className="task-summary reveal delay-1">
-        <div>
-          <b>{open.length}</b>
-          <span>open tasks</span>
-        </div>
-        <div>
-          <b>{dueToday.length}</b>
-          <span>due today</span>
-        </div>
-        <div>
-          <b>
-            {
-              tasks.filter(
-                (task) => task.recurrence !== "One-time" && !task.done,
-              ).length
-            }
-          </b>
-          <span>repeating</span>
-        </div>
-        <div className="task-progress">
-          <span>
-            <i
-              style={{
-                width: `${todayTotal ? (completedToday.length / todayTotal) * 100 : 0}%`,
-              }}
-            />
-          </span>
-          <small>{completedToday.length} completed today</small>
-        </div>
-      </div>
-      {open.length ? (
-        <div className="task-list reveal delay-2">
-          <div className="task-list-head">
-            <span>Task</span>
-            <span>Due</span>
-            <span>Repeats</span>
-            <span />
-          </div>
-          {open.map((task) => (
-            <div className="task-row" key={task.id}>
-              <button
-                className="round-check"
-                aria-label={
-                  task.recurrence === "One-time"
-                    ? `Complete ${task.title}`
-                    : `Complete and reschedule ${task.title}`
-                }
-                onClick={() => complete(task)}
-              >
-                <Check size={14} />
-              </button>
-              <div className="task-copy">
-                <b>{task.title}</b>
-                <p>{task.description}</p>
-              </div>
-              <Label tone={isTaskDueToday(task.due) ? "high" : undefined}>
-                {formatTaskDue(task.due)}
-              </Label>
-              <span className="repeat-text">
-                <RefreshCw size={13} />
-                {task.recurrence}
-              </span>
-              <button
-                className="more-button"
-                aria-label={`Delete ${task.title}`}
-                title="Delete task"
-                onClick={() =>
-                  setTasks((values) =>
-                    values.filter((value) => value.id !== task.id),
-                  )
-                }
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Panel className="empty-state">
-          <ListTodo size={26} />
-          <h2>No open tasks</h2>
-          <p>Add the first task when there is something worth committing to.</p>
-        </Panel>
-      )}
-      {completed.length > 0 && (
-        <details className="completed-list">
-          <summary>{completed.length} completed</summary>
-          {completed.map((task) => (
-            <div className="completed-row" key={task.id}>
-              <CheckCircle2 size={16} />
-              <div className="completed-copy">
-                <s>{task.title}</s>
-                <small>
-                  {task.completedAt
-                    ? `Completed ${formatDate(task.completedAt)}`
-                    : "Completed"}
-                  {` · was due ${formatTaskDue(task.due)}`}
-                  {task.seriesId !== undefined ? " · recurring occurrence" : ""}
-                </small>
-              </div>
-              {task.seriesId === undefined && (
-                <button
-                  aria-label={`Delete completed ${task.title}`}
-                  title="Delete completed task"
-                  onClick={() =>
-                    setTasks((values) =>
-                      values.filter((value) => value.id !== task.id),
-                    )
-                  }
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          ))}
-        </details>
-      )}
-    </div>
-  );
+function TasksView({ tasks, setTasks, workspaceId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId }) {
+  const visible = visibleTaskItems(tasks, workspaceId);
+  const open = visible.filter((task) => !task.done);
+  const completed = visible.filter((task) => task.done).toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
+  const complete = (task: Task) => setTasks((values) => completeTaskItems(values, task.id, { expectedDue: task.due }));
+  return <div className="view">
+    <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`} title="Tasks" description={workspaceId === "personal" ? "Personal work and visible Indelitech commitments, managed as the same records." : "Indelitech-owned work only, with business attention and deadlines in view."} />
+    <QuickTaskAdd workspaceId={workspaceId} onAdd={(task) => setTasks((values) => [task, ...values])} />
+    <div className="task-summary reveal delay-1"><div><b>{open.length}</b><span>open tasks</span></div><div><b>{open.filter((task) => task.due === localDateValue()).length}</b><span>due today</span></div><div><b>{open.filter((task) => task.recurrence !== "One-time").length}</b><span>repeating</span></div><div><b>{completed.length}</b><span>completed</span></div></div>
+    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} onComplete={() => complete(task)} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
+    {completed.length > 0 && <details className="completed-list"><summary>{completed.length} completed</summary>{completed.map((task) => <div className="completed-row" key={task.id}><CheckCircle2 size={16} /><div className="completed-copy"><s>{task.title}</s><small>{task.completedAt ? `Completed ${formatDate(task.completedAt)}` : "Completed"} · was due {formatTaskDue(task.due)}{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}{task.seriesId !== undefined ? " · recurring occurrence" : ""}</small></div>{task.seriesId === undefined && <button aria-label={`Delete completed ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button>}</div>)}</details>}
+  </div>;
 }
 
 function TagEditor({
@@ -3642,7 +3354,8 @@ export function ControlCenter() {
           ? localDateValue(new Date(item.dueAt))
           : localDateValue(),
         recurrence: "One-time",
-        priority: item.kind === "action" ? "High" : "Normal",
+        priority: item.kind === "action" ? "HIGH" : "MEDIUM",
+        primaryWorkspaceId: activeWorkspaceId,
         done: false,
         createdAt: new Date().toISOString(),
       },
@@ -3783,7 +3496,7 @@ export function ControlCenter() {
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (
-          <PersonalTodayView tasks={tasks} goTo={goTo} />
+          <PersonalTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} />
         )}
         {activeTab === "today" && activeWorkspaceId === "indelitech" && (
           <TodayView

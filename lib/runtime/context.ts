@@ -17,6 +17,15 @@ export function isProductWorkspaceId(value: unknown): value is ProductWorkspaceI
   return value === PERSONAL_WORKSPACE_ID || value === INDELITECH_WORKSPACE_ID;
 }
 
+/** V1 task sharing policy, shared by hosted persistence and the local task UI. */
+export function taskVisibleInWorkspace(
+  primaryWorkspaceId: ProductWorkspaceId,
+  viewingWorkspaceId: ProductWorkspaceId,
+) {
+  return primaryWorkspaceId === viewingWorkspaceId ||
+    (primaryWorkspaceId === INDELITECH_WORKSPACE_ID && viewingWorkspaceId === PERSONAL_WORKSPACE_ID);
+}
+
 export function requireRequestContext(context: RequestContext | null | undefined): asserts context is RequestContext {
   if (!context || !isWorkspaceId(context.workspaceId)) throw new Error("A valid workspace context is required.");
 }
