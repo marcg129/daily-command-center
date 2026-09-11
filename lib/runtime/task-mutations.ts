@@ -20,7 +20,10 @@ function canonicalValue(task: TaskItem) {
     recurrence: task.recurrence, priority: task.priority,
     primaryWorkspaceId: task.primaryWorkspaceId, done: task.done,
     type: task.type, status: task.status, remindAt: task.remindAt,
-    followUpAt: task.followUpAt, person: task.person, updatedAt: task.updatedAt,
+    followUpAt: task.followUpAt, person: task.person, category: task.category,
+    project: task.project, estimatedDuration: task.estimatedDuration,
+    dependency: task.dependency, source: task.source, sourceContext: task.sourceContext,
+    updatedAt: task.updatedAt,
     createdAt: task.createdAt, completedAt: task.completedAt,
     seriesId: task.seriesId, recurrenceAnchorDay: task.recurrenceAnchorDay,
   });

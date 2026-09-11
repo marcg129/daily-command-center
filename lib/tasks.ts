@@ -329,6 +329,14 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
       remindAt: cleanIso(candidate.remindAt),
       followUpAt: cleanIso(candidate.followUpAt),
       person: cleanText(candidate.person).trim() || undefined,
+      category: cleanText(candidate.category).trim() || undefined,
+      project: cleanText(candidate.project).trim() || undefined,
+      estimatedDuration: ["5m", "15m", "30m", "1h", "2h+", "Project"].includes(cleanText(candidate.estimatedDuration))
+        ? candidate.estimatedDuration
+        : undefined,
+      dependency: cleanText(candidate.dependency).trim() || undefined,
+      source: cleanText(candidate.source).trim() || undefined,
+      sourceContext: cleanText(candidate.sourceContext).trim() || undefined,
       updatedAt: cleanIso(candidate.updatedAt),
       createdAt: cleanText(candidate.createdAt) || undefined,
       completedAt: cleanText(candidate.completedAt) || undefined,
