@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { diffTaskItems } from "@/lib/runtime/task-mutations";
+import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
 import { completeTaskItems, cleanTaskItems } from "@/lib/tasks";
 import type { TaskItem } from "@/lib/types";
 import { LocalTaskMutationRepository } from "@/lib/server/local-task-mutation-repository";
@@ -54,6 +55,43 @@ test("task batches validate identity and immutable ownership atomically", async 
   ], now), /only appear once/);
   assert.equal(readWorkspaceState(database).tasks[0].title, "Task one");
   database.close();
+});
+
+test("task CREATE initializes the tasks row without creating or changing reminders", async () => {
+  const database = initializeWorkspaceStore(new DatabaseSync(":memory:"));
+  const repository = new LocalTaskMutationRepository(() => database);
+
+  await repository.apply([{ kind: "CREATE", task: task("first") }], now);
+
+  assert.deepEqual((await repository.read()).map(({ id }) => id), ["first"]);
+  assert.equal(database.prepare("SELECT COUNT(*) AS count FROM workspace_state WHERE state_key = 'reminders'").get()?.count, 0);
+  database.close();
+});
+
+test("ordered save queue retries a failed head before later jobs and never replays successes", async () => {
+  const queue = new OrderedSaveQueue();
+  const calls: string[] = [];
+  let attempts = 0;
+  let rejectFirst!: (error: Error) => void;
+  const firstFailure = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+  const first = async () => {
+    calls.push(`A${++attempts}`);
+    if (attempts === 1) await firstFailure;
+  };
+
+  const firstDrain = queue.enqueue(first);
+  const queuedBehindIt = queue.enqueue(async () => { calls.push("B"); });
+  rejectFirst(new Error("temporary failure"));
+  await assert.rejects(firstDrain, /temporary failure/);
+  await assert.rejects(queuedBehindIt, /temporary failure/);
+  assert.deepEqual(calls, ["A1"]);
+
+  await queue.retry();
+  assert.deepEqual(calls, ["A1", "A2", "B"]);
+  assert.equal(queue.hasPending, false);
+
+  await queue.retry();
+  assert.deepEqual(calls, ["A1", "A2", "B"]);
 });
 
 test("a failed later operation rolls back the whole task batch without touching reminders", async () => {
@@ -113,5 +151,6 @@ test("post-bootstrap client saves use narrow ordered task and reminder paths", a
   assert.match(persistence, /fetch\("\/api\/reminders"/);
   assert.match(persistence, /body: JSON\.stringify\(\{ reminders \}\)/);
   assert.doesNotMatch(persistence, /fetch\("\/api\/workspace"/);
-  assert.match(persistence, /taskSaveQueue\.current = taskSaveQueue\.current\.then\(save\)/);
+  assert.match(persistence, /taskSaveQueue\.current\.enqueue\(save\)/);
+  assert.match(source, /Retry saves/);
 });

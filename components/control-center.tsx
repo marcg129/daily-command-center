@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
 import {
   Activity,
   Archive,
@@ -3153,8 +3154,8 @@ export function ControlCenter() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [workspaceSaveError, setWorkspaceSaveError] = useState("");
-  const taskSaveQueue = useRef(Promise.resolve());
-  const reminderSaveQueue = useRef(Promise.resolve());
+  const taskSaveQueue = useRef(new OrderedSaveQueue());
+  const reminderSaveQueue = useRef(new OrderedSaveQueue());
   const lastScheduledTasks = useRef<Task[] | null>(null);
   const lastScheduledReminders = useRef<Reminder[] | null>(null);
   const persistedTasks = useRef<Task[] | null>(null);
@@ -3291,10 +3292,11 @@ export function ControlCenter() {
           JSON.stringify(recovery.workspace.reminders) === JSON.stringify(persistedReminders.current))
           window.localStorage.removeItem(WORKSPACE_RECOVERY_KEY);
       } catch { /* SQLite success does not depend on browser storage cleanup. */ }
-      setWorkspaceSaveError("");
     };
-    taskSaveQueue.current = taskSaveQueue.current.then(save);
-    void taskSaveQueue.current.catch((error) => {
+    void taskSaveQueue.current.enqueue(save).then(() => {
+      if (!taskSaveQueue.current.hasPending && !reminderSaveQueue.current.hasPending)
+        setWorkspaceSaveError("");
+    }).catch((error) => {
       setWorkspaceSaveError(error instanceof Error ? error.message : "Tasks could not be saved.");
     });
   }, [tasks, workspaceReady]);
@@ -3317,10 +3319,11 @@ export function ControlCenter() {
           JSON.stringify(recovery.workspace.reminders) === JSON.stringify(persistedReminders.current))
           window.localStorage.removeItem(WORKSPACE_RECOVERY_KEY);
       } catch { /* SQLite success does not depend on browser storage cleanup. */ }
-      setWorkspaceSaveError("");
     };
-    reminderSaveQueue.current = reminderSaveQueue.current.then(save);
-    void reminderSaveQueue.current.catch((error) => {
+    void reminderSaveQueue.current.enqueue(save).then(() => {
+      if (!taskSaveQueue.current.hasPending && !reminderSaveQueue.current.hasPending)
+        setWorkspaceSaveError("");
+    }).catch((error) => {
       setWorkspaceSaveError(error instanceof Error ? error.message : "Reminders could not be saved.");
     });
   }, [reminders, workspaceReady]);
@@ -3352,6 +3355,16 @@ export function ControlCenter() {
     url.searchParams.set("workspace", workspaceId);
     if (!isWorkspacePageAvailable(workspaceId, activeTab as WorkspacePageId)) url.searchParams.set("tab", "today");
     window.history.replaceState({}, "", url);
+  };
+  const retryWorkspaceSaves = () => {
+    void Promise.all([
+      taskSaveQueue.current.retry(),
+      reminderSaveQueue.current.retry(),
+    ]).then(() => {
+      setWorkspaceSaveError("");
+    }).catch((error) => {
+      setWorkspaceSaveError(error instanceof Error ? error.message : "Tasks or reminders could not be saved.");
+    });
   };
   const addReminder = (title: string, note: string, url?: string) => {
     let source = "Manual";
@@ -3533,6 +3546,9 @@ export function ControlCenter() {
           <div className="workspace-save-error" role="alert">
             <CircleAlert size={16} />
             <span>{workspaceSaveError}</span>
+            <button className="button button-primary" onClick={retryWorkspaceSaves}>
+              <RefreshCw size={15} /> Retry saves
+            </button>
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (

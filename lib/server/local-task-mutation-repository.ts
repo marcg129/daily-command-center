@@ -3,10 +3,23 @@ import { isProductWorkspaceId } from "@/lib/runtime/context";
 import type { TaskMutation, TaskMutationRepository } from "@/lib/runtime/task-mutations";
 import { cleanTaskItems } from "@/lib/tasks";
 import type { TaskItem } from "@/lib/types";
-import { readWorkspaceState } from "@/lib/workspace-store";
 
 function identity(id: TaskItem["id"]) { return `${typeof id}:${String(id)}`; }
 function protectedOccurrence(task: TaskItem) { return task.done && task.seriesId !== undefined; }
+
+function readTasks(database: DatabaseSync) {
+  const row = database.prepare("SELECT payload_json FROM workspace_state WHERE state_key = 'tasks'").get() as
+    | { payload_json: string }
+    | undefined;
+  if (!row) return [];
+  try {
+    const parsed = JSON.parse(row.payload_json);
+    if (!Array.isArray(parsed)) throw new Error("Task data must be a list.");
+    return cleanTaskItems(parsed);
+  } catch (error) {
+    throw new Error("The saved tasks data is corrupt. Restore it from a backup before making changes.", { cause: error });
+  }
+}
 
 function normalizeMutationTask(value: unknown) {
   if (!value || typeof value !== "object") throw new Error("A mutation task is required.");
@@ -22,14 +35,14 @@ function normalizeMutationTask(value: unknown) {
 export class LocalTaskMutationRepository implements TaskMutationRepository {
   constructor(private readonly database: () => DatabaseSync) {}
 
-  async read() { return cleanTaskItems(readWorkspaceState(this.database()).tasks); }
+  async read() { return readTasks(this.database()); }
 
   async apply(mutations: TaskMutation[], now: string) {
     if (!Array.isArray(mutations) || mutations.length === 0) throw new Error("At least one task mutation is required.");
     const database = this.database();
     database.exec("BEGIN IMMEDIATE");
     try {
-      const persisted = cleanTaskItems(readWorkspaceState(database).tasks);
+      const persisted = readTasks(database);
       const tasks = new Map(persisted.map((task) => [identity(task.id), task]));
       const touched = new Set<string>();
       for (const mutation of mutations) {
@@ -60,8 +73,13 @@ export class LocalTaskMutationRepository implements TaskMutationRepository {
         }
       }
       const result = [...tasks.values()];
-      database.prepare("UPDATE workspace_state SET payload_json = ?, updated_at = ? WHERE state_key = 'tasks'")
-        .run(JSON.stringify(result), now);
+      database.prepare(`
+        INSERT INTO workspace_state (state_key, payload_json, updated_at)
+        VALUES ('tasks', ?, ?)
+        ON CONFLICT (state_key) DO UPDATE SET
+          payload_json = excluded.payload_json,
+          updated_at = excluded.updated_at
+      `).run(JSON.stringify(result), now);
       database.exec("COMMIT");
       return result;
     } catch (error) {
