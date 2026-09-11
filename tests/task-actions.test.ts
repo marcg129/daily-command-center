@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cancelTask, cleanTaskItems, completeTaskItems, markTaskWaiting, resumeTask, setTaskReminder, sortTaskAttention, taskHorizon, updateTaskItem } from "../lib/tasks";
+import { cancelTask, cleanTaskItems, completeTaskItems, markTaskWaiting, resumeTask, setTaskReminder, sortTaskAttention, taskHorizon, taskIsActive, updateTaskItem } from "../lib/tasks";
 import { isoToProductWallClock, productWallClockToIso, reminderPresetIso } from "../lib/product-time";
 import type { TaskItem } from "../lib/types";
 
@@ -26,7 +26,7 @@ test("due dates and manual reminders are independent in both directions", () => 
   assert.equal(dueChanged.remindAt, snoozed.remindAt);
 });
 
-test("waiting validates required fields, stays out of attention until due, and resume keeps person context", () => {
+test("waiting validates required fields, stays out of attention until due, and resume restores open type", () => {
   assert.throws(() => markTaskWaiting([task()], "task", "", "2026-09-12T13:00:00Z", now));
   assert.throws(() => markTaskWaiting([task()], "task", "Alex", "invalid", now));
   const waiting = markTaskWaiting([task()], "task", " Alex ", "2026-09-12T13:00:00Z", now)[0];
@@ -35,7 +35,16 @@ test("waiting validates required fields, stays out of attention until due, and r
   assert.deepEqual(sortTaskAttention([{ ...waiting, due: "2026-09-10" }], now), []);
   assert.equal(sortTaskAttention([waiting], new Date("2026-09-12T13:00:00Z"))[0].id, "task");
   const resumed = resumeTask([waiting], "task", now)[0];
-  assert.equal(resumed.status, "OPEN"); assert.equal(resumed.followUpAt, undefined); assert.equal(resumed.person, "Alex");
+  assert.equal(resumed.status, "OPEN"); assert.equal(resumed.type, "DEADLINE");
+  assert.equal(resumed.followUpAt, undefined); assert.equal(resumed.person, "Alex");
+  const recurringWaiting = markTaskWaiting([task({ recurrence: "Monthly", type: "RECURRING" })], "task", "Alex", "2026-09-12T13:00:00Z", now)[0];
+  assert.equal(resumeTask([recurringWaiting], "task", now)[0].type, "RECURRING");
+});
+
+test("waiting tasks remain in the due-driven horizon before follow-up is due", () => {
+  const waiting = markTaskWaiting([task({ due: "2026-09-18" })], "task", "Alex", "2026-09-20T13:00:00Z", now)[0];
+  assert.deepEqual(sortTaskAttention([waiting], now), []);
+  assert.deepEqual(taskHorizon([waiting], now).get("NEXT_7_DAYS")?.map(({ id }) => id), ["task"]);
 });
 
 test("cancel preserves the record but removes it from attention and horizon; deletion remains removal", () => {
@@ -43,6 +52,13 @@ test("cancel preserves the record but removes it from attention and horizon; del
   assert.equal(cancelled.length, 1); assert.equal(cancelled[0].status, "CANCELLED"); assert.equal(cancelled[0].done, false);
   assert.deepEqual(sortTaskAttention(cancelled, now), []); assert.equal([...taskHorizon(cancelled, now).values()].flat().length, 0);
   assert.deepEqual(cancelled.filter(({ id }) => id !== "task"), []);
+});
+
+test("active task semantics exclude done and cancelled while retaining open and waiting", () => {
+  assert.equal(taskIsActive(task({ status: "OPEN" })), true);
+  assert.equal(taskIsActive(task({ status: "WAITING" })), true);
+  assert.equal(taskIsActive(task({ status: "DONE", done: true })), false);
+  assert.equal(taskIsActive(task({ status: "CANCELLED", done: false })), false);
 });
 
 test("attention ordering is overdue, due follow-up, due reminder, then stored priority", () => {
@@ -63,6 +79,7 @@ test("recurring completion retains ownership and rich status semantics", () => {
   assert.deepEqual(values.map(({ primaryWorkspaceId }) => primaryWorkspaceId), ["indelitech", "indelitech"]);
   assert.equal(values.find(({ id }) => id === "occurrence")?.status, "DONE");
   assert.equal(values.find(({ id }) => id === "task")?.status, "OPEN");
+  assert.equal(values.find(({ id }) => id === "task")?.type, "RECURRING");
 });
 
 test("New York wall-clock conversion is deterministic across DST boundaries", () => {
