@@ -244,6 +244,7 @@ jobs:
             .tmp/cloudflare-proof/d1-worker.log
             .tmp/cloudflare-proof/npm-audit.json
             .tmp/cloudflare-proof/npm-audit-summary.txt
+            .tmp/cloudflare-proof/vinext-root.html
           if-no-files-found: warn
 
       - name: Print final proof result
