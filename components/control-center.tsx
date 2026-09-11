@@ -81,6 +81,7 @@ import { AI_PROVIDER_LABELS, DEFAULT_LOCAL_AI_URLS, isAiReady } from "@/lib/ai-p
 import { sortFeedStories, selectNewsletterTopics, newsletterSourceOptions } from "@/lib/feed-priority";
 import { sortIndustryItems, type IndustrySortOrder } from "@/lib/industry";
 import { completeTaskItems, updateTaskItem, visibleTaskItems } from "@/lib/tasks";
+import { diffTaskItems } from "@/lib/runtime/task-mutations";
 import { QuickTaskAdd, TaskAttentionPanel, TaskHorizon, TaskRow } from "@/components/task-surface";
 import {
   applyArchiveToPayload,
@@ -3152,7 +3153,12 @@ export function ControlCenter() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [workspaceSaveError, setWorkspaceSaveError] = useState("");
-  const workspaceSaveQueue = useRef(Promise.resolve());
+  const taskSaveQueue = useRef(Promise.resolve());
+  const reminderSaveQueue = useRef(Promise.resolve());
+  const lastScheduledTasks = useRef<Task[] | null>(null);
+  const lastScheduledReminders = useRef<Reminder[] | null>(null);
+  const persistedTasks = useRef<Task[] | null>(null);
+  const persistedReminders = useRef<Reminder[] | null>(null);
 
   useEffect(() => {
     window.queueMicrotask(() => {
@@ -3199,7 +3205,9 @@ export function ControlCenter() {
         let nextWorkspace: WorkspaceState = saved.initialized
           ? { reminders: saved.reminders, tasks: saved.tasks }
           : legacy;
-        const canRecover = saved.initialized || saved.legacyBrowserImportAllowed;
+        // Recovery may initialize an empty store, but must never replace a newer
+        // initialized server snapshot after a failed optimistic mutation.
+        const canRecover = !saved.initialized && saved.legacyBrowserImportAllowed;
         if (recovery && canRecover) nextWorkspace = recovery.workspace;
         if (!saved.initialized || (recovery && canRecover)) {
           const importResponse = await fetch("/api/workspace", {
@@ -3217,6 +3225,10 @@ export function ControlCenter() {
         setSettings(loadedSettings);
         setReminders(nextWorkspace.reminders);
         setTasks(nextWorkspace.tasks);
+        lastScheduledReminders.current = nextWorkspace.reminders;
+        lastScheduledTasks.current = nextWorkspace.tasks;
+        persistedReminders.current = nextWorkspace.reminders;
+        persistedTasks.current = nextWorkspace.tasks;
         setWorkspaceReady(true);
         setBootstrapStatus("ready");
       } catch (error) {
@@ -3234,6 +3246,7 @@ export function ControlCenter() {
       cancelled = true;
     };
   }, [bootstrapAttempt]);
+  // Keep the emergency browser copy current independently of normal persistence.
   useEffect(() => {
     if (!workspaceReady) return;
     const workspace = { reminders, tasks } satisfies WorkspaceState;
@@ -3258,34 +3271,59 @@ export function ControlCenter() {
     } catch {
       // The immediate SQLite write below remains canonical when browser storage is unavailable.
     }
+  }, [reminders, tasks, workspaceReady]);
+  useEffect(() => {
+    if (!workspaceReady || !lastScheduledTasks.current) return;
+    const mutations = diffTaskItems(lastScheduledTasks.current, tasks);
+    lastScheduledTasks.current = tasks;
+    if (!mutations.length) return;
     const save = async () => {
-      const response = await fetch("/api/workspace", {
-        method: "PUT",
+      const response = await fetch("/api/tasks/mutations", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(workspace),
+        body: JSON.stringify({ mutations }),
       });
-      if (!response.ok)
-        throw new Error(
-          "Tasks and reminders could not be saved to SQLite. Keep this page open and retry.",
-        );
+      if (!response.ok) throw new Error("Tasks could not be saved to SQLite. Keep this page open and retry.");
+      persistedTasks.current = tasks;
+      const recovery = readWorkspaceRecovery();
       try {
-        if (readWorkspaceRecovery()?.id === recovery.id)
+        if (recovery && JSON.stringify(recovery.workspace.tasks) === JSON.stringify(persistedTasks.current) &&
+          JSON.stringify(recovery.workspace.reminders) === JSON.stringify(persistedReminders.current))
           window.localStorage.removeItem(WORKSPACE_RECOVERY_KEY);
-      } catch {
-        // A saved SQLite workspace does not depend on clearing the recovery copy.
-      }
+      } catch { /* SQLite success does not depend on browser storage cleanup. */ }
       setWorkspaceSaveError("");
     };
-    workspaceSaveQueue.current = workspaceSaveQueue.current
-      .then(save, save)
-      .catch((error) => {
-        setWorkspaceSaveError(
-          error instanceof Error
-            ? error.message
-            : "Tasks and reminders could not be saved.",
-        );
+    taskSaveQueue.current = taskSaveQueue.current.then(save);
+    void taskSaveQueue.current.catch((error) => {
+      setWorkspaceSaveError(error instanceof Error ? error.message : "Tasks could not be saved.");
+    });
+  }, [tasks, workspaceReady]);
+  useEffect(() => {
+    if (!workspaceReady || !lastScheduledReminders.current) return;
+    if (JSON.stringify(lastScheduledReminders.current) === JSON.stringify(reminders)) return;
+    lastScheduledReminders.current = reminders;
+    const save = async () => {
+      const response = await fetch("/api/reminders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reminders }),
       });
-  }, [reminders, tasks, workspaceReady]);
+      if (!response.ok)
+        throw new Error("Reminders could not be saved to SQLite. Keep this page open and retry.");
+      persistedReminders.current = reminders;
+      const recovery = readWorkspaceRecovery();
+      try {
+        if (recovery && JSON.stringify(recovery.workspace.tasks) === JSON.stringify(persistedTasks.current) &&
+          JSON.stringify(recovery.workspace.reminders) === JSON.stringify(persistedReminders.current))
+          window.localStorage.removeItem(WORKSPACE_RECOVERY_KEY);
+      } catch { /* SQLite success does not depend on browser storage cleanup. */ }
+      setWorkspaceSaveError("");
+    };
+    reminderSaveQueue.current = reminderSaveQueue.current.then(save);
+    void reminderSaveQueue.current.catch((error) => {
+      setWorkspaceSaveError(error instanceof Error ? error.message : "Reminders could not be saved.");
+    });
+  }, [reminders, workspaceReady]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2600);
