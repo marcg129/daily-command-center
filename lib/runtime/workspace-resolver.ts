@@ -1,6 +1,7 @@
 import { isProductWorkspaceId, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
+import type { AuthenticatedPrincipal } from "@/lib/runtime/session";
 
-export type AuthenticatedPrincipal = Readonly<{ principalId: string }>;
+export type { AuthenticatedPrincipal } from "@/lib/runtime/session";
 
 export interface WorkspaceResolver {
   resolve(principal: AuthenticatedPrincipal | null, requestedWorkspaceId: string): Promise<RequestContext>;
