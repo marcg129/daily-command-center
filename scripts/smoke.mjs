@@ -176,7 +176,8 @@ try {
   )
     throw new Error("Health endpoint returned the wrong service identity.");
   const home = await fetch(`http://127.0.0.1:${port}/`);
-  if (!home.ok || !(await home.text()).includes("Control Center"))
+  const homeText = await home.text();
+  if (!home.ok || !homeText.includes("Daily Command Center"))
     throw new Error("The dashboard home page did not render.");
   const getJson = async (pathname) => {
     const result = await fetch(`http://127.0.0.1:${port}${pathname}`);

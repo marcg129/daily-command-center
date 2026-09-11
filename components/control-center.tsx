@@ -2025,7 +2025,7 @@ function TasksView({
         title="Tasks"
         description={workspaceId === "personal"
           ? "Your personal task home. A safe Indelitech roll-up will join this view in the task-engine milestone."
-          : "Indelitech-only work, with enough detail to make the next business action obvious."}
+          : "Your current task list in the Indelitech workspace. Business-only task scoping arrives in the next task milestone."}
         action={
           <button
             className="button button-primary"
