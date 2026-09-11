@@ -12,7 +12,8 @@ export type HostedTask = {
   category: string | null; project: string | null; person: string | null; type: TaskType;
   priority: TaskPriority; status: TaskStatus; dueAt: string | null; dueIsDateOnly: boolean;
   remindAt: string | null; followUpAt: string | null; estimatedDuration: number | null;
-  recurrence: string | null; dependency: string | null; createdAt: string; completedAt: string | null;
+  recurrence: string | null; seriesId: string | null; recurrenceAnchorDay: number | null;
+  dependency: string | null; createdAt: string; completedAt: string | null;
   source: string; sourceContext: string | null; lastNotifiedAt: string | null; updatedAt: string;
 };
 

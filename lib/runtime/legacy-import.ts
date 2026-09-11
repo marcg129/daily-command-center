@@ -17,12 +17,17 @@ export function transformLegacyWorkspace(state: WorkspaceState, policy: LegacyDe
   const destination: ProductWorkspaceId = policy === "personal" ? PERSONAL_WORKSPACE_ID : INDELITECH_WORKSPACE_ID;
   const used = new Set<string>();
   const idMap: Record<string, string> = {};
-  const tasks = state.tasks.map((task): HostedTask => {
+  const assignedIds = state.tasks.map((task) => {
     const original = String(task.id);
     let taskId = safeId(original) ? original : remapId(original);
     let suffix = 1;
     while (used.has(taskId)) taskId = `${remapId(original)}-${suffix++}`;
     used.add(taskId); idMap[original] = taskId;
+    return taskId;
+  });
+  const tasks = state.tasks.map((task, index): HostedTask => {
+    const original = String(task.id);
+    const taskId = assignedIds[index];
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(task.due);
     return {
       taskId, primaryWorkspaceId: destination, title: task.title, context: task.description || null,
@@ -31,7 +36,9 @@ export function transformLegacyWorkspace(state: WorkspaceState, policy: LegacyDe
       priority: task.priority.toLowerCase() === "high" ? "HIGH" : task.priority.toLowerCase() === "low" ? "LOW" : "MEDIUM",
       status: task.done ? "DONE" : "OPEN", dueAt: task.due || null, dueIsDateOnly: dateOnly,
       remindAt: null, followUpAt: null, estimatedDuration: null, recurrence: task.recurrence || null,
-      dependency: task.seriesId == null ? null : String(task.seriesId), createdAt: task.createdAt || importedAt,
+      seriesId: task.seriesId == null ? null : (idMap[String(task.seriesId)] ?? String(task.seriesId)),
+      recurrenceAnchorDay: task.recurrenceAnchorDay ?? null,
+      dependency: null, createdAt: task.createdAt || importedAt,
       completedAt: task.completedAt || null, source: "legacy-local", sourceContext: JSON.stringify({
         originalId: original, seriesId: task.seriesId ?? null, recurrenceAnchorDay: task.recurrenceAnchorDay ?? null,
       }), lastNotifiedAt: null, updatedAt: importedAt,

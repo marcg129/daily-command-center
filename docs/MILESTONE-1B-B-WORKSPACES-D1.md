@@ -49,7 +49,7 @@ These ordered migrations use ordinary D1/SQLite SQL and deliberately do not use 
 2. `migrations/0002_tasks.sql` creates normalized tasks, task visibility, indexes, constraints, and visibility/ownership triggers.
 3. `migrations/0003_collector_snapshots.sql` creates workspace-scoped collector cache state with `(workspace_id, collector, scope)` uniqueness.
 
-The task row retains separate `due_at`, `remind_at`, and `follow_up_at` fields. Canonical types, priorities, and statuses have SQL checks and matching TypeScript unions. Ownership is explicit through `primary_workspace_id`; visibility never changes ownership. The primary workspace is immutable. No production task or collector data is seeded.
+The task row retains separate `due_at`, `remind_at`, and `follow_up_at` fields. Recurrence-series membership and its calendar anchor are queryable first-class data in nullable `series_id` and `recurrence_anchor_day` columns; they are semantically separate from the nullable `dependency` blocker field. Canonical types, priorities, and statuses have SQL checks and matching TypeScript unions. Ownership is explicit through `primary_workspace_id`; visibility never changes ownership. The primary workspace is immutable. No production task or collector data is seeded.
 
 `due_is_date_only=1` requires a ten-character calendar date in `due_at`. Such a value is not converted to an instant or midnight. A timestamp deadline remains an actual ISO instant.
 
@@ -90,7 +90,7 @@ No import runs automatically. `transformLegacyWorkspace` is pure and requires on
 - `indelitech`: assign every legacy task to Indelitech;
 - `review`: produce an unassigned review list and no hosted tasks.
 
-There is no AI classification. A safe legacy ID is preserved. Unsafe IDs receive a deterministic `legacy-<hash>` ID; deterministic numeric suffixes resolve collisions, and the returned ID map makes the decision auditable. Legacy date strings remain date-only. Active recurring rows and completed occurrence rows are both transformed; completion timestamps, series IDs, and recurrence anchor metadata are preserved in normalized fields/source context. Reminders are not imported because this milestone does not justify a hosted reminder schema; an importer must report them for a future explicit plan rather than dropping them silently.
+There is no AI classification. A safe legacy ID is preserved. Unsafe IDs receive a deterministic `legacy-<hash>` ID; deterministic numeric suffixes resolve collisions, references use the resulting ID map, and the returned map makes the decision auditable. Legacy date strings remain date-only. Active recurring rows and completed occurrence rows are both transformed; completion timestamps are retained, while legacy `seriesId` and `recurrenceAnchorDay` become the first-class hosted `seriesId` and `recurrenceAnchorDay` fields (and remain in source context for audit). Legacy tasks have no genuine dependency field, so import always leaves hosted `dependency` null rather than misusing it for recurrence membership. Reminders are not imported because this milestone does not justify a hosted reminder schema; an importer must report them for a future explicit plan rather than dropping them silently.
 
 ## Settings and secret ownership
 
@@ -108,7 +108,7 @@ Before changes, `npm ci`, lint, all 220 tests, standalone TypeScript checking, a
 
 `npx vinext check` was attempted without running `vinext init`. npm again returned `403 Forbidden` while retrieving `https://registry.npmjs.org/vinext`; therefore no checker ran and compatibility remains inconclusive rather than failed.
 
-Focused tests cover identity validation, missing/invalid contexts, D1 task CRUD behavior, positive and negative workspace isolation, Indelitech-to-Personal visibility, prohibited Personal-to-Indelitech visibility, malformed direct visibility, shared-record mutation, effective overdue priority, local date-only behavior, all 45-day groups, collector cache isolation, fake resolver grants/spoof resistance, and all legacy import policies/determinism. The pre-existing local adapter test continues to prove its fail-closed behavior.
+Focused tests cover identity validation, missing/invalid contexts, D1 task CRUD behavior (including series ID and recurrence-anchor round trips), positive and negative workspace isolation, Indelitech-to-Personal visibility, prohibited Personal-to-Indelitech visibility, malformed direct visibility, shared-record mutation, effective overdue priority, local date-only behavior, all 45-day groups, collector cache isolation, fake resolver grants/spoof resistance, and all legacy import policies/determinism. Import assertions prove active/completed recurrence relationships and anchors survive while dependency remains null. The pre-existing local adapter test continues to prove its fail-closed behavior.
 
 ## Remaining blockers and exact next milestone
 

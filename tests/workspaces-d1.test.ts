@@ -34,7 +34,8 @@ function task(overrides: Partial<HostedTask> = {}): HostedTask {
   return { taskId: "task-1", primaryWorkspaceId: INDELITECH_WORKSPACE_ID, title: "Ship proposal", context: null,
     category: null, project: null, person: null, type: "DEADLINE", priority: "LOW", status: "OPEN",
     dueAt: "2026-09-10", dueIsDateOnly: true, remindAt: null, followUpAt: null, estimatedDuration: null,
-    recurrence: null, dependency: null, createdAt: "2026-09-01T00:00:00.000Z", completedAt: null,
+    recurrence: null, seriesId: null, recurrenceAnchorDay: null, dependency: null,
+    createdAt: "2026-09-01T00:00:00.000Z", completedAt: null,
     source: "manual", sourceContext: null, lastNotifiedAt: null, updatedAt: "2026-09-01T00:00:00.000Z", ...overrides };
 }
 
@@ -45,12 +46,18 @@ test("workspace identities are stable and validation rejects arbitrary values", 
 
 test("D1 tasks share Indelitech to Personal without duplication and update one record", async () => {
   const d1 = new TestD1(); const repository = new D1TaskRepository(d1);
-  const original = task();
+  const original = task({ type: "RECURRING", recurrence: "Weekly", seriesId: "series-root", recurrenceAnchorDay: 15 });
   await repository.create({ workspaceId: "indelitech" }, original, [INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID]);
-  assert.equal((await repository.list({ workspaceId: "personal" }))[0].taskId, original.taskId);
+  const personalView = (await repository.list({ workspaceId: "personal" }))[0];
+  assert.equal(personalView.taskId, original.taskId);
+  assert.equal(personalView.seriesId, "series-root");
+  assert.equal(personalView.recurrenceAnchorDay, 15);
   assert.equal((await repository.list({ workspaceId: "indelitech" }))[0].taskId, original.taskId);
-  await repository.update({ workspaceId: "personal" }, { ...original, status: "DONE", completedAt: "2026-09-11T10:00:00Z", updatedAt: "2026-09-11T10:00:00Z" });
-  assert.equal((await repository.get({ workspaceId: "indelitech" }, original.taskId))?.status, "DONE");
+  await repository.update({ workspaceId: "personal" }, { ...original, recurrenceAnchorDay: 20, status: "DONE", completedAt: "2026-09-11T10:00:00Z", updatedAt: "2026-09-11T10:00:00Z" });
+  const indelitechView = await repository.get({ workspaceId: "indelitech" }, original.taskId);
+  assert.equal(indelitechView?.status, "DONE");
+  assert.equal(indelitechView?.seriesId, "series-root");
+  assert.equal(indelitechView?.recurrenceAnchorDay, 20);
   assert.equal((d1.sqlite.prepare("SELECT count(*) count FROM tasks").get() as { count: number }).count, 1);
   d1.sqlite.close();
 });
@@ -103,13 +110,16 @@ test("fake resolver authenticates grants rather than trusting requested workspac
 
 test("legacy import requires policy, preserves recurrence history, date-only values and deterministic IDs", () => {
   const state = { reminders: [], tasks: [
-    { id: "series", title: "Review", description: "", due: "2026-09-12", recurrence: "Weekly", priority: "Normal", done: false },
-    { id: "unsafe id/occurrence", seriesId: "series", title: "Review", description: "", due: "2026-09-05", recurrence: "Weekly", priority: "Normal", done: true, completedAt: "2026-09-05T12:00:00Z" },
+    { id: "series", recurrenceAnchorDay: 12, title: "Review", description: "", due: "2026-09-12", recurrence: "Weekly", priority: "Normal", done: false },
+    { id: "unsafe id/occurrence", seriesId: "series", recurrenceAnchorDay: 12, title: "Review", description: "", due: "2026-09-05", recurrence: "Weekly", priority: "Normal", done: true, completedAt: "2026-09-05T12:00:00Z" },
   ] };
   const first = transformLegacyWorkspace(state, "personal", "2026-09-11T00:00:00Z");
   const second = transformLegacyWorkspace(state, "personal", "2026-09-11T00:00:00Z");
   assert.equal(first.tasks[0].primaryWorkspaceId, PERSONAL_WORKSPACE_ID);
   assert.equal(first.tasks[0].dueIsDateOnly, true); assert.equal(first.tasks[1].status, "DONE");
-  assert.equal(first.tasks[1].dependency, "series"); assert.deepEqual(first.idMap, second.idMap);
+  assert.equal(first.tasks[1].seriesId, first.tasks[0].taskId);
+  assert.equal(first.tasks[0].recurrenceAnchorDay, 12); assert.equal(first.tasks[1].recurrenceAnchorDay, 12);
+  assert.equal(first.tasks[0].dependency, null); assert.equal(first.tasks[1].dependency, null);
+  assert.deepEqual(first.idMap, second.idMap);
   assert.equal(transformLegacyWorkspace(state, "review", "2026-09-11T00:00:00Z").review.length, 2);
 });

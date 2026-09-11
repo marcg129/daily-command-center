@@ -17,6 +17,8 @@ CREATE TABLE tasks (
   follow_up_at TEXT,
   estimated_duration INTEGER CHECK (estimated_duration IS NULL OR estimated_duration >= 0),
   recurrence TEXT,
+  series_id TEXT,
+  recurrence_anchor_day INTEGER CHECK (recurrence_anchor_day IS NULL OR recurrence_anchor_day BETWEEN 1 AND 31),
   dependency TEXT,
   created_at TEXT NOT NULL,
   completed_at TEXT,
@@ -46,4 +48,3 @@ BEGIN SELECT RAISE(ABORT, 'invalid task visibility'); END;
 
 CREATE TRIGGER task_primary_workspace_immutable BEFORE UPDATE OF primary_workspace_id ON tasks
 BEGIN SELECT RAISE(ABORT, 'task primary workspace is immutable'); END;
-
