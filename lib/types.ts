@@ -283,6 +283,8 @@ export type TaskItem = {
   dependency?: string;
   source?: string;
   sourceContext?: string;
+  /** Immutable normalized input signature used only for structured-capture idempotency. */
+  captureFingerprint?: string;
   updatedAt?: string;
   createdAt?: string;
   completedAt?: string;

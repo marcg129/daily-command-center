@@ -5,7 +5,7 @@ import { createStructuredTaskCaptureService, TaskCaptureConflictError, TaskCaptu
 import { diffTaskItems, type TaskMutationRepository } from "@/lib/runtime/task-mutations";
 import { createTaskCaptureHandler } from "@/lib/server/task-capture-service";
 import { LocalTaskMutationRepository } from "@/lib/server/local-task-mutation-repository";
-import { cleanTaskItems, visibleTaskItems } from "@/lib/tasks";
+import { cleanTaskItems, completeTaskItems, visibleTaskItems } from "@/lib/tasks";
 import type { TaskItem } from "@/lib/types";
 import { initializeWorkspaceStore } from "@/lib/workspace-store";
 
@@ -33,14 +33,16 @@ function memoryRepository(initial: TaskItem[] = []) {
 test("task normalization and diff preserve every structured compatibility field", () => {
   const task = cleanTaskItems([{ ...base, id: "one", description: "Context", due: "", recurrence: "One-time",
     priority: "HIGH", primaryWorkspaceId: "personal", done: false, category: " Finance ", project: " Q3 ",
-    estimatedDuration: "30m", dependency: " CFO ", source: " send-to-tasks ", sourceContext: " chat/42 " }])[0];
+    estimatedDuration: "30m", dependency: " CFO ", source: " send-to-tasks ", sourceContext: " chat/42 ",
+    captureFingerprint: " signature " }])[0];
   assert.deepEqual(
     { category: task.category, project: task.project, estimatedDuration: task.estimatedDuration,
-      dependency: task.dependency, source: task.source, sourceContext: task.sourceContext },
+      dependency: task.dependency, source: task.source, sourceContext: task.sourceContext,
+      captureFingerprint: task.captureFingerprint },
     { category: "Finance", project: "Q3", estimatedDuration: "30m", dependency: "CFO",
-      source: "send-to-tasks", sourceContext: "chat/42" },
+      source: "send-to-tasks", sourceContext: "chat/42", captureFingerprint: "signature" },
   );
-  for (const field of ["category", "project", "estimatedDuration", "dependency", "source", "sourceContext"] as const) {
+  for (const field of ["category", "project", "estimatedDuration", "dependency", "source", "sourceContext", "captureFingerprint"] as const) {
     const changed = { ...task, [field]: `${task[field]}-changed` } as TaskItem;
     assert.equal(diffTaskItems([task], [changed])[0]?.kind, "UPDATE", `${field} should produce an update`);
   }
@@ -86,6 +88,47 @@ test("requestId replay is idempotent while conflicting and non-capture records a
     TaskCaptureConflictError,
   );
   assert.equal(protectedState.applies, 0); assert.equal(protectedState.tasks[0].title, "Existing");
+});
+
+test("exact replay uses immutable capture input and never overwrites later task mutations", async () => {
+  const state = memoryRepository();
+  const capture = createStructuredTaskCaptureService(state.repository, { now: () => now });
+  const original = { ...base, context: "Original context", due: "2026-09-15" };
+  const first = await capture(original);
+  assert.equal(first.created, true);
+  const fingerprint = first.task.captureFingerprint;
+
+  Object.assign(state.tasks[0], {
+    title: "User-edited title",
+    description: "User-edited details",
+    done: true,
+    status: "DONE",
+    completedAt: "2026-09-12T12:00:00.000Z",
+  });
+  const replay = await capture(structuredClone(original));
+  assert.equal(replay.created, false);
+  assert.equal(state.applies, 1);
+  assert.equal(replay.task.title, "User-edited title");
+  assert.equal(replay.task.description, "User-edited details");
+  assert.equal(replay.task.done, true);
+  assert.equal(replay.task.captureFingerprint, fingerprint);
+  await assert.rejects(capture({ ...original, title: "Different original capture" }), TaskCaptureConflictError);
+  assert.equal(state.tasks[0].title, "User-edited title");
+});
+
+test("recurring completion preserves the capture fingerprint on its series and history", async () => {
+  const capture = createStructuredTaskCaptureService(memoryRepository().repository, { now: () => now });
+  const created = await capture({
+    ...base, requestId: "recurring-history", type: "RECURRING",
+    recurrence: "Weekly", due: "2026-09-11",
+  });
+  const completed = completeTaskItems([created.task], created.task.id, {
+    now, occurrenceId: "recurring-history:occurrence",
+  });
+  assert.equal(completed.length, 2);
+  assert.ok(created.task.captureFingerprint);
+  assert.equal(completed[0].captureFingerprint, created.task.captureFingerprint);
+  assert.equal(completed[1].captureFingerprint, created.task.captureFingerprint);
 });
 
 test("safe defaults never invent due dates or reminders and preserve context metadata", async () => {
@@ -141,12 +184,24 @@ test("capture handler returns interpretation, validation 400, conflict 409, and 
   assert.equal(response.status, 500); assert.deepEqual(await response.json(), { error: "Task capture could not be saved safely." });
 });
 
-test("local SQLite capture uses one atomic CREATE and keeps exact replay idempotent", async () => {
+test("local SQLite capture round-trips its fingerprint and keeps mutated replay idempotent", async () => {
   const database = initializeWorkspaceStore(new DatabaseSync(":memory:"));
   const repository = new LocalTaskMutationRepository(() => database);
   const capture = createStructuredTaskCaptureService(repository, { now: () => now });
-  assert.equal((await capture({ ...base, requestId: "sqlite" })).created, true);
-  assert.equal((await capture({ ...base, requestId: "sqlite" })).created, false);
+  const input = { ...base, requestId: "sqlite", category: " Finance " };
+  const created = await capture(input);
+  assert.equal(created.created, true);
+  assert.ok(created.task.captureFingerprint);
+  const persisted = (await repository.read())[0];
+  assert.equal(persisted.captureFingerprint, created.task.captureFingerprint);
+  await repository.apply([{ kind: "UPDATE", taskId: persisted.id, task: {
+    ...persisted, title: "Edited after capture", done: true, status: "DONE",
+  } }], "2026-09-12T12:00:00.000Z");
+  const replay = await capture(input);
+  assert.equal(replay.created, false);
+  assert.equal(replay.task.title, "Edited after capture");
+  assert.equal(replay.task.done, true);
+  assert.equal(replay.task.captureFingerprint, created.task.captureFingerprint);
   assert.equal((await repository.read()).length, 1);
   database.close();
 });

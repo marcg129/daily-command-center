@@ -337,6 +337,7 @@ export function cleanTaskItems(value: unknown): TaskItem[] {
       dependency: cleanText(candidate.dependency).trim() || undefined,
       source: cleanText(candidate.source).trim() || undefined,
       sourceContext: cleanText(candidate.sourceContext).trim() || undefined,
+      captureFingerprint: cleanText(candidate.captureFingerprint).trim() || undefined,
       updatedAt: cleanIso(candidate.updatedAt),
       createdAt: cleanText(candidate.createdAt) || undefined,
       completedAt: cleanText(candidate.completedAt) || undefined,

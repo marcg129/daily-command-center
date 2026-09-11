@@ -108,6 +108,30 @@ export function parseStructuredTaskCapture(value: unknown): StructuredTaskCaptur
   };
 }
 
+/** Stable, runtime-neutral signature of every normalized capture contract field. */
+function captureFingerprint(input: StructuredTaskCapture) {
+  const recurrence = input.recurrence ?? "One-time";
+  const due = input.due ?? "";
+  return JSON.stringify({
+    requestId: input.requestId,
+    workspaceId: input.workspaceId,
+    title: input.title,
+    context: input.context ?? "No additional details.",
+    category: input.category ?? null,
+    project: input.project ?? null,
+    person: input.person ?? null,
+    type: recurrence !== "One-time" ? "RECURRING" : input.type ?? (due ? "DEADLINE" : "ONE_TIME"),
+    priority: input.priority ?? "MEDIUM",
+    due,
+    remindAt: input.remindAt ?? null,
+    followUpAt: input.followUpAt ?? null,
+    estimatedDuration: input.estimatedDuration ?? null,
+    recurrence,
+    dependency: input.dependency ?? null,
+    sourceContext: input.sourceContext ?? null,
+  });
+}
+
 function taskFromCapture(input: StructuredTaskCapture, now: string): TaskItem {
   const recurrence = input.recurrence ?? "One-time";
   const due = input.due ?? "";
@@ -121,17 +145,8 @@ function taskFromCapture(input: StructuredTaskCapture, now: string): TaskItem {
     person: input.person, category: input.category, project: input.project,
     estimatedDuration: input.estimatedDuration, dependency: input.dependency,
     source: "send-to-tasks", sourceContext: input.sourceContext, createdAt: now, updatedAt: now,
+    captureFingerprint: captureFingerprint(input),
   };
-}
-function comparable(task: TaskItem) {
-  return JSON.stringify({
-    id: task.id, title: task.title, description: task.description, due: task.due,
-    recurrence: task.recurrence, priority: task.priority, primaryWorkspaceId: task.primaryWorkspaceId,
-    done: task.done, type: task.type, status: task.status, remindAt: task.remindAt,
-    followUpAt: task.followUpAt, person: task.person, category: task.category, project: task.project,
-    estimatedDuration: task.estimatedDuration, dependency: task.dependency, source: task.source,
-    sourceContext: task.sourceContext,
-  });
 }
 function interpretation(task: TaskItem): CaptureInterpretation {
   return { workspaceId: task.primaryWorkspaceId!, type: task.type!, priority: task.priority,
@@ -145,7 +160,7 @@ export function createStructuredTaskCaptureService(repository: TaskMutationRepos
     const now = clock.now().toISOString();
     const candidate = taskFromCapture(input, now);
     if (existing) {
-      if (existing.source !== "send-to-tasks" || comparable(existing) !== comparable(candidate))
+      if (existing.source !== "send-to-tasks" || existing.captureFingerprint !== candidate.captureFingerprint)
         throw new TaskCaptureConflictError("requestId is already associated with a different task capture.");
       return { created: false, task: existing, interpretation: interpretation(existing) };
     }
@@ -156,7 +171,7 @@ export function createStructuredTaskCaptureService(repository: TaskMutationRepos
     } catch (error) {
       // A concurrent identical delivery can win between read and atomic CREATE.
       const raced = (await repository.read()).find((task) => task.id === candidate.id);
-      if (raced && raced.source === "send-to-tasks" && comparable(raced) === comparable(candidate))
+      if (raced?.source === "send-to-tasks" && raced.captureFingerprint === candidate.captureFingerprint)
         return { created: false, task: raced, interpretation: interpretation(raced) };
       if (raced) throw new TaskCaptureConflictError("requestId is already associated with a different task capture.");
       throw error;

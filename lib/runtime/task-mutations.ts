@@ -23,6 +23,7 @@ function canonicalValue(task: TaskItem) {
     followUpAt: task.followUpAt, person: task.person, category: task.category,
     project: task.project, estimatedDuration: task.estimatedDuration,
     dependency: task.dependency, source: task.source, sourceContext: task.sourceContext,
+    captureFingerprint: task.captureFingerprint,
     updatedAt: task.updatedAt,
     createdAt: task.createdAt, completedAt: task.completedAt,
     seriesId: task.seriesId, recurrenceAnchorDay: task.recurrenceAnchorDay,
