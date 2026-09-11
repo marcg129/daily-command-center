@@ -10,7 +10,8 @@ import { getDatabase } from "@/lib/server/database";
 import { readSettings } from "@/lib/server/settings";
 import type { DailyBriefItem, DailyBriefResponse } from "@/lib/types";
 import type { LiveFeedResponse, NewsletterFeedResponse } from "@/lib/types";
-import { readCollectorSnapshot } from "@/lib/collector-cache";
+import { legacyRequestContext } from "@/lib/runtime/context";
+import { LocalCollectorSnapshotRepository } from "@/lib/server/local-collector-snapshot-repository";
 import { industryCacheScope, mentionsCacheScope } from "@/lib/collector-scopes";
 import { buildDailyBriefSnapshot } from "@/lib/daily-brief-snapshot";
 import { newsletterCollectionScope } from "@/lib/server/newsletter-collector";
@@ -57,6 +58,8 @@ async function responsePayload(): Promise<DailyBriefResponse> {
     Date.now() - settings.dailyBrief.lookbackDays * 86_400_000,
   ).toISOString();
   const database = getDatabase();
+  const snapshots = new LocalCollectorSnapshotRepository(() => database);
+  const context = legacyRequestContext();
   purgeDisabledBriefSources(database, settings.dailyBrief.sourceLabels);
   const items = listBriefItems(
     database,
@@ -81,9 +84,9 @@ async function responsePayload(): Promise<DailyBriefResponse> {
     };
   });
   const snapshot = buildDailyBriefSnapshot(settings.dailyBrief.sections, {
-    industry: readCollectorSnapshot<LiveFeedResponse>(database, "industry", industryCacheScope(settings))?.payload,
-    mentions: readCollectorSnapshot<LiveFeedResponse>(database, "mentions", mentionsCacheScope(settings))?.payload,
-    newsletters: readCollectorSnapshot<NewsletterFeedResponse>(database, "newsletters", newsletterCollectionScope(settings))?.payload,
+    industry: (await snapshots.read<LiveFeedResponse>(context, "industry", industryCacheScope(settings)))?.payload,
+    mentions: (await snapshots.read<LiveFeedResponse>(context, "mentions", mentionsCacheScope(settings)))?.payload,
+    newsletters: (await snapshots.read<NewsletterFeedResponse>(context, "newsletters", newsletterCollectionScope(settings)))?.payload,
   });
   return {
     configured: settings.dailyBrief.sourceLabels.length > 0 || snapshot.some((section) => section.configured),

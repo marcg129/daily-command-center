@@ -11,12 +11,16 @@ import { industryCacheScope } from "@/lib/collector-scopes";
 import { curateIndustryDiscoveries, selectDiverseIndustryDiscoveries } from "@/lib/industry-curation";
 import { listIndustryDiscoveries, pruneIndustryDiscoveries, upsertIndustryDiscoveries } from "@/lib/industry-store";
 import { curateIndustryWithAi } from "@/lib/server/industry-ai";
-import {
-  readCollectorSnapshot,
-  writeCollectorSnapshot,
-} from "@/lib/collector-cache";
+
+import { legacyRequestContext } from "@/lib/runtime/context";
+import { LocalCollectorSnapshotRepository } from "@/lib/server/local-collector-snapshot-repository";
 
 export const runtime = "nodejs";
+
+const collectorSnapshots = new LocalCollectorSnapshotRepository(getDatabase);
+const collectorContext = legacyRequestContext();
+
+
 
 declare global {
   var controlCenterIndustryQueue: Promise<void> | undefined;
@@ -221,8 +225,8 @@ export async function GET(request: Request) {
   const scope = industryCacheScope(settings);
   const forceRefresh = new URL(request.url).searchParams.get("refresh") === "1";
   if (!forceRefresh) {
-    const cached = readCollectorSnapshot<LiveFeedResponse>(
-      getDatabase(),
+    const cached = await collectorSnapshots.read<LiveFeedResponse>(
+      collectorContext,
       "industry",
       scope,
     );
@@ -240,8 +244,8 @@ export async function GET(request: Request) {
     const response = await collectIndustry();
     if (response.ok) {
       const payload = await response.clone().json() as LiveFeedResponse;
-      const saved = writeCollectorSnapshot(
-        getDatabase(),
+      const saved = await collectorSnapshots.write(
+        collectorContext,
         "industry",
         scope,
         payload,

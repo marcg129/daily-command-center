@@ -1,5 +1,6 @@
 import { getDatabase, setContentArchived, type ContentCategory } from "@/lib/server/database";
-import { updateCollectorSnapshotArchive } from "@/lib/collector-cache";
+import { legacyRequestContext } from "@/lib/runtime/context";
+import { LocalCollectorSnapshotRepository } from "@/lib/server/local-collector-snapshot-repository";
 
 export const runtime = "nodejs";
 
@@ -7,6 +8,7 @@ const categories = new Set<ContentCategory>(["industry", "mentions", "newsletter
 
 export async function PATCH(request: Request) {
   const database = getDatabase();
+  const snapshots = new LocalCollectorSnapshotRepository(() => database);
   let transactionOpen = false;
   try {
     const body = await request.json() as { category?: ContentCategory; id?: string; archived?: boolean };
@@ -28,8 +30,8 @@ export async function PATCH(request: Request) {
       transactionOpen = false;
       return Response.json({ error: "Saved item was not found." }, { status: 404 });
     }
-    updateCollectorSnapshotArchive(
-      database,
+    await snapshots.updateArchive(
+      legacyRequestContext(),
       body.category,
       body.id,
       body.archived,

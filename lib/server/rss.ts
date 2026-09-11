@@ -1,11 +1,13 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { filterPlausiblyDatedStories } from "@/lib/freshness";
 import type { IndustrySource, IndustrySourceStatus, LiveStory } from "@/lib/types";
 import { safeFetchText } from "@/lib/server/safe-fetch";
 import { industrySnapshotsPath } from "@/lib/server/settings";
+import { legacyRequestContext, type RequestContext } from "@/lib/runtime/context";
+import type { SnapshotRepository } from "@/lib/runtime/snapshot-repository";
+import { LocalJsonSnapshotRepository } from "@/lib/server/local-json-snapshot-repository";
 import { discoveredFeedLinks, isFeedDocument } from "@/lib/feed-discovery";
 import {
   FEED_MAX_RESPONSE_BYTES,
@@ -22,7 +24,6 @@ import {
   sourceContentPath,
   walkSitemap,
   walkSitemapRoots,
-  writeFileAtomically,
 } from "@/lib/sitemap";
 
 export function parseFeed(xml: string, fallbackSource: string, baseUrl?: string) {
@@ -138,13 +139,27 @@ function titleFromUrl(value: string) {
   return decodeURIComponent(finalSegment).replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export async function readIndustrySnapshots(): Promise<SitemapSnapshots> {
-  try { return JSON.parse(await readFile(industrySnapshotsPath(), "utf8")) as SitemapSnapshots; } catch { return {}; }
+const localIndustrySnapshots = new LocalJsonSnapshotRepository<SitemapSnapshots>(
+  industrySnapshotsPath,
+  (value) => value as SitemapSnapshots,
+  () => ({}),
+  "Industry snapshots could not be read.",
+  "empty",
+);
+
+export async function readIndustrySnapshots(
+  context: RequestContext = legacyRequestContext(),
+  repository: SnapshotRepository<SitemapSnapshots> = localIndustrySnapshots,
+) {
+  return repository.read(context);
 }
 
-export async function writeIndustrySnapshots(snapshots: SitemapSnapshots) {
-  const target = industrySnapshotsPath();
-  await writeFileAtomically(target, `${JSON.stringify(snapshots, null, 2)}\n`);
+export async function writeIndustrySnapshots(
+  snapshots: SitemapSnapshots,
+  context: RequestContext = legacyRequestContext(),
+  repository: SnapshotRepository<SitemapSnapshots> = localIndustrySnapshots,
+) {
+  await repository.write(context, snapshots);
 }
 
 function isSitemapDocument(text: string) {

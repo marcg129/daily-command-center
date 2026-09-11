@@ -1,9 +1,5 @@
 import type { NewsletterFeedResponse } from "@/lib/types";
 import { normalizeNewsletterResponse } from "@/lib/newsletter-intelligence";
-import {
-  readCollectorSnapshot,
-  writeCollectorSnapshot,
-} from "@/lib/collector-cache";
 import { getDatabase } from "@/lib/server/database";
 import {
   collectNewsletterIntelligence,
@@ -13,7 +9,15 @@ import {
 } from "@/lib/server/newsletter-collector";
 import { readSettings } from "@/lib/server/settings";
 
+import { legacyRequestContext } from "@/lib/runtime/context";
+import { LocalCollectorSnapshotRepository } from "@/lib/server/local-collector-snapshot-repository";
+
 export const runtime = "nodejs";
+
+const collectorSnapshots = new LocalCollectorSnapshotRepository(getDatabase);
+const collectorContext = legacyRequestContext();
+
+
 
 function json(
   payload: NewsletterFeedResponse,
@@ -26,14 +30,13 @@ function json(
 
 export async function GET(request: Request) {
   const settings = await readSettings();
-  const database = getDatabase();
   const connected = Boolean(settings.newsletters.refreshToken);
   const aiConfigured = newsletterAiConfigured(settings);
   const scope = newsletterCollectionScope(settings);
   const refresh = new URL(request.url).searchParams.get("refresh") === "1";
 
   if (!connected || !aiConfigured) {
-    const saved = readCollectorSnapshot<NewsletterFeedResponse>(database, "newsletters")?.payload ||
+    const saved = (await collectorSnapshots.read<NewsletterFeedResponse>(collectorContext, "newsletters"))?.payload ||
       readSavedNewsletterIntelligence(settings, connected);
     return json({
       ...saved,
@@ -50,8 +53,8 @@ export async function GET(request: Request) {
   }
 
   if (!refresh) {
-    const cached = readCollectorSnapshot<NewsletterFeedResponse>(
-      database,
+    const cached = await collectorSnapshots.read<NewsletterFeedResponse>(
+      collectorContext,
       "newsletters",
       scope,
     );
@@ -66,8 +69,8 @@ export async function GET(request: Request) {
 
   try {
     const payload = await collectNewsletterIntelligence(settings);
-    const saved = writeCollectorSnapshot(
-      database,
+    const saved = await collectorSnapshots.write(
+      collectorContext,
       "newsletters",
       scope,
       payload,
@@ -84,8 +87,8 @@ export async function GET(request: Request) {
         error instanceof Error ? error.message : "Newsletter sync failed",
       ],
     };
-    return json(writeCollectorSnapshot(
-      database,
+    return json(await collectorSnapshots.write(
+      collectorContext,
       "newsletters",
       scope,
       fallback,
