@@ -11,6 +11,7 @@ import {
   AtSign,
   Bookmark,
   Cable,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -79,14 +80,28 @@ import type { AudienceHistorySeries } from "@/lib/audience-charts";
 import { AI_PROVIDER_LABELS, DEFAULT_LOCAL_AI_URLS, isAiReady } from "@/lib/ai-providers";
 import { sortFeedStories, selectNewsletterTopics, newsletterSourceOptions } from "@/lib/feed-priority";
 import { sortIndustryItems, type IndustrySortOrder } from "@/lib/industry";
-import { completeTaskItems } from "@/lib/tasks";
+import { completeTaskItems, updateTaskItem, visibleTaskItems } from "@/lib/tasks";
+import { QuickTaskAdd, TaskAttentionPanel, TaskHorizon, TaskRow } from "@/components/task-surface";
 import {
   applyArchiveToPayload,
   type CachedFeedPayload,
 } from "@/lib/live-response";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { WorkspacePageShell } from "@/components/workspace-page-shell";
+import type { ProductWorkspaceId } from "@/lib/runtime/context";
+import {
+  DEFAULT_WORKSPACE_ID,
+  WORKSPACES,
+  WORKSPACE_SELECTION_STORAGE_KEY,
+  isWorkspacePageAvailable,
+  parseWorkspaceId,
+  type WorkspacePageId,
+} from "@/lib/workspace-ui";
 
 type Tab =
   | "today"
+  | "calendar"
+  | "news"
   | "industry"
   | "mentions"
   | "reminders"
@@ -141,15 +156,15 @@ const emptySettings: PublicSettings = {
   dailyBrief: { sourceLabels: [], lookbackDays: 7, sections: { industry: 5, mentions: 5, newsletters: 5 } },
 };
 
-const nav: { id: Tab; label: string; icon: typeof Activity }[] = [
-  { id: "today", label: "Today", icon: LayoutDashboard },
-  { id: "industry", label: "Industry", icon: Radio },
-  { id: "mentions", label: "Mentions", icon: AtSign },
-  { id: "reminders", label: "Reminders", icon: Bookmark },
-  { id: "audience", label: "Audience", icon: Users },
-  { id: "newsletters", label: "Newsletters", icon: Newspaper },
-  { id: "tasks", label: "Tasks", icon: ListTodo },
-];
+const navigationIcons = {
+  today: LayoutDashboard,
+  tasks: ListTodo,
+  calendar: CalendarDays,
+  news: Newspaper,
+  intel: Radio,
+  mentions: AtSign,
+  settings: Settings2,
+};
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -245,9 +260,6 @@ function formatTaskDue(value: string) {
   }).format(date);
 }
 
-function isTaskDueToday(value: string) {
-  return value === "Today" || value === localDateValue();
-}
 
 function readLegacyList<T>(key: string): T[] {
   try {
@@ -644,6 +656,18 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
+function PersonalTodayView({ tasks, goTo }: { tasks: Task[]; goTo: (tab: Tab) => void }) {
+  return (
+    <div className="view">
+      <PageHeading eyebrow="Personal · Today" title="What needs my attention today?" description="Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
+      <div className="personal-today-grid reveal delay-1">
+        <TaskAttentionPanel tasks={tasks} workspaceId="personal" onOpen={() => goTo("tasks")} />
+        <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
+      </div>
+    </div>
+  );
+}
+
 function TodayView({
   settings,
   tasks,
@@ -657,7 +681,7 @@ function TodayView({
   openSettings: (section?: SettingsSection) => void;
   addBriefTask: (item: DailyBriefItem) => void;
 }) {
-  const openTasks = tasks.filter((task) => !task.done).slice(0, 3);
+  const businessTasks = visibleTaskItems(tasks, "indelitech");
   const industryConfigured =
     settings.industry.sources.length + settings.industry.keywords.length > 0;
   const configured = [
@@ -674,9 +698,9 @@ function TodayView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow={today}
-        title="Good morning."
-        description="A quiet starting point for the sources, signals, and work you choose to track."
+        eyebrow={`Indelitech · ${today}`}
+        title="Business priorities, in focus."
+        description="Operational attention for Indelitech: active work, market intelligence, and configured business signals."
         action={
           <button
             className="button button-ghost"
@@ -715,45 +739,10 @@ function TodayView({
         goTo={goTo}
       />
       <div className="today-grid reveal delay-2">
-        <Panel className="priority-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Focus</p>
-              <h2>Open tasks</h2>
-            </div>
-            <span className="progress-count">
-              {tasks.filter((task) => !task.done).length}
-            </span>
-          </div>
-          {openTasks.length ? (
-            <div className="priority-list">
-              {openTasks.map((task, index) => (
-                <button
-                  key={task.id}
-                  className="priority-row"
-                  onClick={() => goTo("tasks")}
-                >
-                  <span className="check-box">{index + 1}</span>
-                  <span>
-                    <b>{task.title}</b>
-                    <small>
-                      {formatTaskDue(task.due)} · {task.recurrence}
-                    </small>
-                  </span>
-                  <ArrowRight size={16} />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="inline-empty">
-              <ListTodo size={20} />
-              <p>No open tasks yet.</p>
-            </div>
-          )}
-          <button className="text-button" onClick={() => goTo("tasks")}>
-            Open task list <ArrowRight size={14} />
-          </button>
-        </Panel>
+        <div className="today-task-stack">
+          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpen={() => goTo("tasks")} />
+          <TaskHorizon tasks={businessTasks} onOpen={() => goTo("tasks")} />
+        </div>
         <Panel className="setup-progress">
           <div className="panel-header">
             <div>
@@ -896,9 +885,9 @@ function IndustryView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Live source desk"
-        title="Industry"
-        description="A bounded briefing of the most useful watched-site and topic updates from the last 24 hours."
+        eyebrow="Indelitech · Intelligence"
+        title="Intel"
+        description="MSP, cybersecurity, and SMB technology intelligence from the business sources and topics you configure."
         action={
           <button
             className="button button-primary"
@@ -1150,9 +1139,9 @@ function MentionsView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Seven-day web radar"
+        eyebrow="Indelitech · Seven-day web radar"
         title="Mentions"
-        description="Verified third-party pages from the past week, matched to the identities you configure and deduplicated against your local archive."
+        description="Indelitech brand and company mentions from verified third-party pages, matched to configured identities and deduplicated locally."
         action={
           <button
             className="button button-ghost"
@@ -1916,244 +1905,20 @@ function NewslettersView({
   );
 }
 
-function TasksView({
-  tasks,
-  setTasks,
-}: {
-  tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [due, setDue] = useState(localDateValue);
-  const [recurrence, setRecurrence] = useState("One-time");
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!title.trim() || !due) return;
-    setTasks((values) => [
-      {
-        id: crypto.randomUUID(),
-        title: title.trim(),
-        description: description.trim() || "No additional details.",
-        due,
-        recurrence,
-        priority: "Normal",
-        done: false,
-        createdAt: new Date().toISOString(),
-      },
-      ...values,
-    ]);
-    setTitle("");
-    setDescription("");
-    setDue(localDateValue());
-    setRecurrence("One-time");
-    setShowForm(false);
-  };
-  const complete = (task: Task) =>
-    setTasks((values) =>
-      completeTaskItems(values, task.id, { expectedDue: task.due }),
-    );
-  const open = tasks.filter((task) => !task.done);
-  const completed = tasks
-    .filter((task) => task.done)
-    .sort((a, b) =>
-      (b.completedAt || b.createdAt || "").localeCompare(
-        a.completedAt || a.createdAt || "",
-      ),
-    );
-  const completedToday = completed.filter(
-    (task) =>
-      task.completedAt &&
-      localDateValue(new Date(task.completedAt)) === localDateValue(),
-  );
-  const dueToday = open.filter((task) => isTaskDueToday(task.due));
-  const todayTotal = dueToday.length + completedToday.length;
-  return (
-    <div className="view">
-      <PageHeading
-        eyebrow="Execution"
-        title="Tasks"
-        description="One-time and repeating work, with enough detail to make the next action obvious."
-        action={
-          <button
-            className="button button-primary"
-            onClick={() => setShowForm(true)}
-          >
-            <Plus size={16} /> Add task
-          </button>
-        }
-      />
-      {showForm && (
-        <form className="task-form reveal" onSubmit={submit}>
-          <div>
-            <p className="eyebrow">New task</p>
-            <input
-              autoFocus
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="What needs to get done?"
-            />
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Add a description (optional)"
-            />
-          </div>
-          <div className="task-fields">
-            <label>
-              Due
-              <input
-                type="date"
-                required
-                value={due}
-                onChange={(event) => setDue(event.target.value)}
-              />
-            </label>
-            <label>
-              Repeats
-              <select
-                value={recurrence}
-                onChange={(event) => setRecurrence(event.target.value)}
-              >
-                <option>One-time</option>
-                <option>Daily</option>
-                <option>Weekly</option>
-                <option>Monthly</option>
-              </select>
-            </label>
-          </div>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="button button-ghost"
-              onClick={() => setShowForm(false)}
-            >
-              Cancel
-            </button>
-            <button className="button button-primary">Add task</button>
-          </div>
-        </form>
-      )}
-      <div className="task-summary reveal delay-1">
-        <div>
-          <b>{open.length}</b>
-          <span>open tasks</span>
-        </div>
-        <div>
-          <b>{dueToday.length}</b>
-          <span>due today</span>
-        </div>
-        <div>
-          <b>
-            {
-              tasks.filter(
-                (task) => task.recurrence !== "One-time" && !task.done,
-              ).length
-            }
-          </b>
-          <span>repeating</span>
-        </div>
-        <div className="task-progress">
-          <span>
-            <i
-              style={{
-                width: `${todayTotal ? (completedToday.length / todayTotal) * 100 : 0}%`,
-              }}
-            />
-          </span>
-          <small>{completedToday.length} completed today</small>
-        </div>
-      </div>
-      {open.length ? (
-        <div className="task-list reveal delay-2">
-          <div className="task-list-head">
-            <span>Task</span>
-            <span>Due</span>
-            <span>Repeats</span>
-            <span />
-          </div>
-          {open.map((task) => (
-            <div className="task-row" key={task.id}>
-              <button
-                className="round-check"
-                aria-label={
-                  task.recurrence === "One-time"
-                    ? `Complete ${task.title}`
-                    : `Complete and reschedule ${task.title}`
-                }
-                onClick={() => complete(task)}
-              >
-                <Check size={14} />
-              </button>
-              <div className="task-copy">
-                <b>{task.title}</b>
-                <p>{task.description}</p>
-              </div>
-              <Label tone={isTaskDueToday(task.due) ? "high" : undefined}>
-                {formatTaskDue(task.due)}
-              </Label>
-              <span className="repeat-text">
-                <RefreshCw size={13} />
-                {task.recurrence}
-              </span>
-              <button
-                className="more-button"
-                aria-label={`Delete ${task.title}`}
-                title="Delete task"
-                onClick={() =>
-                  setTasks((values) =>
-                    values.filter((value) => value.id !== task.id),
-                  )
-                }
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Panel className="empty-state">
-          <ListTodo size={26} />
-          <h2>No open tasks</h2>
-          <p>Add the first task when there is something worth committing to.</p>
-        </Panel>
-      )}
-      {completed.length > 0 && (
-        <details className="completed-list">
-          <summary>{completed.length} completed</summary>
-          {completed.map((task) => (
-            <div className="completed-row" key={task.id}>
-              <CheckCircle2 size={16} />
-              <div className="completed-copy">
-                <s>{task.title}</s>
-                <small>
-                  {task.completedAt
-                    ? `Completed ${formatDate(task.completedAt)}`
-                    : "Completed"}
-                  {` · was due ${formatTaskDue(task.due)}`}
-                  {task.seriesId !== undefined ? " · recurring occurrence" : ""}
-                </small>
-              </div>
-              {task.seriesId === undefined && (
-                <button
-                  aria-label={`Delete completed ${task.title}`}
-                  title="Delete completed task"
-                  onClick={() =>
-                    setTasks((values) =>
-                      values.filter((value) => value.id !== task.id),
-                    )
-                  }
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          ))}
-        </details>
-      )}
-    </div>
-  );
+function TasksView({ tasks, setTasks, workspaceId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId }) {
+  const visible = visibleTaskItems(tasks, workspaceId);
+  const open = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "OPEN" || (task.status ?? "OPEN") === "WAITING");
+  const completed = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "DONE").toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
+  const cancelled = visible.filter((task) => task.status === "CANCELLED");
+  const complete = (task: Task) => setTasks((values) => completeTaskItems(values, task.id, { expectedDue: task.due }));
+  return <div className="view">
+    <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`} title="Tasks" description={workspaceId === "personal" ? "Personal work and visible Indelitech commitments, managed as the same records." : "Indelitech-owned work only, with business attention and deadlines in view."} />
+    <QuickTaskAdd workspaceId={workspaceId} onAdd={(task) => setTasks((values) => [task, ...values])} />
+    <div className="task-summary reveal delay-1"><div><b>{open.length}</b><span>open tasks</span></div><div><b>{open.filter((task) => task.due === localDateValue()).length}</b><span>due today</span></div><div><b>{open.filter((task) => task.recurrence !== "One-time").length}</b><span>repeating</span></div><div><b>{completed.length}</b><span>completed</span></div></div>
+    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} onComplete={() => complete(task)} onChange={(patch) => setTasks((values) => updateTaskItem(values, task.id, patch))} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
+    {completed.length > 0 && <details className="completed-list"><summary>{completed.length} completed</summary>{completed.map((task) => <div className="completed-row" key={task.id}><CheckCircle2 size={16} /><div className="completed-copy"><s>{task.title}</s><small>{task.completedAt ? `Completed ${formatDate(task.completedAt)}` : "Completed"} · was due {formatTaskDue(task.due)}{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}{task.seriesId !== undefined ? " · recurring occurrence" : ""}</small></div>{task.seriesId === undefined && <button aria-label={`Delete completed ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button>}</div>)}</details>}
+    {cancelled.length > 0 && <details className="completed-list"><summary>{cancelled.length} cancelled</summary>{cancelled.map((task) => <div className="completed-row" key={task.id}><X size={16} /><div className="completed-copy"><s>{task.title}</s><small>Cancelled · record preserved{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}</small></div><button aria-label={`Delete cancelled ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button></div>)}</details>}
+  </div>;
 }
 
 function TagEditor({
@@ -2244,9 +2009,11 @@ function settingsDraft(settings: PublicSettings): SettingsDraft {
 function SettingsView({
   settings,
   onSaved,
+  workspaceId,
 }: {
   settings: PublicSettings;
   onSaved: (settings: PublicSettings) => void;
+  workspaceId: ProductWorkspaceId;
 }) {
   const router = useRouter();
   const [section, setSection] = useState<SettingsSection>("general");
@@ -2418,9 +2185,9 @@ function SettingsView({
   return (
     <div className="view">
       <PageHeading
-        eyebrow="Make it yours"
+        eyebrow={`${WORKSPACES[workspaceId].displayName} workspace`}
         title="Settings"
-        description="A fresh install starts empty. Choose exactly what the dashboard reads and tracks."
+        description={`Configure how ${WORKSPACES[workspaceId].displayName} looks and works. Existing settings remain shared until their storage model is workspace-scoped.`}
         action={
           <button
             className="button button-primary"
@@ -3372,6 +3139,7 @@ function SettingsView({
 
 export function ControlCenter() {
   const [activeTab, setActiveTab] = useState<Tab>("today");
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<ProductWorkspaceId>(DEFAULT_WORKSPACE_ID);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settings, setSettings] = useState<PublicSettings>(emptySettings);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -3387,16 +3155,21 @@ export function ControlCenter() {
   const workspaceSaveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
+    window.queueMicrotask(() => {
+      try {
+        setActiveWorkspaceId(parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY)));
+      } catch {
+        setActiveWorkspaceId(DEFAULT_WORKSPACE_ID);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     window.queueMicrotask(() => {
-      const requested = new URLSearchParams(window.location.search).get(
-        "tab",
-      ) as Tab | null;
-      if (
-        requested &&
-        [...nav.map((item) => item.id), "settings"].includes(requested)
-      )
-        setActiveTab(requested);
+      const requested = new URLSearchParams(window.location.search).get("tab") as WorkspacePageId | null;
+      const persistedWorkspace = parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY));
+      if (requested && isWorkspacePageAvailable(persistedWorkspace, requested)) setActiveTab(requested);
     });
     const load = async () => {
       try {
@@ -3528,6 +3301,20 @@ export function ControlCenter() {
     window.history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const selectWorkspace = (workspaceId: ProductWorkspaceId) => {
+    setActiveWorkspaceId(workspaceId);
+    setMobileOpen(false);
+    if (!isWorkspacePageAvailable(workspaceId, activeTab as WorkspacePageId)) setActiveTab("today");
+    try {
+      window.localStorage.setItem(WORKSPACE_SELECTION_STORAGE_KEY, workspaceId);
+    } catch {
+      // Workspace selection persistence is optional UI convenience only.
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("workspace", workspaceId);
+    if (!isWorkspacePageAvailable(workspaceId, activeTab as WorkspacePageId)) url.searchParams.set("tab", "today");
+    window.history.replaceState({}, "", url);
+  };
   const addReminder = (title: string, note: string, url?: string) => {
     let source = "Manual";
     if (url) {
@@ -3569,7 +3356,8 @@ export function ControlCenter() {
           ? localDateValue(new Date(item.dueAt))
           : localDateValue(),
         recurrence: "One-time",
-        priority: item.kind === "action" ? "High" : "Normal",
+        priority: item.kind === "action" ? "HIGH" : "MEDIUM",
+        primaryWorkspaceId: activeWorkspaceId,
         done: false,
         createdAt: new Date().toISOString(),
       },
@@ -3594,17 +3382,15 @@ export function ControlCenter() {
   ].filter(Boolean).length;
   const current = useMemo(
     () =>
-      activeTab === "settings"
-        ? "Settings"
-        : nav.find((item) => item.id === activeTab)?.label,
-    [activeTab],
+      WORKSPACES[activeWorkspaceId].navigation.find((item) => item.id === activeTab)?.label,
+    [activeTab, activeWorkspaceId],
   );
 
   if (bootstrapStatus === "loading")
     return (
       <div className="app-loading">
         <Activity />
-        <span>Opening Control Center</span>
+        <span>Opening Daily Command Center</span>
       </div>
     );
   if (bootstrapStatus === "error")
@@ -3613,7 +3399,7 @@ export function ControlCenter() {
         <Panel className="recovery-panel">
           <CircleAlert size={30} />
           <p className="eyebrow">Local data protected</p>
-          <h1>Control Center could not open safely</h1>
+          <h1>Daily Command Center could not open safely</h1>
           <p>{bootstrapError}</p>
           <p>
             No settings, tasks, or reminders were overwritten. Retry the read,
@@ -3635,22 +3421,23 @@ export function ControlCenter() {
       </div>
     );
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-workspace={activeWorkspaceId} data-workspace-theme={WORKSPACES[activeWorkspaceId].themeKey}>
       <header className="topbar">
-        <div
+        <button
+          type="button"
           className="brand-lockup"
           onClick={() => goTo("today")}
-          role="button"
-          tabIndex={0}
+          aria-label="Open Today"
         >
           <span className="brand-mark">
             <Activity size={18} />
           </span>
           <span>
-            <b>{settings.general.workspaceName.toUpperCase()}</b>
-            <small>CONTROL CENTER</small>
+            <b>DAILY COMMAND CENTER</b>
+            <small>MARC&apos;S COMMAND CENTER</small>
           </span>
-        </div>
+        </button>
+        <WorkspaceSwitcher value={activeWorkspaceId} onChange={selectWorkspace} />
         <button
           className="mobile-menu"
           onClick={() => setMobileOpen((value) => !value)}
@@ -3662,13 +3449,14 @@ export function ControlCenter() {
           className={classNames("main-nav", mobileOpen && "is-open")}
           aria-label="Main navigation"
         >
-          {nav.map((item) => {
-            const Icon = item.icon;
+          {WORKSPACES[activeWorkspaceId].navigation.map((item) => {
+            const Icon = navigationIcons[item.icon];
             return (
               <button
                 key={item.id}
                 className={activeTab === item.id ? "active" : ""}
                 onClick={() => goTo(item.id)}
+                aria-current={activeTab === item.id ? "page" : undefined}
               >
                 <Icon size={15} />
                 <span>{item.label}</span>
@@ -3709,7 +3497,10 @@ export function ControlCenter() {
             <span>{workspaceSaveError}</span>
           </div>
         )}
-        {activeTab === "today" && (
+        {activeTab === "today" && activeWorkspaceId === "personal" && (
+          <PersonalTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} />
+        )}
+        {activeTab === "today" && activeWorkspaceId === "indelitech" && (
           <TodayView
             settings={settings}
             tasks={tasks}
@@ -3724,6 +3515,26 @@ export function ControlCenter() {
               addReminder(story.title, story.summary, story.url)
             }
             openSettings={() => openSettings("industry")}
+          />
+        )}{" "}
+        {activeTab === "calendar" && (
+          <WorkspacePageShell
+            eyebrow={`${WORKSPACES[activeWorkspaceId].displayName} · Calendar`}
+            title="Calendar"
+            description={activeWorkspaceId === "personal" ? "A future unified view of personal and relevant Indelitech commitments." : "A focused business calendar for Indelitech operations."}
+            icon={<CalendarDays size={25} />}
+            emptyTitle={activeWorkspaceId === "personal" ? "Your unified calendar will live here" : "Your business calendar will live here"}
+            emptyDescription="Calendar integration is intentionally deferred. No Google account is connected and no placeholder events are shown."
+          />
+        )}{" "}
+        {activeTab === "news" && activeWorkspaceId === "personal" && (
+          <WorkspacePageShell
+            eyebrow="Personal · News"
+            title="News"
+            description="A future personal news and intelligence feed shaped around your interests."
+            icon={<Newspaper size={25} />}
+            emptyTitle="A useful personal briefing, not recycled business news"
+            emptyDescription="Personal sources and curation are intentionally deferred so this view never misrepresents the existing Indelitech industry feed."
           />
         )}{" "}
         {activeTab === "mentions" && (
@@ -3765,11 +3576,12 @@ export function ControlCenter() {
           />
         )}{" "}
         {activeTab === "tasks" && (
-          <TasksView tasks={tasks} setTasks={setTasks} />
+          <TasksView tasks={tasks} setTasks={setTasks} workspaceId={activeWorkspaceId} />
         )}{" "}
         {activeTab === "settings" && (
           <SettingsView
             settings={settings}
+            workspaceId={activeWorkspaceId}
             onSaved={(saved) => {
               clearLiveDataCache();
               setSettings(saved);
@@ -3778,9 +3590,9 @@ export function ControlCenter() {
         )}
       </main>
       <footer>
-        <span>{settings.general.workspaceName}</span>
+        <span>Marc&apos;s Daily Command Center</span>
         <i />
-        <span>{current}</span>
+        <span>{WORKSPACES[activeWorkspaceId].displayName} · {current}</span>
         <small>Local-only · Saved to this computer</small>
       </footer>
       {toast && (

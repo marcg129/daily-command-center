@@ -267,8 +267,17 @@ export type TaskItem = {
   description: string;
   due: string;
   recurrence: string;
+  /** Canonical values are LOW/MEDIUM/HIGH; string remains accepted for legacy imports. */
   priority: string;
+  /** Missing ownership is accepted only at legacy read boundaries and normalizes to Personal. */
+  primaryWorkspaceId?: import("./runtime/context").ProductWorkspaceId;
   done: boolean;
+  type?: import("./runtime/hosted-tasks").TaskType;
+  status?: import("./runtime/hosted-tasks").TaskStatus;
+  remindAt?: string;
+  followUpAt?: string;
+  person?: string;
+  updatedAt?: string;
   createdAt?: string;
   completedAt?: string;
   seriesId?: string | number;
