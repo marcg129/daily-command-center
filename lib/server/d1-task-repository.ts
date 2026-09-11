@@ -1,4 +1,4 @@
-import { INDELITECH_WORKSPACE_ID, isProductWorkspaceId, PERSONAL_WORKSPACE_ID, requireRequestContext, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
+import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, requireHostedContext, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import type { HostedTaskRepository } from "@/lib/runtime/hosted-task-repository";
 import type { HostedTask } from "@/lib/runtime/hosted-tasks";
@@ -8,12 +8,6 @@ const columns = `task_id, primary_workspace_id, title, context, category, projec
  due_at, due_is_date_only, remind_at, follow_up_at, estimated_duration, recurrence, series_id, recurrence_anchor_day, dependency, created_at,
  completed_at, source, source_context, last_notified_at, updated_at`;
 const selectedColumns = columns.split(",").map((column) => `t.${column.trim()}`).join(", ");
-
-function productContext(context: RequestContext): ProductWorkspaceId {
-  requireRequestContext(context);
-  if (!isProductWorkspaceId(context.workspaceId)) throw new Error("A hosted product workspace context is required.");
-  return context.workspaceId;
-}
 
 function visibilityAllowed(primary: ProductWorkspaceId, viewing: ProductWorkspaceId) {
   return primary === viewing || (primary === INDELITECH_WORKSPACE_ID && viewing === PERSONAL_WORKSPACE_ID);
@@ -47,7 +41,7 @@ export class D1TaskRepository implements HostedTaskRepository {
   constructor(private readonly database: D1Database) {}
 
   async list(context: RequestContext) {
-    const workspaceId = productContext(context);
+    const workspaceId = requireHostedContext(context);
     const rows = (await this.database.prepare(`SELECT ${selectedColumns} FROM tasks t JOIN task_visibility v ON v.task_id=t.task_id
       WHERE v.workspace_id=? AND (t.primary_workspace_id=? OR (t.primary_workspace_id='indelitech' AND ?='personal'))
       ORDER BY t.updated_at DESC, t.task_id`).bind(workspaceId, workspaceId, workspaceId).all<TaskRow>()).results ?? [];
@@ -55,7 +49,7 @@ export class D1TaskRepository implements HostedTaskRepository {
   }
 
   async get(context: RequestContext, taskId: string) {
-    const workspaceId = productContext(context);
+    const workspaceId = requireHostedContext(context);
     const row = await this.database.prepare(`SELECT ${selectedColumns} FROM tasks t JOIN task_visibility v ON v.task_id=t.task_id
       WHERE t.task_id=? AND v.workspace_id=? AND (t.primary_workspace_id=? OR (t.primary_workspace_id='indelitech' AND ?='personal'))`)
       .bind(taskId, workspaceId, workspaceId, workspaceId).first<TaskRow>();
@@ -65,7 +59,7 @@ export class D1TaskRepository implements HostedTaskRepository {
   }
 
   async create(context: RequestContext, task: HostedTask, visibleIn: readonly ProductWorkspaceId[]) {
-    const workspaceId = productContext(context);
+    const workspaceId = requireHostedContext(context);
     if (task.primaryWorkspaceId !== workspaceId) throw new Error("A task must be created by its primary workspace.");
     const visibility = [...new Set(visibleIn)];
     if (!visibility.includes(workspaceId) || visibility.some((target) => !visibilityAllowed(workspaceId, target))) {
@@ -80,7 +74,7 @@ export class D1TaskRepository implements HostedTaskRepository {
   }
 
   async update(context: RequestContext, task: HostedTask) {
-    const workspaceId = productContext(context);
+    const workspaceId = requireHostedContext(context);
     const existing = await this.get(context, task.taskId);
     if (!existing || existing.primaryWorkspaceId !== task.primaryWorkspaceId || task.createdAt !== existing.createdAt) throw new Error("Task access denied.");
     const mutable = values(task).slice(2);

@@ -9,6 +9,7 @@ import { FakeWorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import { transformLegacyWorkspace } from "@/lib/runtime/legacy-import";
 import { D1TaskRepository } from "@/lib/server/d1-task-repository";
 import { D1CollectorSnapshotRepository } from "@/lib/server/d1-collector-snapshot-repository";
+import { principalId } from "@/lib/runtime/session";
 
 class Statement implements D1PreparedStatement {
   private values: unknown[] = [];
@@ -23,7 +24,7 @@ class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql"])
+    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -103,9 +104,9 @@ test("collector D1 snapshots are isolated by workspace and reject missing contex
 test("fake resolver authenticates grants rather than trusting requested workspace", async () => {
   const resolver = new FakeWorkspaceResolver(new Map([["personal-owner", new Set([PERSONAL_WORKSPACE_ID])], ["both", new Set([PERSONAL_WORKSPACE_ID, INDELITECH_WORKSPACE_ID])]]));
   await assert.rejects(resolver.resolve(null, "personal"), /Authentication/);
-  await assert.rejects(resolver.resolve({ principalId: "unknown" }, "personal"), /denied/);
-  await assert.rejects(resolver.resolve({ principalId: "personal-owner" }, "indelitech"), /denied/);
-  assert.notDeepEqual(await resolver.resolve({ principalId: "both" }, "personal"), await resolver.resolve({ principalId: "both" }, "indelitech"));
+  await assert.rejects(resolver.resolve({ principalId: principalId("unknown") }, "personal"), /denied/);
+  await assert.rejects(resolver.resolve({ principalId: principalId("personal-owner") }, "indelitech"), /denied/);
+  assert.notDeepEqual(await resolver.resolve({ principalId: principalId("both") }, "personal"), await resolver.resolve({ principalId: principalId("both") }, "indelitech"));
 });
 
 test("legacy import requires policy, preserves recurrence history, date-only values and deterministic IDs", () => {
