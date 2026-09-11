@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import type { D1Database, D1PreparedStatement, D1Result } from "@/lib/runtime/d1";
-import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, legacyRequestContext } from "@/lib/runtime/context";
+import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, legacyRequestContext, requireHostedContext } from "@/lib/runtime/context";
 import { InMemorySessionProvider, principalId, requireAuthenticatedSession, type AuthenticatedSession } from "@/lib/runtime/session";
 import { FakeWorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import { applicationId, InMemorySecretProvider, secretId, secretName, SecretAuthorizationService } from "@/lib/runtime/secrets";
@@ -30,6 +30,15 @@ const alice = { principalId: principalId("principal-alice") };
 const bob = { principalId: principalId("principal-bob") };
 const session: AuthenticatedSession = { sessionId: "session-1", principal: alice, expiresAt: "2099-01-01T00:00:00Z" };
 
+test("the neutral hosted-context guard accepts only product workspaces", () => {
+  assert.equal(requireHostedContext({ workspaceId: PERSONAL_WORKSPACE_ID }), PERSONAL_WORKSPACE_ID);
+  assert.equal(requireHostedContext({ workspaceId: INDELITECH_WORKSPACE_ID }), INDELITECH_WORKSPACE_ID);
+  assert.throws(() => requireHostedContext(legacyRequestContext()), /hosted product/);
+  assert.throws(() => requireHostedContext({ workspaceId: "invented" }), /valid workspace context/);
+  assert.throws(() => requireHostedContext(null), /valid workspace context/);
+  assert.throws(() => requireHostedContext(undefined), /valid workspace context/);
+});
+
 test("sessions fail closed and authentication remains separate from workspace grants", async () => {
   const provider = new InMemorySessionProvider(new Map([["opaque-session", session]]));
   assert.equal(await provider.getSession(null), null);
@@ -42,7 +51,12 @@ test("sessions fail closed and authentication remains separate from workspace gr
 });
 
 test("secret authorization separates application, user, and exact workspace ownership", async () => {
-  const provider = new InMemorySecretProvider(); const service = new SecretAuthorizationService(provider);
+  const provider = new InMemorySecretProvider();
+  const resolver = new FakeWorkspaceResolver(new Map([
+    [alice.principalId, new Set([PERSONAL_WORKSPACE_ID])],
+    [bob.principalId, new Set([PERSONAL_WORKSPACE_ID, INDELITECH_WORKSPACE_ID])],
+  ]));
+  const service = new SecretAuthorizationService(provider, resolver);
   const app = applicationId("collector-service");
   const appSecret = { id: secretId("secret-app"), name: secretName("api-key"), owner: { type: "APPLICATION" as const, applicationId: app } };
   const userSecret = { id: secretId("secret-user"), name: secretName("oauth-token"), owner: { type: "USER" as const, principalId: alice.principalId } };
@@ -53,10 +67,15 @@ test("secret authorization separates application, user, and exact workspace owne
   await service.set(personalAccess, userSecret, "not-a-real-token");
   await assert.rejects(service.get({ principal: bob, context: personalAccess.context }, userSecret), /User/);
   await assert.rejects(service.set(personalAccess, workspaceSecret, "not-a-real-token"), /Workspace/);
-  await service.set({ principal: alice, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret, "not-a-real-token");
-  assert.equal(await service.get({ principal: alice, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret), "not-a-real-token");
+  // A manually constructed matching context is not authorization without a resolver grant.
+  await assert.rejects(service.set({ principal: alice, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret, "not-a-real-token"), /denied/);
+  await service.set({ principal: bob, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret, "not-a-real-token");
+  assert.equal(await service.get({ principal: bob, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret), "not-a-real-token");
+  await assert.rejects(service.get({ principal: bob, context: { workspaceId: PERSONAL_WORKSPACE_ID } }, workspaceSecret), /Workspace secret/);
   // Personal may see a shared Indelitech content record, but that context still cannot read its secret.
   await assert.rejects(service.get(personalAccess, workspaceSecret), /Workspace/);
+  await assert.rejects(service.get({ principal: { principalId: principalId("principal-unknown") }, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret), /denied/);
+  await assert.rejects(service.get({ principal: null as never, context: { workspaceId: INDELITECH_WORKSPACE_ID } }, workspaceSecret), /Authentication/);
   assert.equal(JSON.stringify([...provider.metadata.values()]).includes("not-a-real"), false);
 });
 

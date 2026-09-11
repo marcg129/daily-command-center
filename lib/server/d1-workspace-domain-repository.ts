@@ -1,6 +1,5 @@
-import { requireHostedContext } from "@/lib/server/d1-task-repository";
 import type { D1Database } from "@/lib/runtime/d1";
-import type { RequestContext } from "@/lib/runtime/context";
+import { requireHostedContext, type RequestContext } from "@/lib/runtime/context";
 import type { WorkspaceDomain, WorkspaceDomainRecord, WorkspaceDomainRepository } from "@/lib/runtime/workspace-domain-repository";
 
 export class D1WorkspaceDomainRepository implements WorkspaceDomainRepository {

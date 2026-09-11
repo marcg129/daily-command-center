@@ -21,6 +21,12 @@ export function requireRequestContext(context: RequestContext | null | undefined
   if (!context || !isWorkspaceId(context.workspaceId)) throw new Error("A valid workspace context is required.");
 }
 
+export function requireHostedContext(context: RequestContext | null | undefined): ProductWorkspaceId {
+  requireRequestContext(context);
+  if (!isProductWorkspaceId(context.workspaceId)) throw new Error("A hosted product workspace context is required.");
+  return context.workspaceId;
+}
+
 export function legacyRequestContext(): RequestContext {
   return { workspaceId: LEGACY_WORKSPACE_ID };
 }

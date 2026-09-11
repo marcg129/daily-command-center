@@ -1,4 +1,4 @@
-import { INDELITECH_WORKSPACE_ID, isProductWorkspaceId, PERSONAL_WORKSPACE_ID, requireRequestContext, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
+import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, requireHostedContext, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import type { HostedTaskRepository } from "@/lib/runtime/hosted-task-repository";
 import type { HostedTask } from "@/lib/runtime/hosted-tasks";
@@ -8,12 +8,6 @@ const columns = `task_id, primary_workspace_id, title, context, category, projec
  due_at, due_is_date_only, remind_at, follow_up_at, estimated_duration, recurrence, series_id, recurrence_anchor_day, dependency, created_at,
  completed_at, source, source_context, last_notified_at, updated_at`;
 const selectedColumns = columns.split(",").map((column) => `t.${column.trim()}`).join(", ");
-
-export function requireHostedContext(context: RequestContext): ProductWorkspaceId {
-  requireRequestContext(context);
-  if (!isProductWorkspaceId(context.workspaceId)) throw new Error("A hosted product workspace context is required.");
-  return context.workspaceId;
-}
 
 function visibilityAllowed(primary: ProductWorkspaceId, viewing: ProductWorkspaceId) {
   return primary === viewing || (primary === INDELITECH_WORKSPACE_ID && viewing === PERSONAL_WORKSPACE_ID);

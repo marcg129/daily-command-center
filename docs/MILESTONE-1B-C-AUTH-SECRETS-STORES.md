@@ -43,9 +43,9 @@ SecretProvider
 
 - `APPLICATION` uses a typed `ApplicationId` and is accessible only when the caller presents the exact permitted application-service identity.
 - `USER` uses a typed `PrincipalId` and is accessible only to that authenticated principal.
-- `WORKSPACE` uses a `ProductWorkspaceId` and is accessible only in a request context for that exact workspace.
+- `WORKSPACE` uses a `ProductWorkspaceId` and is accessible only when the active context matches that exact workspace **and** `WorkspaceResolver` independently verifies that the authenticated principal has an explicit grant to it.
 
-Secret IDs and names are validated typed identifiers. `SecretAuthorizationService` applies authorization before `get`, `set`, or `delete`. It does not consult content visibility. Therefore Personal visibility into an Indelitech task/content record cannot authorize an Indelitech workspace secret.
+Secret IDs and names are validated typed identifiers. `SecretAuthorizationService` applies authorization before `get`, `set`, or `delete`. For workspace secrets it first requires the supplied active context to match the owner, then asks the injected `WorkspaceResolver` to resolve that principal against the owner workspace, and confirms the independently resolved context matches both. A directly constructed `{ workspaceId: "indelitech" }` is not authorization. The service does not consult content visibility, so Personal visibility into an Indelitech task/content record cannot authorize an Indelitech workspace secret.
 
 The application-facing `SecretProvider` accepts plaintext only at its narrow method boundary and leaves protection to the provider. `InMemorySecretProvider` is a test fake, not encryption and not a production recommendation. Its plaintext map is process-only; its separately observable metadata contains only identity, owner, provider reference, and timestamps. No keys or genuine credentials are stored in source or fixtures. A future provider must use a reviewed platform encryption/key-management facility; homemade cryptography is explicitly out of scope.
 
@@ -108,7 +108,7 @@ The exact migrations and adapter SQL continue to run in contract tests through t
 
 ## Tests added
 
-New contract coverage proves missing/malformed sessions fail closed; opaque valid authentication does not confer workspace access; supplied workspace identity is not authorization; application/user/workspace secret policies deny cross-owner access; Personal roll-up visibility cannot read an Indelitech secret; hosted secret metadata omits plaintext; every remaining domain isolates equal keys between product workspaces; hosted adapters reject missing/legacy contexts; and the compatibility local adapter preserves legacy-only behavior.
+New contract coverage proves missing/malformed sessions fail closed; opaque valid authentication does not confer workspace access; supplied workspace identity is not authorization; application/user/workspace secret policies deny cross-owner access; a manually constructed matching workspace context cannot bypass a missing principal grant; a dual-granted principal succeeds only in the matching active context; missing/unknown grants fail closed; Personal roll-up visibility cannot read an Indelitech secret; hosted secret metadata omits plaintext; every remaining domain isolates equal keys between product workspaces; hosted adapters reject missing/legacy contexts; and the compatibility local adapter preserves legacy-only behavior.
 
 ## Remaining blockers
 

@@ -1,5 +1,6 @@
 import type { ProductWorkspaceId, RequestContext } from "@/lib/runtime/context";
 import type { AuthenticatedPrincipal, PrincipalId } from "@/lib/runtime/session";
+import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 
 export type ApplicationId = string & { readonly __applicationId: unique symbol };
 export type SecretId = string & { readonly __secretId: unique symbol };
@@ -59,17 +60,23 @@ export type SecretAccess = Readonly<{
 }>;
 
 export class SecretAuthorizationService {
-  constructor(private readonly provider: SecretProvider) {}
-  private authorize(access: SecretAccess, owner: SecretOwner) {
+  constructor(
+    private readonly provider: SecretProvider,
+    private readonly workspaceResolver: WorkspaceResolver,
+  ) {}
+  private async authorize(access: SecretAccess, owner: SecretOwner) {
     if (owner.type === "APPLICATION") {
       if (access.applicationService !== owner.applicationId) throw new Error("Application secret access denied.");
     } else if (owner.type === "USER") {
       if (access.principal.principalId !== owner.principalId) throw new Error("User secret access denied.");
-    } else if (access.context.workspaceId !== owner.workspaceId) {
-      throw new Error("Workspace secret access denied.");
+    } else {
+      if (access.context.workspaceId !== owner.workspaceId) throw new Error("Workspace secret access denied.");
+      const authorizedContext = await this.workspaceResolver.resolve(access.principal, owner.workspaceId);
+      if (authorizedContext.workspaceId !== owner.workspaceId || authorizedContext.workspaceId !== access.context.workspaceId)
+        throw new Error("Workspace secret access denied.");
     }
   }
-  async get(access: SecretAccess, secret: SecretIdentity) { this.authorize(access, secret.owner); return this.provider.get(secret); }
-  async set(access: SecretAccess, secret: SecretIdentity, plaintext: string) { this.authorize(access, secret.owner); await this.provider.set(secret, plaintext); }
-  async delete(access: SecretAccess, secret: SecretIdentity) { this.authorize(access, secret.owner); await this.provider.delete(secret); }
+  async get(access: SecretAccess, secret: SecretIdentity) { await this.authorize(access, secret.owner); return this.provider.get(secret); }
+  async set(access: SecretAccess, secret: SecretIdentity, plaintext: string) { await this.authorize(access, secret.owner); await this.provider.set(secret, plaintext); }
+  async delete(access: SecretAccess, secret: SecretIdentity) { await this.authorize(access, secret.owner); await this.provider.delete(secret); }
 }
