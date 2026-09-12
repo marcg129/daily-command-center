@@ -162,3 +162,12 @@ test("MCP tool metadata encodes preview-before-confirmation and bounded private 
   assert.match(source, /readOnlyHint: false/);
   assert.doesNotMatch(source, /api[_-]?key|bearer-token bypass|Access-Control-Allow-Origin/i);
 });
+
+test("deployment documentation uses the account's canonical workers.dev subdomain", async () => {
+  const documentation = await readFile(
+    new URL("../docs/MILESTONE-1D-F-CHAT-CONFIRMED-CAPTURE.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(documentation, /https:\/\/daily-command-center-mcp\.mecg129\.workers\.dev\/mcp/);
+  assert.doesNotMatch(documentation, /daily-command-center-mcp\.marcg129\.workers\.dev/);
+});

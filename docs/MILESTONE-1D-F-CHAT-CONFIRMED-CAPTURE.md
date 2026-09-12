@@ -58,7 +58,7 @@ If `MCP_POLICY_AUD` has not been configured, the Worker fails closed with `503`.
 
 The normal successful-main deployment publishes `daily-command-center-mcp` from `wrangler.mcp.jsonc`. Its endpoint is:
 
-`https://daily-command-center-mcp.marcg129.workers.dev/mcp`
+`https://daily-command-center-mcp.mecg129.workers.dev/mcp`
 
 After the first deployment:
 
