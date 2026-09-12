@@ -48,3 +48,15 @@ test("hosted proxy rejects cross-origin browser calls but permits no-Origin serv
     headers: { host: "command.example.com", "x-principal-id": "pretend-admin" },
   })).status, 200, "proxy does not treat client identity as auth; the route still verifies Access JWT and grants");
 });
+
+test("public request URL cannot be downgraded to local mode by spoofing Host", () => {
+  const legacy = new NextRequest("https://command.example.com/api/settings", {
+    headers: { host: "localhost:3000" },
+  });
+  assert.equal(proxy(legacy).status, 403);
+
+  const hostedCrossSite = new NextRequest("https://command.example.com/api/hosted/workspace?workspaceId=personal", {
+    headers: { host: "evil.example.com", origin: "https://evil.example.com" },
+  });
+  assert.equal(proxy(hostedCrossSite).status, 403);
+});
