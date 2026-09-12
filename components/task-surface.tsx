@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bell, CalendarDays, Check, ListTodo, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
@@ -87,6 +87,26 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
   const [reminder, setReminder] = useState(task.remindAt ? isoToProductWallClock(task.remindAt) : "");
   const [person, setPerson] = useState(task.person || "");
   const [followUp, setFollowUp] = useState(task.followUpAt ? isoToProductWallClock(task.followUpAt) : "");
+  const actionsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const actions = actionsRef.current;
+      if (!actions?.open) return;
+      if (event.target instanceof Node && !actions.contains(event.target)) actions.open = false;
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      const actions = actionsRef.current;
+      if (event.key !== "Escape" || !actions?.open) return;
+      actions.open = false;
+      actions.querySelector<HTMLElement>("summary")?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
   const convert = (value: string) => { try { setError(""); return productWallClockToIso(value); } catch (caught) { setError(caught instanceof Error ? caught.message : "Invalid time"); } };
   const setPreset = (preset: "LATER_TODAY" | "TOMORROW_MORNING" | "NEXT_BUSINESS_DAY") => {
     const iso = reminderPresetIso(preset); setReminder(isoToProductWallClock(iso)); onChange({ remindAt: iso });
@@ -95,7 +115,7 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
     <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
-    <details className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
+    <details ref={actionsRef} className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
       <strong>Task actions</strong>
       {status === "WAITING" ? <button onClick={() => onChange({ status: "OPEN", type: taskBaseType(task), followUpAt: undefined })}>Resume</button> : <fieldset><legend>Mark waiting</legend><input aria-label="Waiting for person" placeholder="Waiting for" value={person} onChange={(event) => setPerson(event.target.value)} /><input aria-label="Follow-up date and time" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><button disabled={!person.trim() || !followUp} onClick={() => { const iso = convert(followUp); if (iso) onChange({ status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: iso }); }}>Mark waiting</button></fieldset>}
       <fieldset><legend><Bell size={12} /> Reminder timing</legend><input aria-label="Reminder date and time" type="datetime-local" value={reminder} onChange={(event) => setReminder(event.target.value)} /><button disabled={!reminder} onClick={() => { const iso = convert(reminder); if (iso) onChange({ remindAt: iso }); }}>Set / change reminder</button><div className="task-presets"><button onClick={() => setPreset("LATER_TODAY")}>Later today</button><button onClick={() => setPreset("TOMORROW_MORNING")}>Tomorrow morning</button><button onClick={() => setPreset("NEXT_BUSINESS_DAY")}>Next business day</button></div></fieldset>
