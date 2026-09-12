@@ -61,6 +61,16 @@ test("45-day horizon honors every boundary and excludes completed, unscheduled, 
   assert.equal([...excluded.values()].flat().length, 0);
 });
 
+test("hosted timestamp due values remain actionable in attention and horizon", () => {
+  const now = new Date("2026-09-11T19:00:00Z");
+  const overdue = item({ id: "timestamp-overdue", due: "2026-09-11T14:00:00-04:00", priority: "LOW" });
+  const upcoming = item({ id: "timestamp-upcoming", due: "2026-09-12T14:00:00-04:00" });
+  assert.equal(taskIsOverdue(overdue, now), true);
+  const horizon = taskHorizon([overdue, upcoming], now);
+  assert.deepEqual(horizon.get("OVERDUE")?.map(({ id }) => id), ["timestamp-overdue"]);
+  assert.deepEqual(horizon.get("NEXT_7_DAYS")?.map(({ id }) => id), ["timestamp-upcoming"]);
+});
+
 test("legacy Today due values remain in the product day's horizon", () => {
   const now = new Date("2026-09-12T01:00:00Z");
   const [legacy] = cleanTaskItems([{ id: "legacy", title: "Legacy task" }]);
