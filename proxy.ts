@@ -1,19 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isLoopbackHostname } from "@/lib/runtime/browser-runtime";
 
-const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-
-function isLoopback(value: string) {
+function requestHostname(request: NextRequest) {
   try {
-    return loopbackHosts.has(new URL(value).hostname.toLowerCase());
+    return new URL(request.url).hostname;
   } catch {
-    return false;
+    return "";
   }
 }
 
-function isSameOrigin(value: string, request: NextRequest) {
+function isSameOrigin(value: string, request: NextRequest, local: boolean) {
   try {
     const requestUrl = new URL(request.url);
-    requestUrl.host = request.headers.get("host") || requestUrl.host;
+    if (local) {
+      const localHost = request.headers.get("host");
+      if (localHost) requestUrl.host = localHost;
+    }
     return new URL(value).origin === requestUrl.origin;
   } catch {
     return false;
@@ -21,15 +23,20 @@ function isSameOrigin(value: string, request: NextRequest) {
 }
 
 export function proxy(request: NextRequest) {
-  const host = request.headers.get("host") || "";
-  if (!isLoopback(`http://${host}`)) {
+  const local = isLoopbackHostname(requestHostname(request));
+  const allowedHostedPaths = new Set([
+    "/api/hosted/workspace",
+    "/api/hosted/tasks/mutations",
+    "/api/hosted/tasks/capture",
+  ]);
+  if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
-      { error: "Control Center only accepts requests from this computer." },
+      { error: "This API is unavailable in hosted mode." },
       { status: 403 },
     );
   }
   const origin = request.headers.get("origin");
-  if (origin && !isSameOrigin(origin, request)) {
+  if (origin && !isSameOrigin(origin, request, local)) {
     return NextResponse.json(
       { error: "Cross-site requests are blocked." },
       { status: 403 },

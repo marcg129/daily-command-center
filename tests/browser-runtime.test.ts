@@ -1,0 +1,79 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  browserRuntimeMode,
+  hostedWorkspaceEndpoint,
+  isLoopbackHostname,
+  loadBrowserWorkspace,
+  taskMutationEndpoint,
+} from "@/lib/runtime/browser-runtime";
+import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
+import { readFile } from "node:fs/promises";
+
+const workspace = { initialized: true, legacyBrowserImportAllowed: false, reminders: [], tasks: [] };
+const settings = { general: { workspaceName: "Test" } };
+
+test("browser mode recognizes only the specified loopback hostnames", () => {
+  for (const hostname of ["localhost", "LOCALHOST", "127.0.0.1", "::1", "[::1]"])
+    assert.equal(isLoopbackHostname(hostname), true);
+  for (const hostname of ["app.example.com", "0.0.0.0", "127.0.0.2", "localhost.example.com", ""])
+    assert.equal(browserRuntimeMode(hostname), "hosted");
+});
+
+test("local bootstrap reads settings and workspace while hosted bootstrap reads only its workspace", async () => {
+  const localCalls: Array<{ url: string; init?: RequestInit }> = [];
+  const localFetch = async (url: string, init?: RequestInit) => {
+    localCalls.push({ url, init });
+    return Response.json(url === "/api/settings" ? settings : workspace);
+  };
+  const local = await loadBrowserWorkspace(localFetch, "local", "personal");
+  assert.deepEqual(local.settings, settings);
+  assert.deepEqual(localCalls.map(({ url }) => url).sort(), ["/api/settings", "/api/workspace"]);
+  assert.ok(localCalls.every(({ init }) => !init?.method || init.method === "GET"));
+
+  const hostedCalls: string[] = [];
+  const hosted = await loadBrowserWorkspace(async (url) => {
+    hostedCalls.push(url);
+    return Response.json(workspace);
+  }, "hosted", "indelitech");
+  assert.equal(hosted.settings, undefined);
+  assert.deepEqual(hostedCalls, ["/api/hosted/workspace?workspaceId=indelitech"]);
+});
+
+test("hosted workspace switches and task writes retain explicit workspace endpoints", async () => {
+  assert.equal(hostedWorkspaceEndpoint("personal"), "/api/hosted/workspace?workspaceId=personal");
+  assert.equal(hostedWorkspaceEndpoint("indelitech"), "/api/hosted/workspace?workspaceId=indelitech");
+  assert.equal(taskMutationEndpoint("local", "personal"), "/api/tasks/mutations");
+  assert.equal(taskMutationEndpoint("hosted", "personal"), "/api/hosted/tasks/mutations?workspaceId=personal");
+
+  const queue = new OrderedSaveQueue();
+  const calls: string[] = [];
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  const enqueueFor = (workspaceId: "personal" | "indelitech") => queue.enqueue(async () => {
+    calls.push(taskMutationEndpoint("hosted", workspaceId));
+    if (workspaceId === "personal") await blocked;
+  });
+  const first = enqueueFor("personal");
+  const second = enqueueFor("indelitech");
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(calls, [
+    "/api/hosted/tasks/mutations?workspaceId=personal",
+    "/api/hosted/tasks/mutations?workspaceId=indelitech",
+  ]);
+});
+
+test("hosted UI keeps task views and substitutes deferred shells for local-only modules", async () => {
+  const source = await readFile(new URL("../components/control-center.tsx", import.meta.url), "utf8");
+  assert.match(source, /runtimeMode === "hosted" \? <TaskFocusedTodayView/);
+  assert.match(source, /Hosted Intel is deferred/);
+  assert.match(source, /Hosted Mentions are deferred/);
+  assert.match(source, /Hosted Settings are deferred/);
+  assert.match(source, /activeTab === "industry" && runtimeMode === "local"/);
+  assert.match(source, /activeTab === "mentions" && runtimeMode === "local"/);
+  assert.match(source, /activeTab === "settings" && runtimeMode === "local"/);
+  assert.match(source, /runtimeMode !== "local"/);
+  assert.match(source, /lastScheduledTasks\.current === scheduledTasks/,
+    "an older hosted response must not overwrite a newer optimistic task snapshot");
+});
