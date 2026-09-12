@@ -46,7 +46,7 @@ class TestD1 implements D1Database {
     try {
       const results: D1Result<T>[] = [];
       for (const [index, statement] of statements.entries()) {
-        if (index === this.failBatchAt) throw new Error("private atomic failure");
+        if (index === this.failBatchAt) throw new Error("D1_ERROR: no such table: tasks");
         results.push(await statement.run<T>());
       }
       this.sqlite.exec("COMMIT");
