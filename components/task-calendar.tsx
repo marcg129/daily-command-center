@@ -59,7 +59,7 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
   const selectedEntries = selectedDate ? byDate.get(selectedDate) || [] : [];
   const moveMonth = (amount: number) => { setMonth((value) => shiftCalendarMonth(value, amount)); setSelectedDate(undefined); };
   const onMonthKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== "PageUp" && event.key !== "PageDown")) return;
+    if (event.defaultPrevented || (event.key !== "PageUp" && event.key !== "PageDown")) return;
     event.preventDefault();
     moveMonth(event.key === "PageUp" ? -1 : 1);
   };
