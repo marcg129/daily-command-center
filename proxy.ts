@@ -25,6 +25,7 @@ function isSameOrigin(value: string, request: NextRequest, local: boolean) {
 export function proxy(request: NextRequest) {
   const local = isLoopbackHostname(requestHostname(request));
   const allowedHostedPaths = new Set([
+    "/api/hosted/session",
     "/api/hosted/workspace",
     "/api/hosted/tasks/mutations",
     "/api/hosted/tasks/capture",
