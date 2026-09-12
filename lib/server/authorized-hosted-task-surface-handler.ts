@@ -13,9 +13,25 @@ function errorResponse(error: string, status: number) {
   return Response.json({ error }, { status });
 }
 
+const mutationValidationPatterns = [
+  /^At least one task mutation is required\.$/,
+  /^Unknown task mutation\.$/,
+  /^Hosted task mutation IDs must be non-empty strings\.$/,
+  /^A task ID may only appear once in a mutation batch\.$/,
+  /^Visible task .+ does not exist\.$/,
+  /^An update cannot change the task ID\.$/,
+  /^A task may only be created in the authorized primary workspace\.$/,
+  /^Invalid task visibility\.$/,
+  /^Task ID must be a non-empty string for hosted tasks\.$/,
+  /^Task series ID must be a non-empty string for hosted tasks\.$/,
+  /^Task workspace owner is invalid\.$/,
+  /^Task workspace ownership is immutable\.$/,
+  /^Task title is required\.$/,
+];
+
 function isMutationValidationError(error: unknown) {
-  return error instanceof TypeError || (error instanceof Error &&
-    /task|mutation|update|ownership|required|must|cannot|only|unknown|visible/i.test(error.message));
+  if (error instanceof TypeError) return true;
+  return error instanceof Error && mutationValidationPatterns.some((pattern) => pattern.test(error.message));
 }
 
 type AuthorizationResult =
