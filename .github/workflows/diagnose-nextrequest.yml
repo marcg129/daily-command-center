@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           node --input-type=module <<'EOF'
-          import { NextRequest } from 'next/server';
+          import { NextRequest } from 'next/server.js';
           const request = new NextRequest('http://127.0.0.1:3000/api/brief', {
             headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000' }
           });
