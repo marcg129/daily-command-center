@@ -56,7 +56,9 @@ If `MCP_POLICY_AUD` has not been configured, the Worker fails closed with `503`.
 
 ## Cloudflare setup
 
-The normal successful-main deployment publishes `daily-command-center-mcp` from `wrangler.mcp.jsonc`. Its endpoint is:
+After a pull request merges into `main`, the `Check` workflow validates the exact merged main SHA on Ubuntu, macOS, and Windows. Only a successful main check starts the protected Cloudflare deployment, which publishes both the web Worker and `daily-command-center-mcp`. Manual dispatch remains available for bootstrap and recovery.
+
+The MCP Worker is published from `wrangler.mcp.jsonc`. Its endpoint is:
 
 `https://daily-command-center-mcp.mecg129.workers.dev/mcp`
 
