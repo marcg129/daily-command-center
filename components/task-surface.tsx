@@ -27,6 +27,13 @@ function WorkspaceBadge({ task, viewing }: { task: TaskItem; viewing: ProductWor
     ? <span className="workspace-task-badge">Indelitech</span> : null;
 }
 
+function PriorityBadge({ priority }: { priority: TaskItem["priority"] }) {
+  const symbol = priority === "HIGH" ? "▲" : priority === "MEDIUM" ? "◆" : "—";
+  return <span className={`priority-badge priority-${priority.toLowerCase()}`} aria-label={`${priority.toLowerCase()} priority`}>
+    <span aria-hidden="true">{symbol}</span>{priority}
+  </span>;
+}
+
 export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorkspaceId; onAdd: (task: TaskItem) => void }) {
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
@@ -45,7 +52,7 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
     <div className="quick-task-main">
       <label><span>Quick add to {workspaceId === "personal" ? "Personal" : "Indelitech"}</span><input aria-label="Task title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to get done?" /></label>
       <label><span>Due {dueRequired ? "(required for repeats)" : "(optional)"}</span><input aria-label="Due date" type="date" value={due} required={dueRequired} aria-describedby={dueRequired && !due ? "recurring-due-help" : undefined} onChange={(event) => setDue(event.target.value)} /></label>
-      <label><span>Priority</span><select aria-label="Priority" value={priority} onChange={(event) => setPriority(event.target.value as "LOW" | "MEDIUM" | "HIGH")}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select></label>
+      <label><span>Priority</span><select className={`priority-select priority-${priority.toLowerCase()}`} aria-label="Priority" value={priority} onChange={(event) => setPriority(event.target.value as "LOW" | "MEDIUM" | "HIGH")}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select></label>
       <button className="button button-primary"><ListTodo size={15} /> Add task</button>
     </div>
     <button type="button" className="text-button" onClick={() => setMore((value) => !value)}>{more ? "Fewer options" : "More options"}</button>
@@ -57,7 +64,7 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
 export function TaskAttentionPanel({ tasks, workspaceId, onOpen }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpen: () => void }) {
   const attention = sortTaskAttention(tasks).slice(0, 5);
   return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Highest priority</h2></div><b>{tasks.filter(taskIsActive).length}</b></div>
-    {attention.length ? <div className="attention-list">{attention.map((task) => <button key={task.id} onClick={onOpen}><span><b>{task.title}</b><small>{taskAttentionLabel(task)} · {task.priority}</small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">No active tasks.</p>}
+    {attention.length ? <div className="attention-list">{attention.map((task) => <button key={task.id} onClick={onOpen}><span><b>{task.title}</b><small className="attention-meta"><span>{taskAttentionLabel(task)}</span><PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">No active tasks.</p>}
     <button className="text-button" onClick={onOpen}>Open task list</button>
   </section>;
 }
@@ -84,9 +91,9 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
   const setPreset = (preset: "LATER_TODAY" | "TOMORROW_MORNING" | "NEXT_BUSINESS_DAY") => {
     const iso = reminderPresetIso(preset); setReminder(isoToProductWallClock(iso)); onChange({ remindAt: iso });
   };
-  return <div className={`task-row ${overdue ? "is-overdue" : ""}`}>
+  return <div className={`task-row ${overdue ? "is-overdue" : ""}`} data-priority={task.priority.toLowerCase()}>
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
-    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small>{overdue ? "Overdue · " : ""}{task.due || "No due date"} · {task.priority} · {status}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</small></div>
+    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
     <details className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
       <strong>Task actions</strong>
