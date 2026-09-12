@@ -2,83 +2,88 @@ name: Patch hosted timestamp due compatibility
 
 on:
   push:
-    branches: [milestone/1e-d-hosted-task-surface]
+    branches:
+      - milestone/1e-d-hosted-task-surface
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out branch
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 24.19.0
-          cache: npm
-      - name: Apply focused timestamp-due compatibility fix
+      - name: Apply focused fix
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const fs = require('fs');
-          const tasksPath = 'lib/tasks.ts';
-          let tasks = fs.readFileSync(tasksPath, 'utf8');
-          const before = `function hostedShape(task: TaskItem, now: Date) {
-  return {
-    dueAt: task.due === "Today"
-      ? productDateValue(now)
-      : /^\\d{4}-\\d{2}-\\d{2}$/.test(task.due) ? task.due : null,
-    dueIsDateOnly: true,
-    status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),
-    priority: normalizeTaskPriority(task.priority),
-  };
-}`;
-          const after = `function hostedShape(task: TaskItem, now: Date) {
-  const isDateOnly = /^\\d{4}-\\d{2}-\\d{2}$/.test(task.due);
-  const isTimestamp = /^\\d{4}-\\d{2}-\\d{2}T/.test(task.due) && Number.isFinite(Date.parse(task.due));
-  return {
-    dueAt: task.due === "Today"
-      ? productDateValue(now)
-      : isDateOnly || isTimestamp ? task.due : null,
-    dueIsDateOnly: task.due === "Today" || isDateOnly,
-    status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),
-    priority: normalizeTaskPriority(task.priority),
-  };
-}`;
-          if (!tasks.includes(before)) throw new Error('Expected hostedShape block was not found');
-          tasks = tasks.replace(before, after);
-          fs.writeFileSync(tasksPath, tasks);
+          const path = 'lib/tasks.ts';
+          let text = fs.readFileSync(path, 'utf8');
+          const oldBlock = [
+            'function hostedShape(task: TaskItem, now: Date) {',
+            '  return {',
+            '    dueAt: task.due === "Today"',
+            '      ? productDateValue(now)',
+            '      : /^\\d{4}-\\d{2}-\\d{2}$/.test(task.due) ? task.due : null,',
+            '    dueIsDateOnly: true,',
+            '    status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),',
+            '    priority: normalizeTaskPriority(task.priority),',
+            '  };',
+            '}',
+          ].join('\n');
+          const newBlock = [
+            'function hostedShape(task: TaskItem, now: Date) {',
+            '  const isDateOnly = /^\\d{4}-\\d{2}-\\d{2}$/.test(task.due);',
+            '  const isTimestamp = /^\\d{4}-\\d{2}-\\d{2}T/.test(task.due) && Number.isFinite(Date.parse(task.due));',
+            '  return {',
+            '    dueAt: task.due === "Today"',
+            '      ? productDateValue(now)',
+            '      : isDateOnly || isTimestamp ? task.due : null,',
+            '    dueIsDateOnly: task.due === "Today" || isDateOnly,',
+            '    status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),',
+            '    priority: normalizeTaskPriority(task.priority),',
+            '  };',
+            '}',
+          ].join('\n');
+          if (!text.includes(oldBlock)) throw new Error('hostedShape block not found');
+          fs.writeFileSync(path, text.replace(oldBlock, newBlock));
 
           const testPath = 'tests/task-surface.test.ts';
-          let tests = fs.readFileSync(testPath, 'utf8');
-          const marker = `test("legacy Today due values remain in the product day's horizon", () => {`;
-          if (!tests.includes(marker)) throw new Error('Expected task-surface test marker was not found');
-          const regression = `test("hosted timestamp due values remain actionable in attention and horizon", () => {
-  const now = new Date("2026-09-11T19:00:00Z");
-  const overdue = item({ id: "timestamp-overdue", due: "2026-09-11T14:00:00-04:00", priority: "LOW" });
-  const upcoming = item({ id: "timestamp-upcoming", due: "2026-09-12T14:00:00-04:00" });
-  assert.equal(taskIsOverdue(overdue, now), true);
-  const horizon = taskHorizon([overdue, upcoming], now);
-  assert.deepEqual(horizon.get("OVERDUE")?.map(({ id }) => id), ["timestamp-overdue"]);
-  assert.deepEqual(horizon.get("NEXT_7_DAYS")?.map(({ id }) => id), ["timestamp-upcoming"]);
-});
-
-`;
-          tests = tests.replace(marker, regression + marker);
-          fs.writeFileSync(testPath, tests);
+          text = fs.readFileSync(testPath, 'utf8');
+          const marker = 'test("legacy Today due values remain in the product day\'s horizon", () => {';
+          const regression = [
+            'test("hosted timestamp due values remain actionable in attention and horizon", () => {',
+            '  const now = new Date("2026-09-11T19:00:00Z");',
+            '  const overdue = item({ id: "timestamp-overdue", due: "2026-09-11T14:00:00-04:00", priority: "LOW" });',
+            '  const upcoming = item({ id: "timestamp-upcoming", due: "2026-09-12T14:00:00-04:00" });',
+            '  assert.equal(taskIsOverdue(overdue, now), true);',
+            '  const horizon = taskHorizon([overdue, upcoming], now);',
+            '  assert.deepEqual(horizon.get("OVERDUE")?.map(({ id }) => id), ["timestamp-overdue"]);',
+            '  assert.deepEqual(horizon.get("NEXT_7_DAYS")?.map(({ id }) => id), ["timestamp-upcoming"]);',
+            '});',
+            '',
+            '',
+          ].join('\n');
+          if (!text.includes(marker)) throw new Error('task test marker not found');
+          fs.writeFileSync(testPath, text.replace(marker, regression + marker));
           NODE
           rm .github/workflows/patch-hosted-timestamp-due.yml
           git diff --check
-      - name: Validate focused change
+      - name: Validate focused fix
         run: |
           npm ci
           npm test
           npx tsc --noEmit
-      - name: Commit focused fix
+      - name: Commit and push
         shell: bash
         run: |
           set -euo pipefail
