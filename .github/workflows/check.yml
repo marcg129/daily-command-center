@@ -2,11 +2,7 @@ name: Check
 
 on:
   push:
-    branches-ignore: [main]
-  # Include closed so API-driven merges still validate the resulting main SHA,
-  # even when the merge actor does not emit a separate push workflow.
   pull_request:
-    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
