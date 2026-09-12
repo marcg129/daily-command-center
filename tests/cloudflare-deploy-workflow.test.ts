@@ -17,4 +17,8 @@ test("production deploys serialize and retain the protected posture checks", asy
   assert.match(workflow, /preview_urls must remain disabled/);
   assert.match(workflow, /Generated POLICY_AUD mismatch/);
   assert.match(workflow, /npm run deploy:vinext/);
+  assert.match(workflow, /Unexpected MCP D1 binding/);
+  assert.match(workflow, /npm run build:mcp/);
+  assert.match(workflow, /npm run deploy:mcp/);
+  assert.match(workflow, /MCP rejects every request unless its separate Access audience secret verifies/);
 });

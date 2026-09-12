@@ -66,6 +66,16 @@ jobs:
           if (kv?.id !== '1eeed318e05d45c7896f7c0dad3d8b85') throw new Error('Unexpected KV namespace binding');
           if (config.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Unexpected Access team domain');
           if (config.vars?.POLICY_AUD !== '46a73a1e35edf7220a912c519941f0aa246864dc7bc9229a24997a826f8b8d3f') throw new Error('Unexpected Access application audience');
+
+          const mcpRaw = fs.readFileSync('wrangler.mcp.jsonc', 'utf8');
+          const mcp = JSON.parse(mcpRaw.replace(/^\s*\/\/.*$/gm, ''));
+          const mcpD1 = (mcp.d1_databases ?? []).find((x) => x.binding === 'DB');
+          if (mcp.name !== 'daily-command-center-mcp') throw new Error('Unexpected MCP Worker name');
+          if (mcp.main !== 'workers/task-capture-mcp.ts') throw new Error('Unexpected MCP Worker entry');
+          if (mcp.workers_dev !== true) throw new Error('MCP workers_dev must be enabled for Access Managed OAuth');
+          if (mcp.preview_urls !== false) throw new Error('MCP preview_urls must remain disabled');
+          if (mcpD1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected MCP D1 binding');
+          if (mcp.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Unexpected MCP Access team domain');
           EOF
 
       - name: Confirm production migrations are current
@@ -90,8 +100,15 @@ jobs:
       - name: Deploy protected Worker
         run: npm run deploy:vinext
 
+      - name: Build task-capture MCP Worker
+        run: npm run build:mcp
+
+      - name: Deploy fail-closed task-capture MCP Worker
+        run: npm run deploy:mcp
+
       - name: Confirm deployment posture
         run: |
           echo 'workers.dev enabled with the committed Cloudflare Access audience.'
+          echo 'Task-capture MCP rejects every request unless its separate Access audience secret verifies.'
           echo 'Preview URLs remain disabled.'
           echo 'Deployment followed a successful main-branch Check workflow or an explicit manual dispatch.'
