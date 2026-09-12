@@ -3301,7 +3301,11 @@ export function ControlCenter() {
         : "Hosted tasks could not be saved. Keep this page open and retry.");
       const payload = await response.json() as { tasks: Task[] };
       persistedTasks.current = runtimeMode === "local" ? scheduledTasks : payload.tasks;
-      if (runtimeMode === "hosted" && activeWorkspaceRef.current === mutationWorkspaceId) {
+      if (
+        runtimeMode === "hosted" &&
+        activeWorkspaceRef.current === mutationWorkspaceId &&
+        lastScheduledTasks.current === scheduledTasks
+      ) {
         lastScheduledTasks.current = payload.tasks;
         setTasks(payload.tasks);
       }
