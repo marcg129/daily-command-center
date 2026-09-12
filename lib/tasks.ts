@@ -121,10 +121,10 @@ export function taskHorizon(tasks: TaskItem[], now = new Date()) {
   return groups;
 }
 
-export function createTaskItem(input: Pick<TaskItem, "title" | "due" | "priority"> & Partial<Pick<TaskItem, "description" | "recurrence">>, workspaceId: ProductWorkspaceId, id: TaskItem["id"] = crypto.randomUUID(), now = new Date()): TaskItem {
+export function createTaskItem(input: Pick<TaskItem, "title" | "due" | "priority"> & Partial<Pick<TaskItem, "description" | "recurrence" | "estimatedDuration">>, workspaceId: ProductWorkspaceId, id: TaskItem["id"] = crypto.randomUUID(), now = new Date()): TaskItem {
   return { id, title: input.title.trim(), description: input.description?.trim() || "No additional details.", due: input.due,
     recurrence: input.recurrence || "One-time", priority: normalizeTaskPriority(input.priority), primaryWorkspaceId: workspaceId,
-    done: false, status: "OPEN", type: input.recurrence && input.recurrence !== "One-time" ? "RECURRING" : input.due ? "DEADLINE" : "ONE_TIME", createdAt: now.toISOString(), updatedAt: now.toISOString() };
+    estimatedDuration: input.estimatedDuration, done: false, status: "OPEN", type: input.recurrence && input.recurrence !== "One-time" ? "RECURRING" : input.due ? "DEADLINE" : "ONE_TIME", createdAt: now.toISOString(), updatedAt: now.toISOString() };
 }
 
 export function updateTaskItem(tasks: TaskItem[], taskId: TaskItem["id"], patch: Partial<TaskItem>, now = new Date()) {

@@ -20,6 +20,15 @@ const GROUP_LABELS = {
   OVERDUE: "Overdue", TODAY: "Today", NEXT_7_DAYS: "Next 7 days",
   DAYS_8_14: "8–14 days", DAYS_15_30: "15–30 days", DAYS_31_45: "31–45 days",
 } as const;
+const TASK_DURATIONS = ["5m", "15m", "30m", "1h", "2h+", "Project"] as const;
+type TaskDuration = NonNullable<TaskItem["estimatedDuration"]>;
+
+function DurationSelect({ value, onChange, label }: { value: TaskDuration | ""; onChange: (value: TaskDuration | "") => void; label: string }) {
+  return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value as TaskDuration | "")}>
+    <option value="">Not estimated</option>
+    {TASK_DURATIONS.map((duration) => <option key={duration} value={duration}>{duration}</option>)}
+  </select>;
+}
 
 function WorkspaceBadge({ task, viewing }: { task: TaskItem; viewing: ProductWorkspaceId }) {
   return task.primaryWorkspaceId === "indelitech" && viewing === "personal"
@@ -40,12 +49,13 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
   const [more, setMore] = useState(false);
   const [description, setDescription] = useState("");
   const [recurrence, setRecurrence] = useState("One-time");
+  const [duration, setDuration] = useState<TaskDuration | "">("");
   const dueRequired = recurringTaskRequiresDue(recurrence);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!title.trim() || (dueRequired && !due)) return;
-    onAdd(createTaskItem({ title, due, priority, description, recurrence }, workspaceId));
-    setTitle(""); setDue(""); setPriority("MEDIUM"); setDescription(""); setRecurrence("One-time"); setMore(false);
+    onAdd(createTaskItem({ title, due, priority, description, recurrence, estimatedDuration: duration || undefined }, workspaceId));
+    setTitle(""); setDue(""); setPriority("MEDIUM"); setDescription(""); setRecurrence("One-time"); setDuration(""); setMore(false);
   };
   return <form className="quick-task-add reveal" onSubmit={submit}>
     <div className="quick-task-main">
@@ -55,7 +65,7 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
       <button className="button button-primary"><ListTodo size={15} /> Add task</button>
     </div>
     <button type="button" className="text-button" onClick={() => setMore((value) => !value)}>{more ? "Fewer options" : "More options"}</button>
-    {more && <div className="quick-task-more"><label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional context" /></label><label><span>Repeats</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label></div>}
+    {more && <div className="quick-task-more"><label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional context" /></label><label><span>Repeats</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label><label><span>Estimated time</span><DurationSelect label="Estimated duration" value={duration} onChange={setDuration} /></label></div>}
     {dueRequired && !due && <small id="recurring-due-help" role="alert">Choose a due date for a recurring task.</small>}
   </form>;
 }
@@ -87,6 +97,7 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete, foc
   const [reminder, setReminder] = useState(task.remindAt ? isoToProductWallClock(task.remindAt) : "");
   const [person, setPerson] = useState(task.person || "");
   const [followUp, setFollowUp] = useState(task.followUpAt ? isoToProductWallClock(task.followUpAt) : "");
+  const [duration, setDuration] = useState<TaskDuration | "">(task.estimatedDuration || "");
   const actionsRef = useRef<HTMLDetailsElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -119,13 +130,13 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete, foc
   };
   return <div ref={rowRef} tabIndex={-1} className={`task-row ${overdue ? "is-overdue" : ""} ${focused ? "is-calendar-focus" : ""}`} data-priority={task.priority.toLowerCase()}>
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
-    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
+    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.estimatedDuration ? ` · Estimated ${task.estimatedDuration}` : ""}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
     <details ref={actionsRef} className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
       <strong>Task actions</strong>
       {status === "WAITING" ? <button onClick={() => onChange({ status: "OPEN", type: taskBaseType(task), followUpAt: undefined })}>Resume</button> : <fieldset><legend>Mark waiting</legend><input aria-label="Waiting for person" placeholder="Waiting for" value={person} onChange={(event) => setPerson(event.target.value)} /><input aria-label="Follow-up date and time" type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><button disabled={!person.trim() || !followUp} onClick={() => { const iso = convert(followUp); if (iso) onChange({ status: "WAITING", type: "WAITING", done: false, person: person.trim(), followUpAt: iso }); }}>Mark waiting</button></fieldset>}
       <fieldset><legend><Bell size={12} /> Reminder timing</legend><input aria-label="Reminder date and time" type="datetime-local" value={reminder} onChange={(event) => setReminder(event.target.value)} /><button disabled={!reminder} onClick={() => { const iso = convert(reminder); if (iso) onChange({ remindAt: iso }); }}>Set / change reminder</button><div className="task-presets"><button onClick={() => setPreset("LATER_TODAY")}>Later today</button><button onClick={() => setPreset("TOMORROW_MORNING")}>Tomorrow morning</button><button onClick={() => setPreset("NEXT_BUSINESS_DAY")}>Next business day</button></div></fieldset>
-      <fieldset><legend>Edit details</legend><input aria-label="Edit task title" value={title} onChange={(event) => setTitle(event.target.value)} /><textarea aria-label="Edit task description" value={description} onChange={(event) => setDescription(event.target.value)} /><label>Due date<input aria-label="Change due date" type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><button onClick={() => onChange({ title: title.trim() || task.title, description, due })}>Save details</button></fieldset>
+      <fieldset><legend>Edit details</legend><input aria-label="Edit task title" value={title} onChange={(event) => setTitle(event.target.value)} /><textarea aria-label="Edit task description" value={description} onChange={(event) => setDescription(event.target.value)} /><label>Due date<input aria-label="Change due date" type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><label>Estimated time<DurationSelect label="Change estimated duration" value={duration} onChange={setDuration} /></label><button onClick={() => onChange({ title: title.trim() || task.title, description, due, estimatedDuration: duration || undefined })}>Save details</button></fieldset>
       {error && <small role="alert">{error}</small>}
       <button onClick={() => onChange({ status: "CANCELLED", done: false })}>Cancel task</button>
       <hr /><button className="danger-action" onClick={onDelete}><Trash2 size={13} /> Delete permanently</button>
