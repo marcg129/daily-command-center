@@ -72,6 +72,17 @@ export function sortTaskAttention(tasks: TaskItem[], now = new Date()) {
   });
 }
 
+export function tasksRequiringAttentionToday(tasks: TaskItem[], now = new Date()) {
+  return sortTaskAttention(tasks.filter((task) => {
+    const status = task.status ?? (task.done ? "DONE" : "OPEN");
+    if (status === "DONE" || status === "CANCELLED") return false;
+    if (status === "WAITING") return (parsedAt(task.followUpAt) ?? Infinity) <= now.getTime();
+    const dueGroup = taskHorizonGroup(hostedShape(task, now), now, PRODUCT_TIME_ZONE);
+    return dueGroup === "OVERDUE" || dueGroup === "TODAY" ||
+      (parsedAt(task.remindAt) ?? Infinity) <= now.getTime();
+  }), now);
+}
+
 function parsedAt(value?: string) { const time = value ? Date.parse(value) : NaN; return Number.isFinite(time) ? time : undefined; }
 function attentionClass(task: TaskItem, now: Date) {
   const status = task.status ?? (task.done ? "DONE" : "OPEN");
@@ -88,9 +99,10 @@ function attentionTime(task: TaskItem, attention: number) {
 }
 
 export function taskAttentionLabel(task: TaskItem, now = new Date()) {
-  if (taskIsOverdue(task, now)) return "Overdue";
   if ((task.status ?? (task.done ? "DONE" : "OPEN")) === "WAITING" && (parsedAt(task.followUpAt) ?? Infinity) <= now.getTime()) return "Follow-up due";
+  if (taskIsOverdue(task, now)) return "Overdue";
   if ((parsedAt(task.remindAt) ?? Infinity) <= now.getTime()) return "Reminder due";
+  if (taskHorizonGroup(hostedShape(task, now), now, PRODUCT_TIME_ZONE) === "TODAY") return "Due today";
   return task.due || "No due date";
 }
 

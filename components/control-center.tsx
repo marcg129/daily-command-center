@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 36738)
+Total output lines: 3694
+
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -664,13 +667,13 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
-function TaskFocusedTodayView({ tasks, goTo, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; workspaceId: ProductWorkspaceId }) {
+function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; openTask: (taskId: Task["id"]) => void; workspaceId: ProductWorkspaceId }) {
   const personal = workspaceId === "personal";
   return (
     <div className="view">
       <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Today`} title="What needs my attention today?" description={personal ? "Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." : "Indelitech task priorities and a focused 45-day outlook. Hosted intelligence and Daily Brief are deferred."} action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
       <div className="personal-today-grid reveal delay-1">
-        <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpen={() => goTo("tasks")} />
+        <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
     </div>
@@ -681,12 +684,14 @@ function TodayView({
   settings,
   tasks,
   goTo,
+  openTask,
   openSettings,
   addBriefTask,
 }: {
   settings: PublicSettings;
   tasks: Task[];
   goTo: (tab: Tab) => void;
+  openTask: (taskId: Task["id"]) => void;
   openSettings: (section?: SettingsSection) => void;
   addBriefTask: (item: DailyBriefItem) => void;
 }) {
@@ -749,7 +754,7 @@ function TodayView({
       />
       <div className="today-grid reveal delay-2">
         <div className="today-task-stack">
-          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpen={() => goTo("tasks")} />
+          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
           <TaskHorizon tasks={businessTasks} onOpen={() => goTo("tasks")} />
         </div>
         <Panel className="setup-progress">
@@ -1745,566 +1750,7 @@ function NewslettersView({
                   : "Saved newsletter intelligence"}
               </b>
               <p>
-                {data.newsletterCount || 0} newsletters · {data.mentionCount || 0} source mentions · {data.aiProvider ? AI_PROVIDER_LABELS[data.aiProvider] : "AI"} · checked {formatDate(data.checkedAt)}
-                {data.pendingIssueCount ? ` · ${data.pendingIssueCount} older issues queued for background processing` : ""}
-                {!data.connected ? " · Gmail disconnected" : ""}
-              </p>
-            </div>
-            <button onClick={openSettings}>
-              Manage account <ArrowRight size={14} />
-            </button>
-          </div>
-          <div className="shelf-controls reveal delay-1">
-            <div className="filter-row">
-              <button
-                className={view === "active" ? "active" : ""}
-                onClick={() => changeView("active")}
-              >
-                Past {data.freshnessHours || 36} hours {data.items.length}
-              </button>
-              <button
-                className={view === "history" ? "active" : ""}
-                onClick={() => changeView("history")}
-              >
-                Earlier {data.historyCount || 0}
-              </button>
-              <button
-                className={view === "archive" ? "active" : ""}
-                onClick={() => changeView("archive")}
-              >
-                Archive {data.archiveCount || 0}
-              </button>
-            </div>
-          </div>
-          <ErrorNotice
-            errors={[
-              ...(data.errors || []),
-              ...(error ? [error] : []),
-              ...(archive.error ? [archive.error] : []),
-            ]}
-          />
-          <div className="newsletter-stack reveal delay-2">
-            <div className="newsletter-controls">
-              <label className="search-box"><Search size={15} /><input aria-label="Search newsletter stories" autoComplete="off" value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(30); }} placeholder="Search headlines, topics, or sources…" /></label>
-              <details className="newsletter-filter-menu">
-                <summary><Mail size={14} /> {selectedSources.length ? `${selectedSources.length} selected newsletters` : "All newsletters"}<ChevronDown size={14} /></summary>
-                <div className="newsletter-filter-options">
-                  <button type="button" onClick={() => { setSelectedSources([]); setVisibleCount(30); }}>All newsletters</button>
-                  {sourceOptions.map(({name, count}) => <label key={name}><input type="checkbox" checked={selectedSources.includes(name)} onChange={(event) => { setSelectedSources((current) => event.target.checked ? [...current, name] : current.filter((source) => source !== name)); setVisibleCount(30); }} /><span>{name}</span><small>{count}</small></label>)}
-                  {!sourceOptions.length && <p>No newsletters in this view yet.</p>}
-                </div>
-              </details>
-              <label className="feed-sort-select">Sort stories<select value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as typeof sortOrder); setVisibleCount(30); }}><option value="priority">Priority</option><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
-            </div>
-            <div className="newsletter-results" aria-live="polite"><span>Showing {visibleItems.length} of {items.length} stories{selectedSources.length ? ` · ${selectedSources.join(", ")}` : ""}</span>{(query || selectedSources.length > 0) && <button onClick={clearFilters}>Clear filters <X size={12} /></button>}</div>
-            {visibleItems.map((item) => (
-              <article className="newsletter-card" key={item.id}>
-                <div className="sender-mark">
-                  {item.title[0]?.toUpperCase() || "N"}
-                </div>
-                <div className="newsletter-copy">
-                  <div className="story-meta">
-                    <span>
-                      {item.coverageCount} report{item.coverageCount === 1 ? "" : "s"}
-                    </span>
-                    <i />
-                    <span>
-                      {item.newsletterCount} newsletter{item.newsletterCount === 1 ? "" : "s"}
-                    </span>
-                    <i />
-                    <span>{formatDate(item.receivedAt)}</span>
-                    <Label tone={item.coverageCount > 1 ? "positive" : "neutral"}>
-                      {item.coverageCount > 1 ? "Cross-reported" : "New story"}
-                    </Label>
-                  </div>
-                  <h3>{item.title}</h3>
-                  <p>{item.summary}</p>
-                  {item.importanceReason && <div className="priority-reason"><Sparkles size={12} /><span>{item.importanceScore !== undefined ? `${item.importanceScore}/100 · ` : ""}{item.importanceReason}</span></div>}
-                  <div className="newsletter-sources">
-                    {item.sourceLinks.slice(0, 4).map((source) => (
-                      <a
-                        key={source.url}
-                        href={source.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={source.title}
-                      >
-                        <ExternalLink size={12} /> {source.publisher}
-                      </a>
-                    ))}
-                    {item.sourceLinks.length > 4 && (
-                      <details>
-                        <summary>+{item.sourceLinks.length - 4} more sources</summary>
-                        {item.sourceLinks.slice(4).map((source) => (
-                          <a key={source.url} href={source.url} target="_blank" rel="noreferrer" title={source.title}>
-                            <ExternalLink size={12} /> {source.publisher}
-                          </a>
-                        ))}
-                      </details>
-                    )}
-                  </div>
-                  <div className="newsletter-byline">
-                    Reported by {item.newsletterSources.slice(0, 4).join(", ")}
-                    {item.newsletterSources.length > 4
-                      ? ` +${item.newsletterSources.length - 4} more`
-                      : ""}
-                  </div>
-                  <div className="newsletter-foot">
-                    {view !== "archive" && (
-                      <button
-                        onClick={() =>
-                          addReminder(
-                            item.title,
-                            item.summary,
-                            item.url,
-                          )
-                        }
-                      >
-                        <Bookmark size={14} /> Remind me
-                      </button>
-                    )}
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      <ExternalLink size={14} /> Open source
-                    </a>
-                    <a href={item.gmailUrl} target="_blank" rel="noreferrer">
-                      <Mail size={14} /> Newsletter evidence
-                    </a>
-                  </div>
-                </div>
-                {(view === "active" || (view === "archive" && item.workflow?.restoreEligible)) && <button
-                  className="mark-read"
-                  title={view === "archive" ? "Restore" : "Archive"}
-                  disabled={archive.pending === item.id}
-                  onClick={() =>
-                    void archive.update(item.id, view === "active")
-                  }
-                >
-                  {view === "archive" ? (
-                    <ArchiveRestore size={16} />
-                  ) : (
-                    <Archive size={16} />
-                  )}
-                </button>}
-              </article>
-            ))}
-            {items.length > visibleCount && <button className="button button-ghost newsletter-load-more" onClick={() => setVisibleCount((count) => count + 30)}>Show 30 more · {items.length - visibleCount} remaining</button>}
-            {!items.length && (
-              <Panel className="empty-state">
-                <CheckCircle2 size={28} />
-                <h2>
-                  {query || selectedSources.length ? "No stories match these filters" : view === "archive"
-                    ? "No archived newsletter stories"
-                    : view === "history"
-                      ? "No earlier stories yet"
-                      : "You’re all caught up"}
-                </h2>
-                <p>
-                  {query || selectedSources.length ? "Try another newsletter, a different search, or clear the filters above." : view === "archive"
-                    ? "Archived stories remain stored locally without changing Gmail."
-                    : view === "history"
-                      ? "Stories outside the current reading window remain here as the mailbox backfill is processed."
-                      : "No extracted newsletter stories remain in the active queue."}
-                </p>
-              </Panel>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function TasksView({ tasks, setTasks, workspaceId, focusedTaskId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId; focusedTaskId?: Task["id"] }) {
-  const visible = visibleTaskItems(tasks, workspaceId);
-  const open = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "OPEN" || (task.status ?? "OPEN") === "WAITING");
-  const completed = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "DONE").toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
-  const cancelled = visible.filter((task) => task.status === "CANCELLED");
-  const complete = (task: Task) => setTasks((values) => completeTaskItems(values, task.id, { expectedDue: task.due }));
-  return <div className="view">
-    <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`} title="Tasks" description={workspaceId === "personal" ? "Personal work and visible Indelitech commitments, managed as the same records." : "Indelitech-owned work only, with business attention and deadlines in view."} />
-    <QuickTaskAdd workspaceId={workspaceId} onAdd={(task) => setTasks((values) => [task, ...values])} />
-    <div className="task-summary reveal delay-1"><div><b>{open.length}</b><span>open tasks</span></div><div><b>{open.filter((task) => task.due === localDateValue()).length}</b><span>due today</span></div><div><b>{open.filter((task) => task.recurrence !== "One-time").length}</b><span>repeating</span></div><div><b>{completed.length}</b><span>completed</span></div></div>
-    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} focused={task.id === focusedTaskId} onComplete={() => complete(task)} onChange={(patch) => setTasks((values) => updateTaskItem(values, task.id, patch))} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
-    {completed.length > 0 && <details className="completed-list"><summary>{completed.length} completed</summary>{completed.map((task) => <div className="completed-row" key={task.id}><CheckCircle2 size={16} /><div className="completed-copy"><s>{task.title}</s><small>{task.completedAt ? `Completed ${formatDate(task.completedAt)}` : "Completed"} · was due {formatTaskDue(task.due)}{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}{task.seriesId !== undefined ? " · recurring occurrence" : ""}</small></div>{task.seriesId === undefined && <button aria-label={`Delete completed ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button>}</div>)}</details>}
-    {cancelled.length > 0 && <details className="completed-list"><summary>{cancelled.length} cancelled</summary>{cancelled.map((task) => <div className="completed-row" key={task.id}><X size={16} /><div className="completed-copy"><s>{task.title}</s><small>Cancelled · record preserved{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}</small></div><button aria-label={`Delete cancelled ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button></div>)}</details>}
-  </div>;
-}
-
-function TagEditor({
-  label,
-  help,
-  values,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  help: string;
-  values: string[];
-  onChange: (values: string[]) => void;
-  placeholder: string;
-}) {
-  const [value, setValue] = useState("");
-  const add = () => {
-    const cleaned = value.trim();
-    if (!cleaned || values.includes(cleaned)) return;
-    onChange([...values, cleaned]);
-    setValue("");
-  };
-  return (
-    <div className="settings-field">
-      <label>
-        {label}
-        <small>{help}</small>
-      </label>
-      <div className="tag-input">
-        <SettingsInput
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              add();
-            }
-          }}
-          placeholder={placeholder}
-        />
-        <button type="button" onClick={add}>
-          <Plus size={15} /> Add
-        </button>
-      </div>
-      <div className="tag-list">
-        {values.map((item) => (
-          <span key={item}>
-            {item}
-            <button
-              type="button"
-              aria-label={`Remove ${item}`}
-              onClick={() =>
-                onChange(values.filter((valueItem) => valueItem !== item))
-              }
-            >
-              <X size={12} />
-            </button>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type SettingsDraft = Omit<SettingsUpdate, "ai" | "industry" | "mentions"> & {
-  industry: PublicSettings["industry"];
-  mentions: PublicSettings["mentions"];
-  ai: NonNullable<SettingsUpdate["ai"]> & {
-    keySet: PublicSettings["ai"]["keySet"];
-    keySource: PublicSettings["ai"]["keySource"];
-  };
-};
-
-function settingsDraft(settings: PublicSettings): SettingsDraft {
-  return {
-    ...settings,
-    newsletters: { ...settings.newsletters, googleClientSecret: "" },
-    audience: {
-      accounts: settings.audience.accounts.map((account) => ({
-        ...account,
-        credential: "",
-      })),
-    },
-    ai: { ...settings.ai, apiKeys: {}, clearKeys: [] },
-  };
-}
-
-function SettingsView({
-  settings,
-  onSaved,
-  workspaceId,
-}: {
-  settings: PublicSettings;
-  onSaved: (settings: PublicSettings) => void;
-  workspaceId: ProductWorkspaceId;
-}) {
-  const router = useRouter();
-  const [section, setSection] = useState<SettingsSection>("general");
-  const [draft, setDraft] = useState<SettingsDraft>(() =>
-    settingsDraft(settings),
-  );
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [bridgePromptFallback, setBridgePromptFallback] = useState("");
-  useEffect(() => {
-    window.queueMicrotask(() => {
-      const parameters = new URLSearchParams(window.location.search);
-      const requested = parameters.get("section") as SettingsSection | null;
-      if (
-        requested &&
-        [
-          "general",
-          "industry",
-          "mentions",
-          "newsletters",
-          "audience",
-          "ai",
-          "dailyBrief",
-          "integrations",
-        ].includes(requested)
-      )
-        setSection(requested);
-      const oauthError = parameters.get("error");
-      if (oauthError === "oauth-config")
-        setNotice(
-          "Save a Google OAuth client ID and secret before choosing an account.",
-        );
-      if (oauthError === "oauth-client-id")
-        setNotice(GOOGLE_OAUTH_CLIENT_ID_ERROR);
-      if (oauthError === "oauth-state")
-        setNotice(
-          "The Google connection expired before it completed. Please try again.",
-        );
-      if (oauthError === "oauth-exchange")
-        setNotice(
-          "Google could not complete the connection. Check the OAuth client and redirect URI, then try again.",
-        );
-      if (parameters.get("connected") === "1")
-        setNotice(
-          "Saved. The newsletter Gmail account is connected read-only.",
-        );
-    });
-  }, []);
-  const save = async () => {
-    setSaving(true);
-    setNotice("");
-    try {
-      const response = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      });
-      const payload = await response.json();
-      if (!response.ok)
-        throw new Error(payload.error || "Could not save settings.");
-      const saved = payload as PublicSettings;
-      setDraft(settingsDraft(saved));
-      onSaved(saved);
-      setNotice("Saved. Live pages will use this configuration immediately.");
-      return true;
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : "Could not save settings.",
-      );
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-  const connectGmail = async () => {
-    if (
-      !draft.newsletters.googleClientId.trim() ||
-      (!draft.newsletters.googleClientSecretSet &&
-        !draft.newsletters.googleClientSecret?.trim())
-    ) {
-      setNotice("Add the Google OAuth client ID and secret first.");
-      return;
-    }
-    if (!isGoogleOAuthClientId(draft.newsletters.googleClientId)) {
-      setNotice(GOOGLE_OAUTH_CLIENT_ID_ERROR);
-      return;
-    }
-    if (await save()) router.push("/api/auth/google/start");
-  };
-  const addSource = () =>
-    setDraft((value) => ({
-      ...value,
-      industry: {
-        ...value.industry,
-        sources: [
-          ...value.industry.sources,
-          { id: crypto.randomUUID(), name: "", url: "" },
-        ],
-      },
-    }));
-  const addAccount = (platform: AudiencePlatform) =>
-    setDraft((value) => ({
-      ...value,
-      audience: {
-        accounts: [
-          ...value.audience.accounts,
-          {
-            id: crypto.randomUUID(),
-            platform,
-            label: platform[0].toUpperCase() + platform.slice(1),
-            username: "",
-            profileUrl: "",
-            accountId: "",
-            credential: "",
-            credentialSet: false,
-          },
-        ],
-      },
-    }));
-  const changeSection = (nextSection: SettingsSection) => {
-    setSection(nextSection);
-    const url = new URL(window.location.href);
-    url.searchParams.set("section", nextSection);
-    window.history.replaceState({}, "", url);
-  };
-  const copyBridgePrompt = async () => {
-    if (!draft.dailyBrief.sourceLabels.length) {
-      setNotice(
-        "Add at least one Daily Brief source before copying the bridge prompt.",
-      );
-      return;
-    }
-    const endpoint = `${window.location.origin}/api/brief`;
-    const prompt = [
-      "Create a read-only recurring Daily Brief sync for my local Control Center.",
-      `Use only these installed connector sources: ${draft.dailyBrief.sourceLabels.join(", ")}.`,
-      `Look back ${draft.dailyBrief.lookbackDays} days and return only actionable messages, meetings, deadlines, decisions, and genuinely useful context.`,
-      "Minimize private content: concise titles and summaries only; never include credentials or full message bodies.",
-      `POST the result to ${endpoint} as JSON: {\"sources\":[{\"source\":\"each configured source label\",\"status\":\"success|error\",\"error\":\"required only on error\"}],\"items\":[{\"id\":\"required stable provider ID\",\"source\":\"one successful source label\",\"title\":\"...\",\"summary\":\"...\",\"kind\":\"action|meeting|message|info\",\"occurredAt\":\"ISO date\",\"dueAt\":\"optional ISO date\",\"url\":\"optional source URL\"}]}.`,
-      "Include every configured source in sources, even when a successful source has zero items. The items for each successful source must be its complete current set; missing prior items will be removed. Mark unreadable connectors as error and omit their items so the dashboard preserves the last successful set while showing the failure. Keep this operation read-only in every connected app.",
-    ].join("\n");
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setBridgePromptFallback("");
-      setNotice(
-        "Saved to clipboard. Paste the bridge prompt into Codex to create the connector sync.",
-      );
-    } catch {
-      setBridgePromptFallback(prompt);
-      setNotice(
-        "Clipboard access was blocked. Select the complete prompt shown below and copy it manually.",
-      );
-    }
-  };
-  const sections: Array<{
-    id: SettingsSection;
-    label: string;
-    icon: typeof Activity;
-  }> = [
-    { id: "general", label: "General", icon: Settings2 },
-    { id: "dailyBrief", label: "Daily brief", icon: LayoutDashboard },
-    { id: "industry", label: "Industry", icon: Globe2 },
-    { id: "mentions", label: "Mentions", icon: AtSign },
-    { id: "newsletters", label: "Newsletters", icon: Mail },
-    { id: "audience", label: "Audience", icon: Users },
-    { id: "ai", label: "AI curation", icon: Sparkles },
-    { id: "integrations", label: "Integrations", icon: Cable },
-  ];
-  return (
-    <div className="view">
-      <PageHeading
-        eyebrow={`${WORKSPACES[workspaceId].displayName} workspace`}
-        title="Settings"
-        description={`Configure how ${WORKSPACES[workspaceId].displayName} looks and works. Existing settings remain shared until their storage model is workspace-scoped.`}
-        action={
-          <button
-            className="button button-primary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? (
-              <RefreshCw className="spin" size={15} />
-            ) : (
-              <Check size={15} />
-            )}{" "}
-            Save settings
-          </button>
-        }
-      />
-      {notice && (
-        <div
-          className={classNames(
-            "save-notice",
-            notice.startsWith("Saved") && "success",
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          {notice}
-        </div>
-      )}
-      <div className="settings-layout reveal delay-1">
-        <aside className="settings-nav">
-          {sections.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                className={section === item.id ? "active" : ""}
-                onClick={() => changeSection(item.id)}
-              >
-                <Icon size={16} />
-                <span>{item.label}</span>
-                <ArrowRight size={14} />
-              </button>
-            );
-          })}
-          <div className="settings-security">
-            <ShieldCheck size={18} />
-            <b>Secrets stay server-side</b>
-            <p>Saved credentials are never returned to the browser.</p>
-          </div>
-        </aside>
-        <div className="settings-content" key={section}>
-          {section === "dailyBrief" && (
-            <Panel className="settings-panel">
-              <div className="settings-title"><LayoutDashboard /><div>
-                <p className="eyebrow">Your daily snapshot</p><h2>Choose what Today shows</h2>
-                <p>Bring the highest-priority items from your other tabs into one quick brief. Each section uses saved results, not another source search.</p>
-              </div></div>
-              <div className="brief-settings-grid">
-                {(["industry", "mentions", "newsletters"] as const).map((category) => (
-                  <label className="brief-setting-card" key={category}>
-                    <span>{category === "industry" ? <Radio /> : category === "mentions" ? <AtSign /> : <Mail />}</span>
-                    <b>{category === "industry" ? "Industry" : category === "mentions" ? "Mentions" : "Newsletters"}</b>
-                    <small>{category === "industry" ? "The most important industry developments." : category === "mentions" ? "The mentions most worth your attention." : "Top news from your newsletter reading queue."}</small>
-                    <select aria-label={`${category} stories in daily brief`} value={draft.dailyBrief.sections[category]} onChange={(event) => setDraft((value) => ({...value, dailyBrief: {...value.dailyBrief, sections: {...value.dailyBrief.sections, [category]: Number(event.target.value)}}}))}>
-                      <option value={0}>Don&apos;t include</option>
-                      {[1,2,3,4,5,6,7,8,9,10].map((count) => <option key={count} value={count}>Top {count} {count === 1 ? "story" : "stories"}</option>)}
-                    </select>
-                  </label>
-                ))}
-              </div>
-              <div className="settings-caveat"><Sparkles size={17} /><p>With a configured AI provider, AI priority and summaries flow into this brief automatically. Without one, saved local ranking is used. Archived stories are excluded, and a short queue is never padded with old news.</p></div>
-              <div className="bridge-manual"><b>Want private messages and meetings too?</b><p>That is optional. <button type="button" className="text-button" onClick={() => changeSection("integrations")}>Open Integrations</button> to connect a local automation that can read your private apps. It is not needed for the three sections above.</p></div>
-            </Panel>
-          )}
-          {section === "general" && (
-            <Panel className="settings-panel">
-              <div className="settings-title">
-                <Settings2 />
-                <div>
-                  <p className="eyebrow">General</p>
-                  <h2>Workspace identity</h2>
-                  <p>
-                    Use any name. No person or company is assumed by default.
-                  </p>
-                </div>
-              </div>
-              <div className="settings-field">
-                <label>
-                  Workspace name
-                  <small>Shown in the header and browser title.</small>
-                </label>
-                <SettingsInput
-                  value={draft.general.workspaceName}
-                  onChange={(event) =>
-                    setDraft((value) => ({
-                      ...value,
-                      general: { workspaceName: event.target.value },
-                    }))
-                  }
-                  placeholder="Control Center"
-                />
-              </div>
-            </Panel>
-          )}
-          {section === "industry" && (
-            <Panel className="settings-panel">
-              <div className="settings-title">
-                <Globe2 />
-                <div>
+                {data.n…6738 tokens truncated…div>
                   <p className="eyebrow">Industry</p>
                   <h2>Sites and industry topics</h2>
                   <p>
@@ -3369,6 +2815,10 @@ export function ControlCenter() {
     window.history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const openTask = (taskId: Task["id"]) => {
+    setFocusedTaskId(taskId);
+    goTo("tasks");
+  };
   const selectWorkspace = (workspaceId: ProductWorkspaceId) => {
     setActiveWorkspaceId(workspaceId);
     setMobileOpen(false);
@@ -3577,13 +3027,14 @@ export function ControlCenter() {
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (
-          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} workspaceId="personal" />
+          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} openTask={openTask} workspaceId="personal" />
         )}
         {activeTab === "today" && activeWorkspaceId === "indelitech" && (
-          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} workspaceId="indelitech" /> : <TodayView
+          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} openTask={openTask} workspaceId="indelitech" /> : <TodayView
             settings={settings}
             tasks={tasks}
             goTo={goTo}
+            openTask={openTask}
             openSettings={openSettings}
             addBriefTask={addBriefTask}
           />
@@ -3600,7 +3051,7 @@ export function ControlCenter() {
           <WorkspacePageShell eyebrow="Indelitech · Intel" title="Intel" description="Hosted business intelligence is not enabled in this milestone." icon={<Radio size={25} />} emptyTitle="Hosted Intel is deferred" emptyDescription="This hosted shell does not call local live-feed APIs. Task workflows remain available in Today and Tasks." />
         )}{" "}
         {activeTab === "calendar" && (
-          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={(taskId) => { setFocusedTaskId(taskId); goTo("tasks"); }} />
+          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={openTask} />
         )}{" "}
         {activeTab === "news" && activeWorkspaceId === "personal" && (
           <WorkspacePageShell

@@ -6,10 +6,9 @@ import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   createTaskItem,
   recurringTaskRequiresDue,
-  sortTaskAttention,
+  tasksRequiringAttentionToday,
   taskBaseType,
   taskHorizon,
-  taskIsActive,
   taskIsOverdue,
   taskAttentionLabel,
   VISIBLE_HORIZON_GROUPS,
@@ -61,11 +60,12 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
   </form>;
 }
 
-export function TaskAttentionPanel({ tasks, workspaceId, onOpen }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpen: () => void }) {
-  const attention = sortTaskAttention(tasks).slice(0, 5);
-  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Highest priority</h2></div><b>{tasks.filter(taskIsActive).length}</b></div>
-    {attention.length ? <div className="attention-list">{attention.map((task) => <button key={task.id} onClick={onOpen}><span><b>{task.title}</b><small className="attention-meta"><span>{taskAttentionLabel(task)}</span><PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">No active tasks.</p>}
-    <button className="text-button" onClick={onOpen}>Open task list</button>
+export function TaskAttentionPanel({ tasks, workspaceId, onOpenTask, onOpenAll }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpenTask: (taskId: TaskItem["id"]) => void; onOpenAll: () => void }) {
+  const attention = tasksRequiringAttentionToday(tasks);
+  const visibleAttention = attention.slice(0, 5);
+  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Needs action today</h2></div><b aria-label={`${attention.length} tasks need action today`}>{attention.length}</b></div>
+    {visibleAttention.length ? <div className="attention-list">{visibleAttention.map((task) => <button key={task.id} onClick={() => onOpenTask(task.id)}><span><b>{task.title}</b><small className="attention-meta"><span>{taskAttentionLabel(task)}</span><PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">Nothing requires action today.</p>}
+    <button className="text-button" onClick={onOpenAll}>Open task list</button>
   </section>;
 }
 
