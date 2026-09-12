@@ -36,3 +36,26 @@ test("task action menu can escape the list and remains scrollable in the viewpor
   assert.match(css, /\.task-row:has\(\.task-actions\[open\]\)/);
   assert.match(css, /\.task-action-panel \{[\s\S]*bottom: 34px;[\s\S]*max-height: min\(70vh, 620px\);[\s\S]*overflow-y: auto;/);
 });
+
+test("desktop task action popover stays below the sticky header", async () => {
+  const [layout, css] = await Promise.all([
+    read("../app/layout.tsx"),
+    read("../app/task-menu-viewport.css"),
+  ]);
+  assert.match(layout, /import "\.\/task-menu-viewport\.css"/);
+  assert.match(css, /@media \(min-width: 621px\)/);
+  assert.match(css, /\.task-action-panel \{[\s\S]*position: fixed;[\s\S]*top: 84px;[\s\S]*bottom: auto;/);
+  assert.match(css, /max-height: calc\(100dvh - 108px\);/);
+  assert.match(css, /right: max\(24px, calc\(\(100vw - 1380px\) \/ 2 \+ 68px\)\);/);
+});
+
+test("task action popover dismisses on outside pointer and Escape", async () => {
+  const surface = await read("../components/task-surface.tsx");
+  assert.match(surface, /useRef<HTMLDetailsElement>\(null\)/);
+  assert.match(surface, /document\.addEventListener\("pointerdown", closeOnOutsidePointer\)/);
+  assert.match(surface, /!actions\.contains\(event\.target\)/);
+  assert.match(surface, /actions\.open = false/);
+  assert.match(surface, /event\.key !== "Escape"/);
+  assert.match(surface, /actions\.querySelector<HTMLElement>\("summary"\)\?\.focus\(\)/);
+  assert.match(surface, /<details ref={actionsRef} className="task-actions">/);
+});

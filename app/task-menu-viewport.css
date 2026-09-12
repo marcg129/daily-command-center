@@ -1,0 +1,14 @@
+/* Desktop task actions behave like a viewport popover so the sticky header can never cover them. */
+@media (min-width: 621px) {
+  .task-action-panel {
+    position: fixed;
+    top: 84px;
+    bottom: auto;
+    right: max(24px, calc((100vw - 1380px) / 2 + 68px));
+    width: min(370px, calc(100vw - 48px));
+    max-height: calc(100vh - 108px);
+    max-height: calc(100dvh - 108px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
