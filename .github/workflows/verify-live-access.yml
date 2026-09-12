@@ -1,0 +1,43 @@
+name: Verify live Cloudflare Access
+
+on:
+  push:
+    branches:
+      - verify/live-access-20260912
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify unauthenticated request is intercepted by Cloudflare Access
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://daily-command-center.mecg129.workers.dev/'
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          code="$(curl -sS --max-redirs 0 -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)"
+          location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}' "$headers")"
+          echo "HTTP status: $code"
+          echo "Location: $location"
+          echo 'Response headers:'
+          sed -E 's/(set-cookie:).*/\1 [redacted]/I' "$headers"
+
+          case "$code" in
+            301|302|303|307|308) ;;
+            *)
+              echo "Expected Cloudflare Access redirect, got HTTP $code" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$location" != https://young-truth-3b40.cloudflareaccess.com/cdn-cgi/access/login/* ]]; then
+            echo 'Redirect is not the expected Cloudflare Access login endpoint.' >&2
+            exit 1
+          fi
+
+          echo 'PASS: unauthenticated traffic is intercepted by Cloudflare Access before the app.'
