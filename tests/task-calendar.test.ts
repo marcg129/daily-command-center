@@ -54,3 +54,14 @@ test("calendar activation opens and focuses the canonical Tasks row", async () =
   assert.match(control, /focused=\{task\.id === focusedTaskId\}/);
   assert.match(surface, /rowRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
 });
+
+test("month calendar exposes selectable days, overflow drill-down, and keyboard paging", async () => {
+  const calendar = await readFile(new URL("../components/task-calendar.tsx", import.meta.url), "utf8");
+  assert.match(calendar, /className="calendar-date" aria-pressed=\{date === selectedDate\}/);
+  assert.match(calendar, /className="calendar-more" onClick=\{\(\) => setSelectedDate\(date\)\}/);
+  assert.match(calendar, /event\.key !== "PageUp" && event\.key !== "PageDown"/);
+  assert.match(calendar, /event\.defaultPrevented/);
+  assert.doesNotMatch(calendar, /event\.target !== event\.currentTarget/);
+  assert.match(calendar, /className="calendar-day-detail" aria-live="polite"/);
+  assert.match(calendar, /selectedEntries\.map\(\(entry\) => <CalendarItem/);
+});
