@@ -1,5 +1,11 @@
 /* Desktop task actions behave like a viewport popover so the sticky header can never cover them. */
 @media (min-width: 621px) {
+  /* A retained transform makes fixed descendants anchor to the task list instead
+     of the viewport. Keep the fade, but release the list's reveal transform. */
+  .task-list.reveal {
+    animation-name: task-list-reveal;
+  }
+
   .task-action-panel {
     position: fixed;
     top: 84px;
@@ -11,4 +17,9 @@
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+}
+
+@keyframes task-list-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

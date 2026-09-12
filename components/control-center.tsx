@@ -95,6 +95,7 @@ import {
 } from "@/lib/live-response";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { WorkspacePageShell } from "@/components/workspace-page-shell";
+import { TaskCalendar } from "@/components/task-calendar";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   DEFAULT_WORKSPACE_ID,
@@ -1913,7 +1914,7 @@ function NewslettersView({
   );
 }
 
-function TasksView({ tasks, setTasks, workspaceId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId }) {
+function TasksView({ tasks, setTasks, workspaceId, focusedTaskId }: { tasks: Task[]; setTasks: React.Dispatch<React.SetStateAction<Task[]>>; workspaceId: ProductWorkspaceId; focusedTaskId?: Task["id"] }) {
   const visible = visibleTaskItems(tasks, workspaceId);
   const open = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "OPEN" || (task.status ?? "OPEN") === "WAITING");
   const completed = visible.filter((task) => (task.status ?? (task.done ? "DONE" : "OPEN")) === "DONE").toSorted((a, b) => (b.completedAt || b.createdAt || "").localeCompare(a.completedAt || a.createdAt || ""));
@@ -1923,7 +1924,7 @@ function TasksView({ tasks, setTasks, workspaceId }: { tasks: Task[]; setTasks: 
     <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Execution`} title="Tasks" description={workspaceId === "personal" ? "Personal work and visible Indelitech commitments, managed as the same records." : "Indelitech-owned work only, with business attention and deadlines in view."} />
     <QuickTaskAdd workspaceId={workspaceId} onAdd={(task) => setTasks((values) => [task, ...values])} />
     <div className="task-summary reveal delay-1"><div><b>{open.length}</b><span>open tasks</span></div><div><b>{open.filter((task) => task.due === localDateValue()).length}</b><span>due today</span></div><div><b>{open.filter((task) => task.recurrence !== "One-time").length}</b><span>repeating</span></div><div><b>{completed.length}</b><span>completed</span></div></div>
-    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} onComplete={() => complete(task)} onChange={(patch) => setTasks((values) => updateTaskItem(values, task.id, patch))} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
+    {open.length ? <div className="task-list reveal delay-2">{open.map((task) => <TaskRow key={task.id} task={task} workspaceId={workspaceId} focused={task.id === focusedTaskId} onComplete={() => complete(task)} onChange={(patch) => setTasks((values) => updateTaskItem(values, task.id, patch))} onDelete={() => setTasks((values) => values.filter((value) => value.id !== task.id))} />)}</div> : <Panel className="empty-state"><ListTodo size={26} /><h2>No open tasks</h2><p>Add the first task when there is something worth committing to.</p></Panel>}
     {completed.length > 0 && <details className="completed-list"><summary>{completed.length} completed</summary>{completed.map((task) => <div className="completed-row" key={task.id}><CheckCircle2 size={16} /><div className="completed-copy"><s>{task.title}</s><small>{task.completedAt ? `Completed ${formatDate(task.completedAt)}` : "Completed"} · was due {formatTaskDue(task.due)}{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}{task.seriesId !== undefined ? " · recurring occurrence" : ""}</small></div>{task.seriesId === undefined && <button aria-label={`Delete completed ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button>}</div>)}</details>}
     {cancelled.length > 0 && <details className="completed-list"><summary>{cancelled.length} cancelled</summary>{cancelled.map((task) => <div className="completed-row" key={task.id}><X size={16} /><div className="completed-copy"><s>{task.title}</s><small>Cancelled · record preserved{task.primaryWorkspaceId === "indelitech" && workspaceId === "personal" ? " · Indelitech" : ""}</small></div><button aria-label={`Delete cancelled ${task.title}`} onClick={() => setTasks((values) => values.filter((value) => value.id !== task.id))}><Trash2 size={14} /></button></div>)}</details>}
   </div>;
@@ -3160,6 +3161,7 @@ export function ControlCenter() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [workspaceSaveError, setWorkspaceSaveError] = useState("");
+  const [focusedTaskId, setFocusedTaskId] = useState<Task["id"]>();
   const [runtimeMode, setRuntimeMode] = useState<BrowserRuntimeMode | null>(null);
   const taskSaveQueue = useRef(new OrderedSaveQueue());
   const reminderSaveQueue = useRef(new OrderedSaveQueue());
@@ -3358,6 +3360,7 @@ export function ControlCenter() {
   }, [toast]);
 
   const goTo = (tab: Tab) => {
+    if (tab !== "tasks") setFocusedTaskId(undefined);
     setActiveTab(tab);
     setMobileOpen(false);
     const url = new URL(window.location.href);
@@ -3597,14 +3600,7 @@ export function ControlCenter() {
           <WorkspacePageShell eyebrow="Indelitech · Intel" title="Intel" description="Hosted business intelligence is not enabled in this milestone." icon={<Radio size={25} />} emptyTitle="Hosted Intel is deferred" emptyDescription="This hosted shell does not call local live-feed APIs. Task workflows remain available in Today and Tasks." />
         )}{" "}
         {activeTab === "calendar" && (
-          <WorkspacePageShell
-            eyebrow={`${WORKSPACES[activeWorkspaceId].displayName} · Calendar`}
-            title="Calendar"
-            description={activeWorkspaceId === "personal" ? "A future unified view of personal and relevant Indelitech commitments." : "A focused business calendar for Indelitech operations."}
-            icon={<CalendarDays size={25} />}
-            emptyTitle={activeWorkspaceId === "personal" ? "Your unified calendar will live here" : "Your business calendar will live here"}
-            emptyDescription="Calendar integration is intentionally deferred. No Google account is connected and no placeholder events are shown."
-          />
+          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={(taskId) => { setFocusedTaskId(taskId); goTo("tasks"); }} />
         )}{" "}
         {activeTab === "news" && activeWorkspaceId === "personal" && (
           <WorkspacePageShell
@@ -3658,7 +3654,7 @@ export function ControlCenter() {
           />
         )}{" "}
         {activeTab === "tasks" && (
-          <TasksView tasks={tasks} setTasks={setTasks} workspaceId={activeWorkspaceId} />
+          <TasksView tasks={tasks} setTasks={setTasks} workspaceId={activeWorkspaceId} focusedTaskId={focusedTaskId} />
         )}{" "}
         {activeTab === "settings" && runtimeMode === "local" && (
           <SettingsView
