@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daily-command-center-mcp",
+  "main": "workers/task-capture-mcp.ts",
+  "compatibility_date": "2026-09-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "daily-command-center-prod",
+      "database_id": "2f67ea9a-bf97-4008-9031-2ebfdb5a6e57"
+    }
+  ],
+  "vars": {
+    "TEAM_DOMAIN": "https://young-truth-3b40.cloudflareaccess.com"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
