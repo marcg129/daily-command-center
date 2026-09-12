@@ -38,9 +38,10 @@ test("completing a rolled-up task mutates its same id and preserves recurring ow
 });
 
 test("quick-add ownership follows its active workspace and due date remains optional", () => {
-  const personal = createTaskItem({ title: "Personal", due: "", priority: "MEDIUM" }, "personal", "p", new Date(0));
+  const personal = createTaskItem({ title: "Personal", due: "", priority: "MEDIUM", estimatedDuration: "15m" }, "personal", "p", new Date(0));
   const business = createTaskItem({ title: "Business", due: "", priority: "HIGH" }, "indelitech", "b", new Date(0));
   assert.equal(personal.primaryWorkspaceId, "personal"); assert.equal(business.primaryWorkspaceId, "indelitech"); assert.equal(personal.due, "");
+  assert.equal(personal.estimatedDuration, "15m"); assert.equal(business.estimatedDuration, undefined);
 });
 
 test("overdue attention is computed above HIGH without changing priority", () => {
