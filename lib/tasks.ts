@@ -37,11 +37,13 @@ function productDateValue(date: Date) {
 }
 
 function hostedShape(task: TaskItem, now: Date) {
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(task.due);
+  const isTimestamp = /^\d{4}-\d{2}-\d{2}T/.test(task.due) && Number.isFinite(Date.parse(task.due));
   return {
     dueAt: task.due === "Today"
       ? productDateValue(now)
-      : /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : null,
-    dueIsDateOnly: true,
+      : isDateOnly || isTimestamp ? task.due : null,
+    dueIsDateOnly: task.due === "Today" || isDateOnly,
     status: task.status ?? (task.done ? "DONE" as const : "OPEN" as const),
     priority: normalizeTaskPriority(task.priority),
   };
