@@ -74,4 +74,6 @@ test("hosted UI keeps task views and substitutes deferred shells for local-only 
   assert.match(source, /activeTab === "mentions" && runtimeMode === "local"/);
   assert.match(source, /activeTab === "settings" && runtimeMode === "local"/);
   assert.match(source, /runtimeMode !== "local"/);
+  assert.match(source, /lastScheduledTasks\.current === scheduledTasks/,
+    "an older hosted response must not overwrite a newer optimistic task snapshot");
 });
