@@ -29,13 +29,14 @@ test("proxy allows local CLI requests without an Origin header", () => {
   assert.equal(proxy(apiRequest()).status, 200);
 });
 
-test("hosted proxy allows only the exact task MVP routes", () => {
+test("hosted proxy allows only the exact task MVP and session routes", () => {
   for (const path of [
+    "/api/hosted/session",
     "/api/hosted/workspace?workspaceId=personal",
     "/api/hosted/tasks/mutations?workspaceId=personal",
     "/api/hosted/tasks/capture?workspaceId=personal",
   ]) assert.equal(proxy(hostedRequest(path)).status, 200);
-  for (const path of ["/api/settings", "/api/workspace", "/api/hosted/other", "/api/hosted/workspace/extra"])
+  for (const path of ["/api/settings", "/api/workspace", "/api/hosted/other", "/api/hosted/workspace/extra", "/api/hosted/session/extra"])
     assert.equal(proxy(hostedRequest(path)).status, 403);
 });
 
