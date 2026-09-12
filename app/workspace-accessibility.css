@@ -1,0 +1,223 @@
+:root {
+  --priority-high-bg: #fff3c7;
+  --priority-high-border: #9b6a00;
+  --priority-high-ink: #4d3400;
+  --priority-high-wash: rgba(155, 106, 0, .10);
+  --priority-medium-bg: #e6f0fb;
+  --priority-medium-border: #3d73a8;
+  --priority-medium-ink: #244f78;
+  --priority-low-bg: #eceeef;
+  --priority-low-border: #7f8a91;
+  --priority-low-ink: #4f5960;
+}
+
+[data-theme="dark"] {
+  --priority-high-bg: #3a2d0c;
+  --priority-high-border: #f5c451;
+  --priority-high-ink: #ffe4a3;
+  --priority-high-wash: rgba(245, 196, 81, .09);
+  --priority-medium-bg: #162a42;
+  --priority-medium-border: #7db2e8;
+  --priority-medium-ink: #d4ebff;
+  --priority-low-bg: #22282d;
+  --priority-low-border: #77838d;
+  --priority-low-ink: #d0d6da;
+}
+
+/* Workspace identity is conveyed by luminance, texture, labels/icons, and color.
+   Hue is intentionally not the only distinction. */
+.app-shell[data-workspace="personal"] {
+  --workspace-bg: #edf4fc;
+  --topbar: rgba(237, 244, 252, .94);
+  background-color: var(--workspace-bg);
+  background-image:
+    linear-gradient(135deg, rgba(57, 120, 199, .08), transparent 42%),
+    radial-gradient(var(--dot) .7px, transparent .7px);
+  background-size: auto, 7px 7px;
+}
+
+.app-shell[data-workspace="indelitech"] {
+  --workspace-bg: #f6efe4;
+  --topbar: rgba(246, 239, 228, .95);
+  background-color: var(--workspace-bg);
+  background-image:
+    linear-gradient(rgba(182, 106, 56, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(182, 106, 56, .05) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(182, 106, 56, .08), transparent 44%);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+[data-theme="dark"] .app-shell[data-workspace="personal"] {
+  --paper: #0b1420;
+  --paper-deep: #111e2c;
+  --card: #152333;
+  --line: #2a4058;
+  --line-dark: #405c78;
+  --topbar: rgba(10, 19, 30, .94);
+  --topbar-line: rgba(64, 92, 120, .78);
+  --surface: rgba(21, 35, 51, .92);
+  --surface-strong: rgba(21, 35, 51, .96);
+  --surface-medium: rgba(21, 35, 51, .76);
+  --surface-soft: rgba(21, 35, 51, .56);
+  --surface-faint: rgba(21, 35, 51, .38);
+  --surface-wash: rgba(117, 174, 234, .05);
+  --surface-label: rgba(117, 174, 234, .08);
+  --surface-highlight: rgba(154, 198, 241, .08);
+  --deep-soft: rgba(42, 64, 88, .42);
+  --deep-hover: rgba(42, 64, 88, .72);
+  --dot: rgba(117, 174, 234, .09);
+  --workspace-bg: #0b1420;
+  background-color: var(--workspace-bg);
+  background-image:
+    linear-gradient(135deg, rgba(117, 174, 234, .11), transparent 44%),
+    radial-gradient(var(--dot) .7px, transparent .7px);
+  background-size: auto, 7px 7px;
+}
+
+[data-theme="dark"] .app-shell[data-workspace="indelitech"] {
+  --paper: #17130f;
+  --paper-deep: #221b14;
+  --card: #2a2118;
+  --line: #4a3a29;
+  --line-dark: #6b5237;
+  --topbar: rgba(23, 19, 15, .95);
+  --topbar-line: rgba(107, 82, 55, .78);
+  --surface: rgba(42, 33, 24, .92);
+  --surface-strong: rgba(42, 33, 24, .96);
+  --surface-medium: rgba(42, 33, 24, .76);
+  --surface-soft: rgba(42, 33, 24, .56);
+  --surface-faint: rgba(42, 33, 24, .38);
+  --surface-wash: rgba(229, 154, 104, .05);
+  --surface-label: rgba(229, 154, 104, .08);
+  --surface-highlight: rgba(241, 181, 142, .08);
+  --deep-soft: rgba(74, 58, 41, .42);
+  --deep-hover: rgba(74, 58, 41, .72);
+  --dot: rgba(229, 154, 104, .08);
+  --workspace-bg: #17130f;
+  background-color: var(--workspace-bg);
+  background-image:
+    linear-gradient(rgba(229, 154, 104, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(229, 154, 104, .045) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(229, 154, 104, .10), transparent 46%);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+/* Priority is never color-only: symbol + text + border/weight all carry meaning. */
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--priority-low-border);
+  border-radius: 999px;
+  background: var(--priority-low-bg);
+  color: var(--priority-low-ink);
+  font: 800 7px var(--mono);
+  letter-spacing: .08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.priority-badge > span:first-child {
+  min-width: 8px;
+  text-align: center;
+}
+
+.priority-badge.priority-high {
+  border-width: 2px;
+  border-color: var(--priority-high-border);
+  background: var(--priority-high-bg);
+  color: var(--priority-high-ink);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--priority-high-border) 16%, transparent);
+  font-weight: 900;
+}
+
+.priority-badge.priority-medium {
+  border-color: var(--priority-medium-border);
+  background: var(--priority-medium-bg);
+  color: var(--priority-medium-ink);
+}
+
+.priority-badge.priority-low {
+  border-color: var(--priority-low-border);
+  background: var(--priority-low-bg);
+  color: var(--priority-low-ink);
+}
+
+.priority-select.priority-high {
+  border: 2px solid var(--priority-high-border);
+  background: var(--priority-high-bg);
+  color: var(--priority-high-ink);
+  font-weight: 800;
+}
+
+.priority-select.priority-medium {
+  border-color: var(--priority-medium-border);
+}
+
+.task-row[data-priority="high"] {
+  background-image: linear-gradient(90deg, var(--priority-high-wash), transparent 28%);
+}
+
+.task-meta,
+.attention-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.attention-meta .priority-badge {
+  margin-left: 2px;
+}
+
+/* The action menu must escape the task list instead of being clipped at its edge. */
+.task-list {
+  overflow: visible;
+}
+
+.task-list-head {
+  border-radius: 9px 9px 0 0;
+}
+
+.task-row {
+  position: relative;
+}
+
+.task-row:last-child {
+  border-radius: 0 0 9px 9px;
+}
+
+.task-list:has(.task-actions[open]),
+.task-row:has(.task-actions[open]),
+.task-actions[open] {
+  position: relative;
+  z-index: 40;
+}
+
+.task-actions[open] > .more-button {
+  color: var(--ink);
+  background: var(--paper-deep);
+  border-radius: 6px;
+}
+
+.task-action-panel {
+  top: auto;
+  bottom: 34px;
+  z-index: 80;
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 620px) {
+  .task-action-panel {
+    top: 34px;
+    bottom: auto;
+    right: 0;
+    width: min(340px, calc(100vw - 48px));
+    max-height: 60vh;
+  }
+}
