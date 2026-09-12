@@ -56,7 +56,7 @@ If `MCP_POLICY_AUD` has not been configured, the Worker fails closed with `503`.
 
 ## Cloudflare setup
 
-After a pull request merges into `main`, the `Check` workflow validates the exact merged main SHA on Ubuntu, macOS, and Windows. Only a successful main check starts the protected Cloudflare deployment, which publishes both the web Worker and `daily-command-center-mcp`. Manual dispatch remains available for bootstrap and recovery.
+After an agent-performed pull request merge, the agent re-runs one successful PR `Check` job. The protected workflow verifies that the run belongs to the PR whose merge commit is the current `main` SHA before it exposes Cloudflare credentials or publishes either Worker. This handles API-driven merges that do not emit a separate GitHub `push` event. Manual dispatch remains available for bootstrap and recovery.
 
 The MCP Worker is published from `wrangler.mcp.jsonc`. Its endpoint is:
 
