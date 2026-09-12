@@ -4,6 +4,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
 import {
+  browserRuntimeMode,
+  loadBrowserWorkspace,
+  taskMutationEndpoint,
+  type BrowserRuntimeMode,
+} from "@/lib/runtime/browser-runtime";
+import {
   Activity,
   Archive,
   ArchiveRestore,
@@ -62,7 +68,6 @@ import type {
   SettingsUpdate,
   TaskItem,
   WorkspaceState,
-  WorkspaceStateResponse,
 } from "@/lib/types";
 import {
   GOOGLE_OAUTH_CLIENT_ID_ERROR,
@@ -658,12 +663,13 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
-function PersonalTodayView({ tasks, goTo }: { tasks: Task[]; goTo: (tab: Tab) => void }) {
+function TaskFocusedTodayView({ tasks, goTo, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; workspaceId: ProductWorkspaceId }) {
+  const personal = workspaceId === "personal";
   return (
     <div className="view">
-      <PageHeading eyebrow="Personal · Today" title="What needs my attention today?" description="Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
+      <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Today`} title="What needs my attention today?" description={personal ? "Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." : "Indelitech task priorities and a focused 45-day outlook. Hosted intelligence and Daily Brief are deferred."} action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
       <div className="personal-today-grid reveal delay-1">
-        <TaskAttentionPanel tasks={tasks} workspaceId="personal" onOpen={() => goTo("tasks")} />
+        <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpen={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
     </div>
@@ -3154,12 +3160,16 @@ export function ControlCenter() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [workspaceSaveError, setWorkspaceSaveError] = useState("");
+  const [runtimeMode, setRuntimeMode] = useState<BrowserRuntimeMode | null>(null);
   const taskSaveQueue = useRef(new OrderedSaveQueue());
   const reminderSaveQueue = useRef(new OrderedSaveQueue());
   const lastScheduledTasks = useRef<Task[] | null>(null);
   const lastScheduledReminders = useRef<Reminder[] | null>(null);
   const persistedTasks = useRef<Task[] | null>(null);
   const persistedReminders = useRef<Reminder[] | null>(null);
+  const activeWorkspaceRef = useRef(activeWorkspaceId);
+  activeWorkspaceRef.current = activeWorkspaceId;
+  const workspaceRequestId = runtimeMode === "hosted" ? activeWorkspaceId : DEFAULT_WORKSPACE_ID;
 
   useEffect(() => {
     window.queueMicrotask(() => {
@@ -3168,10 +3178,12 @@ export function ControlCenter() {
       } catch {
         setActiveWorkspaceId(DEFAULT_WORKSPACE_ID);
       }
+      setRuntimeMode(browserRuntimeMode(window.location.hostname));
     });
   }, []);
 
   useEffect(() => {
+    if (!runtimeMode) return;
     let cancelled = false;
     window.queueMicrotask(() => {
       const requested = new URLSearchParams(window.location.search).get("tab") as WorkspacePageId | null;
@@ -3180,24 +3192,17 @@ export function ControlCenter() {
     });
     const load = async () => {
       try {
-        const [settingsResponse, workspaceResponse] = await Promise.all([
-          fetch("/api/settings", { cache: "no-store" }),
-          fetch("/api/workspace", { cache: "no-store" }),
-        ]);
-        if (!settingsResponse.ok)
-          throw new Error(
-            "Settings could not be read. Your saved configuration was not changed.",
-          );
-        if (!workspaceResponse.ok)
-          throw new Error(
-            "Tasks and reminders could not be read. Your saved workspace was not changed.",
-          );
-        const [loadedSettings, saved] = await Promise.all([
-          settingsResponse.json() as Promise<PublicSettings>,
-          workspaceResponse.json() as Promise<WorkspaceStateResponse>,
-        ]);
-        const recovery = readWorkspaceRecovery();
-        const legacy: WorkspaceState = saved.legacyBrowserImportAllowed
+        if (runtimeMode === "hosted") {
+          setWorkspaceReady(false);
+          setBootstrapStatus("loading");
+        }
+        const { settings: loadedSettings, workspace: saved } = await loadBrowserWorkspace(
+          fetch,
+          runtimeMode,
+          workspaceRequestId,
+        );
+        const recovery = runtimeMode === "local" ? readWorkspaceRecovery() : null;
+        const legacy: WorkspaceState = runtimeMode === "local" && saved.legacyBrowserImportAllowed
           ? {
               reminders: readLegacyList<Reminder>("control-center-v2-reminders"),
               tasks: readLegacyList<Task>("control-center-v2-tasks"),
@@ -3210,7 +3215,7 @@ export function ControlCenter() {
         // initialized server snapshot after a failed optimistic mutation.
         const canRecover = !saved.initialized && saved.legacyBrowserImportAllowed;
         if (recovery && canRecover) nextWorkspace = recovery.workspace;
-        if (!saved.initialized || (recovery && canRecover)) {
+        if (runtimeMode === "local" && (!saved.initialized || (recovery && canRecover))) {
           const importResponse = await fetch("/api/workspace", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -3223,12 +3228,12 @@ export function ControlCenter() {
           nextWorkspace = (await importResponse.json()) as WorkspaceState;
         }
         if (cancelled) return;
-        setSettings(loadedSettings);
-        setReminders(nextWorkspace.reminders);
+        if (loadedSettings) setSettings(loadedSettings);
+        setReminders(runtimeMode === "hosted" ? [] : nextWorkspace.reminders);
         setTasks(nextWorkspace.tasks);
-        lastScheduledReminders.current = nextWorkspace.reminders;
+        lastScheduledReminders.current = runtimeMode === "hosted" ? [] : nextWorkspace.reminders;
         lastScheduledTasks.current = nextWorkspace.tasks;
-        persistedReminders.current = nextWorkspace.reminders;
+        persistedReminders.current = runtimeMode === "hosted" ? [] : nextWorkspace.reminders;
         persistedTasks.current = nextWorkspace.tasks;
         setWorkspaceReady(true);
         setBootstrapStatus("ready");
@@ -3237,7 +3242,9 @@ export function ControlCenter() {
         setBootstrapError(
           error instanceof Error
             ? error.message
-            : "Control Center could not read its local data.",
+            : runtimeMode === "local"
+              ? "Control Center could not read its local data."
+              : "Control Center could not read hosted tasks.",
         );
         setBootstrapStatus("error");
       }
@@ -3246,10 +3253,10 @@ export function ControlCenter() {
     return () => {
       cancelled = true;
     };
-  }, [bootstrapAttempt]);
+  }, [bootstrapAttempt, runtimeMode, workspaceRequestId]);
   // Keep the emergency browser copy current independently of normal persistence.
   useEffect(() => {
-    if (!workspaceReady) return;
+    if (!workspaceReady || runtimeMode !== "local") return;
     const workspace = { reminders, tasks } satisfies WorkspaceState;
     const recovery: WorkspaceRecovery = {
       id: crypto.randomUUID(),
@@ -3272,20 +3279,30 @@ export function ControlCenter() {
     } catch {
       // The immediate SQLite write below remains canonical when browser storage is unavailable.
     }
-  }, [reminders, tasks, workspaceReady]);
+  }, [reminders, runtimeMode, tasks, workspaceReady]);
   useEffect(() => {
-    if (!workspaceReady || !lastScheduledTasks.current) return;
+    if (!runtimeMode || !workspaceReady || !lastScheduledTasks.current) return;
     const mutations = diffTaskItems(lastScheduledTasks.current, tasks);
     lastScheduledTasks.current = tasks;
     if (!mutations.length) return;
+    const mutationWorkspaceId = activeWorkspaceId;
+    const scheduledTasks = tasks;
     const save = async () => {
-      const response = await fetch("/api/tasks/mutations", {
+      const response = await fetch(taskMutationEndpoint(runtimeMode, mutationWorkspaceId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mutations }),
       });
-      if (!response.ok) throw new Error("Tasks could not be saved to SQLite. Keep this page open and retry.");
-      persistedTasks.current = tasks;
+      if (!response.ok) throw new Error(runtimeMode === "local"
+        ? "Tasks could not be saved to SQLite. Keep this page open and retry."
+        : "Hosted tasks could not be saved. Keep this page open and retry.");
+      const payload = await response.json() as { tasks: Task[] };
+      persistedTasks.current = runtimeMode === "local" ? scheduledTasks : payload.tasks;
+      if (runtimeMode === "hosted" && activeWorkspaceRef.current === mutationWorkspaceId) {
+        lastScheduledTasks.current = payload.tasks;
+        setTasks(payload.tasks);
+      }
+      if (runtimeMode === "hosted") return;
       const recovery = readWorkspaceRecovery();
       try {
         if (recovery && JSON.stringify(recovery.workspace.tasks) === JSON.stringify(persistedTasks.current) &&
@@ -3299,9 +3316,9 @@ export function ControlCenter() {
     }).catch((error) => {
       setWorkspaceSaveError(error instanceof Error ? error.message : "Tasks could not be saved.");
     });
-  }, [tasks, workspaceReady]);
+  }, [activeWorkspaceId, runtimeMode, tasks, workspaceReady]);
   useEffect(() => {
-    if (!workspaceReady || !lastScheduledReminders.current) return;
+    if (!workspaceReady || runtimeMode !== "local" || !lastScheduledReminders.current) return;
     if (JSON.stringify(lastScheduledReminders.current) === JSON.stringify(reminders)) return;
     lastScheduledReminders.current = reminders;
     const save = async () => {
@@ -3326,7 +3343,7 @@ export function ControlCenter() {
     }).catch((error) => {
       setWorkspaceSaveError(error instanceof Error ? error.message : "Reminders could not be saved.");
     });
-  }, [reminders, workspaceReady]);
+  }, [reminders, runtimeMode, workspaceReady]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2600);
@@ -3449,14 +3466,12 @@ export function ControlCenter() {
       <div className="app-recovery">
         <Panel className="recovery-panel">
           <CircleAlert size={30} />
-          <p className="eyebrow">Local data protected</p>
+          <p className="eyebrow">{runtimeMode === "local" ? "Local data protected" : "Hosted tasks unavailable"}</p>
           <h1>Daily Command Center could not open safely</h1>
           <p>{bootstrapError}</p>
-          <p>
-            No settings, tasks, or reminders were overwritten. Retry the read,
-            or run <code>npm run doctor</code> in the app folder for a local
-            diagnostic.
-          </p>
+          <p>{runtimeMode === "local"
+            ? <>No settings, tasks, or reminders were overwritten. Retry the read, or run <code>npm run doctor</code> in the app folder for a local diagnostic.</>
+            : "No local data was loaded and no recovery import was attempted. Retry the authenticated hosted request."}</p>
           <button
             className="button button-primary"
             onClick={() => {
@@ -3518,7 +3533,7 @@ export function ControlCenter() {
         <div className="top-actions">
           <button className="status-button" onClick={() => openSettings()}>
             <i className={configuredCount === 4 ? "ready" : ""} />
-            <span>{configuredCount}/4 live</span>
+            <span>{runtimeMode === "hosted" ? "Hosted tasks" : `${configuredCount}/4 live`}</span>
           </button>
           <button
             className="icon-button theme-toggle"
@@ -3552,10 +3567,10 @@ export function ControlCenter() {
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (
-          <PersonalTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} />
+          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} workspaceId="personal" />
         )}
         {activeTab === "today" && activeWorkspaceId === "indelitech" && (
-          <TodayView
+          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} workspaceId="indelitech" /> : <TodayView
             settings={settings}
             tasks={tasks}
             goTo={goTo}
@@ -3563,13 +3578,16 @@ export function ControlCenter() {
             addBriefTask={addBriefTask}
           />
         )}{" "}
-        {activeTab === "industry" && (
+        {activeTab === "industry" && runtimeMode === "local" && (
           <IndustryView
             saveStory={(story) =>
               addReminder(story.title, story.summary, story.url)
             }
             openSettings={() => openSettings("industry")}
           />
+        )}{" "}
+        {activeTab === "industry" && runtimeMode === "hosted" && (
+          <WorkspacePageShell eyebrow="Indelitech · Intel" title="Intel" description="Hosted business intelligence is not enabled in this milestone." icon={<Radio size={25} />} emptyTitle="Hosted Intel is deferred" emptyDescription="This hosted shell does not call local live-feed APIs. Task workflows remain available in Today and Tasks." />
         )}{" "}
         {activeTab === "calendar" && (
           <WorkspacePageShell
@@ -3591,13 +3609,16 @@ export function ControlCenter() {
             emptyDescription="Personal sources and curation are intentionally deferred so this view never misrepresents the existing Indelitech industry feed."
           />
         )}{" "}
-        {activeTab === "mentions" && (
+        {activeTab === "mentions" && runtimeMode === "local" && (
           <MentionsView
             saveStory={(story) =>
               addReminder(story.title, story.summary, story.url)
             }
             openSettings={() => openSettings("mentions")}
           />
+        )}{" "}
+        {activeTab === "mentions" && runtimeMode === "hosted" && (
+          <WorkspacePageShell eyebrow="Indelitech · Mentions" title="Mentions" description="Hosted mention collection is not enabled in this milestone." icon={<AtSign size={25} />} emptyTitle="Hosted Mentions are deferred" emptyDescription="This hosted shell does not call local mention or settings APIs. No placeholder monitoring results are shown." />
         )}{" "}
         {activeTab === "reminders" && (
           <RemindersView
@@ -3632,7 +3653,7 @@ export function ControlCenter() {
         {activeTab === "tasks" && (
           <TasksView tasks={tasks} setTasks={setTasks} workspaceId={activeWorkspaceId} />
         )}{" "}
-        {activeTab === "settings" && (
+        {activeTab === "settings" && runtimeMode === "local" && (
           <SettingsView
             settings={settings}
             workspaceId={activeWorkspaceId}
@@ -3642,12 +3663,15 @@ export function ControlCenter() {
             }}
           />
         )}
+        {activeTab === "settings" && runtimeMode === "hosted" && (
+          <WorkspacePageShell eyebrow={`${WORKSPACES[activeWorkspaceId].displayName} · Settings`} title="Settings" description="Hosted settings persistence is not enabled in this milestone." icon={<Settings2 size={25} />} emptyTitle="Hosted Settings are deferred" emptyDescription="This shell does not read or write local settings. Task access continues to use the authenticated hosted workspace routes." />
+        )}
       </main>
       <footer>
         <span>Marc&apos;s Daily Command Center</span>
         <i />
         <span>{WORKSPACES[activeWorkspaceId].displayName} · {current}</span>
-        <small>Local-only · Saved to this computer</small>
+        <small>{runtimeMode === "hosted" ? "Hosted · Tasks saved to D1" : "Local-only · Saved to this computer"}</small>
       </footer>
       {toast && (
         <div className="toast">

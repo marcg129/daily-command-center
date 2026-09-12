@@ -1,12 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isLoopbackHostname } from "@/lib/runtime/browser-runtime";
 
-const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-
-function isLoopback(value: string) {
+function requestHostname(host: string) {
   try {
-    return loopbackHosts.has(new URL(value).hostname.toLowerCase());
+    return new URL(`http://${host}`).hostname;
   } catch {
-    return false;
+    return "";
   }
 }
 
@@ -22,9 +21,15 @@ function isSameOrigin(value: string, request: NextRequest) {
 
 export function proxy(request: NextRequest) {
   const host = request.headers.get("host") || "";
-  if (!isLoopback(`http://${host}`)) {
+  const local = isLoopbackHostname(requestHostname(host));
+  const allowedHostedPaths = new Set([
+    "/api/hosted/workspace",
+    "/api/hosted/tasks/mutations",
+    "/api/hosted/tasks/capture",
+  ]);
+  if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
-      { error: "Control Center only accepts requests from this computer." },
+      { error: "This API is unavailable in hosted mode." },
       { status: 403 },
     );
   }
