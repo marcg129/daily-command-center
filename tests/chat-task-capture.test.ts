@@ -170,6 +170,6 @@ test("deployment documentation uses the account's canonical workers.dev subdomai
   );
   assert.match(documentation, /https:\/\/daily-command-center-mcp\.mecg129\.workers\.dev\/mcp/);
   assert.doesNotMatch(documentation, /daily-command-center-mcp\.marcg129\.workers\.dev/);
-  assert.match(documentation, /the agent re-runs one successful PR `Check` job/);
-  assert.match(documentation, /merge commit is the current `main` SHA/);
+  assert.match(documentation, /\/deploy-current-main <merge-sha> <check-run-id>/);
+  assert.match(documentation, /accepts the exact command only from the repository owner/);
 });
