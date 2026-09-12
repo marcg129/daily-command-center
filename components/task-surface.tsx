@@ -13,6 +13,13 @@ import {
   taskAttentionLabel,
   VISIBLE_HORIZON_GROUPS,
 } from "@/lib/tasks";
+import {
+  taskPlanningDueBucket,
+  taskPlanningDurationBucket,
+  type TaskPlanningDueFilter,
+  type TaskPlanningDurationFilter,
+  type TaskPlanningPriorityFilter,
+} from "@/lib/task-planning";
 import type { TaskItem } from "@/lib/types";
 import { isoToProductWallClock, productWallClockToIso, reminderPresetIso } from "@/lib/product-time";
 
@@ -22,6 +29,10 @@ const GROUP_LABELS = {
 } as const;
 const TASK_DURATIONS = ["5m", "15m", "30m", "1h", "2h+", "Project"] as const;
 type TaskDuration = NonNullable<TaskItem["estimatedDuration"]>;
+
+function planningFilterValue(value: string) {
+  return value.toLowerCase().replaceAll("_", "-");
+}
 
 function DurationSelect({ value, onChange, label }: { value: TaskDuration | ""; onChange: (value: TaskDuration | "") => void; label: string }) {
   return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value as TaskDuration | "")}>
@@ -50,6 +61,9 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
   const [description, setDescription] = useState("");
   const [recurrence, setRecurrence] = useState("One-time");
   const [duration, setDuration] = useState<TaskDuration | "">("");
+  const [priorityFilter, setPriorityFilter] = useState<TaskPlanningPriorityFilter>("ALL");
+  const [dueFilter, setDueFilter] = useState<TaskPlanningDueFilter>("ALL");
+  const [durationFilter, setDurationFilter] = useState<TaskPlanningDurationFilter>("ALL");
   const dueRequired = recurringTaskRequiresDue(recurrence);
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -57,7 +71,13 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
     onAdd(createTaskItem({ title, due, priority, description, recurrence, estimatedDuration: duration || undefined }, workspaceId));
     setTitle(""); setDue(""); setPriority("MEDIUM"); setDescription(""); setRecurrence("One-time"); setDuration(""); setMore(false);
   };
-  return <form className="quick-task-add reveal" onSubmit={submit}>
+  return <form
+    className="quick-task-add reveal"
+    onSubmit={submit}
+    data-filter-priority={planningFilterValue(priorityFilter)}
+    data-filter-due={planningFilterValue(dueFilter)}
+    data-filter-duration={planningFilterValue(durationFilter)}
+  >
     <div className="quick-task-main">
       <label><span>Quick add to {workspaceId === "personal" ? "Personal" : "Indelitech"}</span><input aria-label="Task title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to get done?" /></label>
       <label><span>Due {dueRequired ? "(required for repeats)" : "(optional)"}</span><input aria-label="Due date" type="date" value={due} required={dueRequired} aria-describedby={dueRequired && !due ? "recurring-due-help" : undefined} onChange={(event) => setDue(event.target.value)} /></label>
@@ -67,6 +87,14 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
     <button type="button" className="text-button" onClick={() => setMore((value) => !value)}>{more ? "Fewer options" : "More options"}</button>
     {more && <div className="quick-task-more"><label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional context" /></label><label><span>Repeats</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label><label><span>Estimated time</span><DurationSelect label="Estimated duration" value={duration} onChange={setDuration} /></label></div>}
     {dueRequired && !due && <small id="recurring-due-help" role="alert">Choose a due date for a recurring task.</small>}
+    <div className="task-planning-filters" aria-label="Task planning filters">
+      <div className="task-planning-filter-heading"><strong>Plan this task list</strong><small>Filters only change the open rows shown below.</small></div>
+      <div className="task-planning-filter-grid">
+        <label><span>Priority</span><select aria-label="Filter tasks by priority" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPlanningPriorityFilter)}><option value="ALL">All priorities</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label>
+        <label><span>Due</span><select aria-label="Filter tasks by due window" value={dueFilter} onChange={(event) => setDueFilter(event.target.value as TaskPlanningDueFilter)}><option value="ALL">Any due window</option><option value="OVERDUE">Overdue</option><option value="TODAY">Today</option><option value="NEXT_7_DAYS">Next 7 days</option><option value="LATER">Later</option><option value="UNSCHEDULED">Unscheduled</option></select></label>
+        <label><span>Estimated time</span><select aria-label="Filter tasks by estimated duration" value={durationFilter} onChange={(event) => setDurationFilter(event.target.value as TaskPlanningDurationFilter)}><option value="ALL">Any estimate</option><option value="QUICK">30 min or less</option><option value="ONE_HOUR">1 hour</option><option value="LONG">2h+ / Project</option><option value="UNESTIMATED">Not estimated</option></select></label>
+      </div>
+    </div>
   </form>;
 }
 
@@ -128,7 +156,14 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete, foc
   const setPreset = (preset: "LATER_TODAY" | "TOMORROW_MORNING" | "NEXT_BUSINESS_DAY") => {
     const iso = reminderPresetIso(preset); setReminder(isoToProductWallClock(iso)); onChange({ remindAt: iso });
   };
-  return <div ref={rowRef} tabIndex={-1} className={`task-row ${overdue ? "is-overdue" : ""} ${focused ? "is-calendar-focus" : ""}`} data-priority={task.priority.toLowerCase()}>
+  return <div
+    ref={rowRef}
+    tabIndex={-1}
+    className={`task-row ${overdue ? "is-overdue" : ""} ${focused ? "is-calendar-focus" : ""}`}
+    data-priority={task.priority.toLowerCase()}
+    data-planning-due={planningFilterValue(taskPlanningDueBucket(task))}
+    data-planning-duration={planningFilterValue(taskPlanningDurationBucket(task))}
+  >
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
     <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.estimatedDuration ? ` · Estimated ${task.estimatedDuration}` : ""}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
