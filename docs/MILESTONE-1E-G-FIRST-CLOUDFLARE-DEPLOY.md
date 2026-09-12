@@ -30,9 +30,10 @@ Until Access is attached:
 
 - `workers_dev` must remain `false`.
 - `preview_urls` must remain `false`.
+- `POLICY_AUD` must be absent rather than guessed.
 - no custom domain or public Worker route may be added.
 
-After Access is configured and its AUD is committed, `workers_dev` may be enabled while `preview_urls` remains disabled unless a later milestone explicitly protects and enables previews.
+After Access is configured and its real AUD is committed, `workers_dev` may be enabled while `preview_urls` remains disabled unless a later milestone explicitly protects and enables previews.
 
 ## Phase A — Cloudflare resources
 
@@ -43,12 +44,15 @@ After Access is configured and its AUD is committed, `workers_dev` may be enable
    - D1 database ID
    - KV namespace ID
    - Zero Trust team domain in canonical form: `https://<team>.cloudflareaccess.com`
+5. Store deployment credentials only as GitHub Actions repository secrets:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
 
 Do not create a service token yet. Browser identity is the first supported principal.
 
 ## Phase B — Repository production bindings
 
-Replace the vinext KV placeholder and add:
+Bind the real D1 database, vinext KV namespace, and Access team domain while leaving the Access application audience absent:
 
 ```jsonc
 "d1_databases": [
@@ -58,24 +62,34 @@ Replace the vinext KV placeholder and add:
     "database_id": "<d1-database-id>"
   }
 ],
+"kv_namespaces": [
+  {
+    "binding": "VINEXT_KV_CACHE",
+    "id": "<kv-namespace-id>"
+  }
+],
 "vars": {
-  "TEAM_DOMAIN": "https://<team>.cloudflareaccess.com",
-  "POLICY_AUD": "bootstrap-disabled"
+  "TEAM_DOMAIN": "https://<team>.cloudflareaccess.com"
 }
 ```
 
-`bootstrap-disabled` is permitted only for the inaccessible bootstrap upload. It must be replaced by the real Access application AUD before `workers_dev` is enabled.
+Do not add a placeholder `POLICY_AUD`. The Worker is intentionally unreachable during bootstrap, and the application must remain unable to validate hosted requests until the real Access application exists.
 
 ## Phase C — Apply schema and bootstrap-upload Worker
 
-Before the Worker is reachable:
+The manual-only GitHub Actions workflow `Cloudflare bootstrap deploy (private)` performs this phase from the default branch.
 
-1. Apply migrations 0001–0006 to the remote D1 database.
-2. Build the committed vinext production path.
-3. Deploy the Worker with `workers_dev=false` and `preview_urls=false`.
-4. Confirm the Worker exists in Cloudflare but has no public production or preview route.
+Before the Worker is reachable it must:
 
-A migration failure stops the milestone. Do not deploy against a partially migrated database.
+1. Verify the Cloudflare GitHub secrets are present and valid.
+2. Verify the committed bootstrap config is fail-closed.
+3. Apply migrations 0001–0006 to the remote D1 database.
+4. Build the committed vinext production path.
+5. Re-check the generated Worker config.
+6. Deploy the Worker with `workers_dev=false`, `preview_urls=false`, and no `POLICY_AUD`.
+7. Confirm the Worker upload completed without enabling a public production or preview route.
+
+A migration, build, config-verification, authentication, or upload failure stops the milestone. Do not deploy against a partially migrated database.
 
 ## Phase D — Attach Cloudflare Access
 
@@ -89,7 +103,7 @@ Requirements:
 - leave previews disabled;
 - record the Access application Audience (AUD) tag.
 
-Update `POLICY_AUD` in `wrangler.jsonc` to that real AUD.
+Update `POLICY_AUD` in `wrangler.jsonc` to that real AUD only after the Access application exists.
 
 ## Phase E — Enable protected workers.dev
 
@@ -97,31 +111,37 @@ Only after Phase D:
 
 1. Set `workers_dev` to `true`.
 2. Keep `preview_urls` false.
-3. Rebuild and redeploy.
-4. Open the workers.dev URL in a private/incognito browser session and confirm Cloudflare Access requires authentication before the application loads.
+3. Set `POLICY_AUD` to the real Access application AUD.
+4. Rebuild and redeploy.
+5. Open the workers.dev URL in a private/incognito browser session and confirm Cloudflare Access requires authentication before the application loads.
 
 If an unauthenticated browser can load the application, immediately disable `workers.dev` and stop.
 
 ## Phase F — Bootstrap the first D1 workspace grants
 
-After signing in through Access, visit:
+After signing in through Access, visit the application-owned authenticated enrollment endpoint:
 
-`https://<worker-host>/cdn-cgi/access/get-identity`
+`https://<worker-host>/api/hosted/session`
 
-Record only the authenticated user's `user_uuid` value. Do not copy authentication cookies or JWTs.
+That endpoint verifies the signed Cloudflare Access application assertion with the same production verifier used by the hosted task routes and returns only:
 
-The application principal ID for an identity-authenticated Access user is:
+- `principalId`
+- `expiresAt`
 
-`cf-user:<user_uuid>`
+It never returns the assertion, session ID, email, identity-provider claims, or a workspace grant.
 
-Insert explicit grants for that principal:
+Record the returned `principalId`, which will have the form:
+
+`cf-user:<stable-access-subject>`
+
+Insert explicit grants for that exact principal:
 
 ```sql
 INSERT INTO principal_workspace_grants (principal_id, workspace_id)
-VALUES ('cf-user:<user_uuid>', 'personal');
+VALUES ('<principal-id>', 'personal');
 
 INSERT INTO principal_workspace_grants (principal_id, workspace_id)
-VALUES ('cf-user:<user_uuid>', 'indelitech');
+VALUES ('<principal-id>', 'indelitech');
 ```
 
 Use the remote D1 database. Duplicate grants should not be added blindly; verify existing rows first if retrying.
@@ -132,20 +152,20 @@ The milestone is complete only when all of the following are true:
 
 1. Unauthenticated access is intercepted by Cloudflare Access.
 2. Authenticated access loads the hosted task UI.
-3. Personal workspace loads from D1.
-4. Indelitech workspace loads from D1.
-5. Creating a Personal task persists after refresh.
-6. Creating an Indelitech task appears in Indelitech and rolls up to Personal.
-7. Editing/completing the rolled-up task mutates the same record.
-8. Legacy local-only APIs remain unavailable remotely.
-9. Localhost SQLite behavior remains unchanged.
-10. No secrets or Access assertions are committed to Git.
+3. `/api/hosted/session` returns the verified stable principal without exposing sensitive identity material.
+4. Personal workspace loads from D1.
+5. Indelitech workspace loads from D1.
+6. Creating a Personal task persists after refresh.
+7. Creating an Indelitech task appears in Indelitech and rolls up to Personal.
+8. Editing/completing the rolled-up task mutates the same record.
+9. Legacy local-only APIs remain unavailable remotely.
+10. Localhost SQLite behavior remains unchanged.
+11. No secrets or Access assertions are committed to Git.
 
 ## Out of scope
 
 - Custom domain
 - Service-token automation
-- GitHub Actions production deployment credentials
 - Hosted Settings/Intel/Mentions persistence
 - Public task-capture API
 - Paid Workers upgrade unless Free-plan limits block the acceptance test
