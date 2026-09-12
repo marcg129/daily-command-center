@@ -9,7 +9,6 @@ import {
   InMemorySessionProvider,
   principalId,
   type AuthenticatedSession,
-  type SessionProvider,
 } from "@/lib/runtime/session";
 import { D1TaskRepository } from "@/lib/server/d1-task-repository";
 import { D1WorkspaceResolver } from "@/lib/server/d1-workspace-resolver";

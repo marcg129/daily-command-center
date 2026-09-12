@@ -3168,8 +3168,11 @@ export function ControlCenter() {
   const persistedTasks = useRef<Task[] | null>(null);
   const persistedReminders = useRef<Reminder[] | null>(null);
   const activeWorkspaceRef = useRef(activeWorkspaceId);
-  activeWorkspaceRef.current = activeWorkspaceId;
   const workspaceRequestId = runtimeMode === "hosted" ? activeWorkspaceId : DEFAULT_WORKSPACE_ID;
+
+  useEffect(() => {
+    activeWorkspaceRef.current = activeWorkspaceId;
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     window.queueMicrotask(() => {
