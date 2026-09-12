@@ -1,0 +1,36 @@
+name: Verify 1E-H protected config
+
+on:
+  push:
+    branches: [milestone/1e-h-access-protected-live]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npx vinext check
+      - run: npm run build:vinext
+      - name: Verify generated Access-protected config
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const config = JSON.parse(fs.readFileSync('dist/server/wrangler.json', 'utf8'));
+          if (config.name !== 'daily-command-center') throw new Error('Unexpected Worker name');
+          if (config.workers_dev !== true) throw new Error('workers_dev must be true');
+          if (config.preview_urls !== false) throw new Error('preview_urls must be false');
+          if (config.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('TEAM_DOMAIN mismatch');
+          if (config.vars?.POLICY_AUD !== '46a73a1e35edf7220a912c519941f0aa246864dc7bc9229a24997a826f8b8d3f') throw new Error('POLICY_AUD mismatch');
+          console.log('1E-H generated config verified.');
+          EOF
