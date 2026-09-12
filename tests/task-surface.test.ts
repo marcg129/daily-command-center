@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { INDELITECH_WORKSPACE_ID, PERSONAL_WORKSPACE_ID, taskVisibleInWorkspace } from "../lib/runtime/context";
-import { cleanTaskItems, completeTaskItems, createTaskItem, nextRecurringDue, normalizeTaskPriority, recurringTaskRequiresDue, sortTaskAttention, taskHorizon, taskIsOverdue, visibleTaskItems } from "../lib/tasks";
+import { cleanTaskItems, completeTaskItems, createTaskItem, nextRecurringDue, normalizeTaskPriority, recurringTaskRequiresDue, sortTaskAttention, taskAttentionLabel, taskHorizon, taskIsOverdue, tasksRequiringAttentionToday, visibleTaskItems } from "../lib/tasks";
 import type { TaskItem } from "../lib/types";
 
 function item(overrides: Partial<TaskItem> = {}): TaskItem {
@@ -50,6 +50,22 @@ test("overdue attention is computed above HIGH without changing priority", () =>
   assert.equal(taskIsOverdue(high, now), false); assert.equal(taskIsOverdue(overdue, now), true);
   assert.deepEqual(sortTaskAttention([high, overdue], now).map(({ id }) => id), ["overdue", "high"]);
   assert.equal(overdue.priority, "LOW");
+});
+
+test("Today attention includes only due signals and labels today's due date clearly", () => {
+  const now = new Date("2026-09-11T16:00:00Z");
+  const tasks = [
+    item({ id: "overdue", due: "2026-09-10", priority: "LOW" }),
+    item({ id: "today", due: "2026-09-11" }),
+    item({ id: "reminder", due: "", remindAt: "2026-09-11T15:00:00Z" }),
+    item({ id: "follow-up", due: "", status: "WAITING", type: "WAITING", person: "Sam", followUpAt: "2026-09-11T15:00:00Z" }),
+    item({ id: "future-high", due: "2026-09-12", priority: "HIGH" }),
+    item({ id: "unscheduled", due: "", priority: "HIGH" }),
+    item({ id: "waiting-later", due: "", status: "WAITING", type: "WAITING", person: "Lee", followUpAt: "2026-09-12T15:00:00Z" }),
+  ];
+  assert.deepEqual(tasksRequiringAttentionToday(tasks, now).map(({ id }) => id), ["overdue", "follow-up", "reminder", "today"]);
+  assert.equal(taskAttentionLabel(tasks[1], now), "Due today");
+  assert.equal(taskAttentionLabel({ ...tasks[3], due: "2026-09-10" }, now), "Follow-up due");
 });
 
 test("45-day horizon honors every boundary and excludes completed, unscheduled, and later tasks", () => {

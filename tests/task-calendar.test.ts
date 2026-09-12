@@ -50,7 +50,8 @@ test("calendar activation opens and focuses the canonical Tasks row", async () =
     readFile(new URL("../components/control-center.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/task-surface.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(control, /onOpenTask=\{\(taskId\) => \{ setFocusedTaskId\(taskId\); goTo\("tasks"\); \}\}/);
+  assert.match(control, /const openTask = \(taskId: Task\["id"\]\) =>/);
+  assert.match(control, /<TaskCalendar tasks=\{tasks\} workspaceId=\{activeWorkspaceId\} onOpenTask=\{openTask\}/);
   assert.match(control, /focused=\{task\.id === focusedTaskId\}/);
   assert.match(surface, /rowRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
 });

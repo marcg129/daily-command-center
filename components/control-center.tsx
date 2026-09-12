@@ -664,13 +664,13 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
-function TaskFocusedTodayView({ tasks, goTo, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; workspaceId: ProductWorkspaceId }) {
+function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; openTask: (taskId: Task["id"]) => void; workspaceId: ProductWorkspaceId }) {
   const personal = workspaceId === "personal";
   return (
     <div className="view">
       <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Today`} title="What needs my attention today?" description={personal ? "Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." : "Indelitech task priorities and a focused 45-day outlook. Hosted intelligence and Daily Brief are deferred."} action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
       <div className="personal-today-grid reveal delay-1">
-        <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpen={() => goTo("tasks")} />
+        <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
     </div>
@@ -681,12 +681,14 @@ function TodayView({
   settings,
   tasks,
   goTo,
+  openTask,
   openSettings,
   addBriefTask,
 }: {
   settings: PublicSettings;
   tasks: Task[];
   goTo: (tab: Tab) => void;
+  openTask: (taskId: Task["id"]) => void;
   openSettings: (section?: SettingsSection) => void;
   addBriefTask: (item: DailyBriefItem) => void;
 }) {
@@ -749,7 +751,7 @@ function TodayView({
       />
       <div className="today-grid reveal delay-2">
         <div className="today-task-stack">
-          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpen={() => goTo("tasks")} />
+          <TaskAttentionPanel tasks={businessTasks} workspaceId="indelitech" onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
           <TaskHorizon tasks={businessTasks} onOpen={() => goTo("tasks")} />
         </div>
         <Panel className="setup-progress">
@@ -3369,6 +3371,10 @@ export function ControlCenter() {
     window.history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const openTask = (taskId: Task["id"]) => {
+    setFocusedTaskId(taskId);
+    goTo("tasks");
+  };
   const selectWorkspace = (workspaceId: ProductWorkspaceId) => {
     setActiveWorkspaceId(workspaceId);
     setMobileOpen(false);
@@ -3577,13 +3583,14 @@ export function ControlCenter() {
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (
-          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} workspaceId="personal" />
+          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} openTask={openTask} workspaceId="personal" />
         )}
         {activeTab === "today" && activeWorkspaceId === "indelitech" && (
-          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} workspaceId="indelitech" /> : <TodayView
+          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} openTask={openTask} workspaceId="indelitech" /> : <TodayView
             settings={settings}
             tasks={tasks}
             goTo={goTo}
+            openTask={openTask}
             openSettings={openSettings}
             addBriefTask={addBriefTask}
           />
@@ -3600,7 +3607,7 @@ export function ControlCenter() {
           <WorkspacePageShell eyebrow="Indelitech · Intel" title="Intel" description="Hosted business intelligence is not enabled in this milestone." icon={<Radio size={25} />} emptyTitle="Hosted Intel is deferred" emptyDescription="This hosted shell does not call local live-feed APIs. Task workflows remain available in Today and Tasks." />
         )}{" "}
         {activeTab === "calendar" && (
-          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={(taskId) => { setFocusedTaskId(taskId); goTo("tasks"); }} />
+          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={openTask} />
         )}{" "}
         {activeTab === "news" && activeWorkspaceId === "personal" && (
           <WorkspacePageShell
