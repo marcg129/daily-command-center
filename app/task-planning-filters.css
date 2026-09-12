@@ -1,0 +1,65 @@
+.task-planning-filters {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.task-planning-filter-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.task-planning-filter-heading strong { font-size: .92rem; }
+.task-planning-filter-heading small { color: var(--muted); }
+
+.task-planning-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-planning-filter-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.task-planning-filter-grid label > span {
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.task-planning-filter-grid select {
+  width: 100%;
+  min-width: 0;
+}
+
+.quick-task-add[data-filter-priority="high"] ~ .task-summary ~ .task-list .task-row:not([data-priority="high"]),
+.quick-task-add[data-filter-priority="medium"] ~ .task-summary ~ .task-list .task-row:not([data-priority="medium"]),
+.quick-task-add[data-filter-priority="low"] ~ .task-summary ~ .task-list .task-row:not([data-priority="low"]),
+.quick-task-add[data-filter-due="overdue"] ~ .task-summary ~ .task-list .task-row:not([data-planning-due="overdue"]),
+.quick-task-add[data-filter-due="today"] ~ .task-summary ~ .task-list .task-row:not([data-planning-due="today"]),
+.quick-task-add[data-filter-due="next-7-days"] ~ .task-summary ~ .task-list .task-row:not([data-planning-due="next-7-days"]),
+.quick-task-add[data-filter-due="later"] ~ .task-summary ~ .task-list .task-row:not([data-planning-due="later"]),
+.quick-task-add[data-filter-due="unscheduled"] ~ .task-summary ~ .task-list .task-row:not([data-planning-due="unscheduled"]),
+.quick-task-add[data-filter-duration="quick"] ~ .task-summary ~ .task-list .task-row:not([data-planning-duration="quick"]),
+.quick-task-add[data-filter-duration="one-hour"] ~ .task-summary ~ .task-list .task-row:not([data-planning-duration="one-hour"]),
+.quick-task-add[data-filter-duration="long"] ~ .task-summary ~ .task-list .task-row:not([data-planning-duration="long"]),
+.quick-task-add[data-filter-duration="unestimated"] ~ .task-summary ~ .task-list .task-row:not([data-planning-duration="unestimated"]) {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .task-planning-filter-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .task-planning-filter-grid { grid-template-columns: 1fr; }
+}
