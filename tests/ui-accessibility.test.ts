@@ -48,3 +48,14 @@ test("desktop task action popover stays below the sticky header", async () => {
   assert.match(css, /max-height: calc\(100dvh - 108px\);/);
   assert.match(css, /right: max\(24px, calc\(\(100vw - 1380px\) \/ 2 \+ 68px\)\);/);
 });
+
+test("task action popover dismisses on outside pointer and Escape", async () => {
+  const surface = await read("../components/task-surface.tsx");
+  assert.match(surface, /useRef<HTMLDetailsElement>\(null\)/);
+  assert.match(surface, /document\.addEventListener\("pointerdown", closeOnOutsidePointer\)/);
+  assert.match(surface, /!actions\.contains\(event\.target\)/);
+  assert.match(surface, /actions\.open = false/);
+  assert.match(surface, /event\.key !== "Escape"/);
+  assert.match(surface, /actions\.querySelector<HTMLElement>\("summary"\)\?\.focus\(\)/);
+  assert.match(surface, /<details ref={actionsRef} className="task-actions">/);
+});
