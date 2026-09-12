@@ -2,9 +2,8 @@ name: Cloudflare deploy (Access protected)
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: [Check]
-    types: [completed]
+  pull_request:
+    types: [closed]
     branches: [main]
 
 permissions:
@@ -21,14 +20,16 @@ env:
 jobs:
   deploy:
     name: deploy Access-protected workers.dev
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # A merged PR closes with refs/heads/main; an unmerged closure keeps refs/pull/*/merge.
+    # This also fires for API-driven merges that do not emit a follow-up push workflow.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js 24.19.0
         uses: actions/setup-node@v4
@@ -111,4 +112,4 @@ jobs:
           echo 'workers.dev enabled with the committed Cloudflare Access audience.'
           echo 'Task-capture MCP rejects every request unless its separate Access audience secret verifies.'
           echo 'Preview URLs remain disabled.'
-          echo 'Deployment followed a successful main-branch Check workflow or an explicit manual dispatch.'
+          echo 'Deployment followed a merged main-branch pull request or an explicit manual dispatch.'

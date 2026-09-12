@@ -4,11 +4,14 @@ import test from "node:test";
 
 const read = () => readFile(new URL("../.github/workflows/cloudflare-protected-deploy.yml", import.meta.url), "utf8");
 
-test("protected Cloudflare deployment follows only successful main Check runs", async () => {
+test("protected Cloudflare deployment follows merged main PRs, including API-driven merges", async () => {
   const workflow = await read();
-  assert.match(workflow, /workflow_run:\s+workflows: \[Check\]\s+types: \[completed\]\s+branches: \[main\]/);
-  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch' \|\| github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
+  assert.match(workflow, /pull_request:\s+types: \[closed\]\s+branches: \[main\]/);
+  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /API-driven merges that do not emit a follow-up push workflow/);
+  assert.doesNotMatch(workflow, /github\.event\.pull_request\.(merged|merge_commit_sha)/);
+  assert.doesNotMatch(workflow, /workflow_run:/);
 });
 
 test("production deploys serialize and retain the protected posture checks", async () => {
