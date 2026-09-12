@@ -1,0 +1,24 @@
+name: Verify 1E-F vinext build
+
+on:
+  push:
+    branches: [milestone/1e-f-hosted-ui-cutover]
+
+permissions:
+  contents: read
+
+jobs:
+  vinext-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - name: Validate vinext compatibility
+        run: npx vinext check
+      - name: Build vinext production path
+        run: npm run build:vinext
