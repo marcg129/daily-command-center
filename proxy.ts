@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isLoopbackHostname } from "@/lib/runtime/browser-runtime";
 
+function requestHostname(request: NextRequest) {
+  try {
+    return new URL(request.url).hostname;
+  } catch {
+    return "";
+  }
+}
+
 function isSameOrigin(value: string, request: NextRequest) {
   try {
     return new URL(value).origin === new URL(request.url).origin;
@@ -10,7 +18,7 @@ function isSameOrigin(value: string, request: NextRequest) {
 }
 
 export function proxy(request: NextRequest) {
-  const local = isLoopbackHostname(request.nextUrl.hostname);
+  const local = isLoopbackHostname(requestHostname(request));
   const allowedHostedPaths = new Set([
     "/api/hosted/workspace",
     "/api/hosted/tasks/mutations",
