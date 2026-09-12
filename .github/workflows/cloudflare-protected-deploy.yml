@@ -2,12 +2,13 @@ name: Cloudflare deploy (Access protected)
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: [Check]
-    types: [completed]
+  issue_comment:
+    types: [created]
 
 permissions:
+  actions: read
   contents: read
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   resolve-deploy-target:
     name: resolve a validated current-main revision
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main '))
     runs-on: ubuntu-latest
     outputs:
       deploy_sha: ${{ steps.target.outputs.deploy_sha }}
@@ -40,23 +41,42 @@ jobs:
               return;
             }
 
-            const run = context.payload.workflow_run;
-            const pullRequests = run.pull_requests ?? [];
-            if (run.event !== 'pull_request' || pullRequests.length !== 1) return;
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const command = comment.body.trim().match(/^\/deploy-current-main ([0-9a-f]{40}) ([0-9]+)$/);
+            if (
+              !issue.pull_request ||
+              comment.user.login !== owner ||
+              comment.author_association !== 'OWNER' ||
+              !command
+            ) return;
+
+            const requestedSha = command[1];
+            const checkRunId = Number(command[2]);
 
             const { data: pullRequest } = await github.rest.pulls.get({
               owner,
               repo,
-              pull_number: pullRequests[0].number,
+              pull_number: issue.number,
+            });
+            const { data: checkRun } = await github.rest.actions.getWorkflowRun({
+              owner,
+              repo,
+              run_id: checkRunId,
             });
 
             if (
               pullRequest.merged_at &&
               pullRequest.base.ref === repository.default_branch &&
-              pullRequest.head.sha === run.head_sha &&
-              pullRequest.merge_commit_sha === main.commit.sha
+              pullRequest.head.sha === checkRun.head_sha &&
+              pullRequest.merge_commit_sha === requestedSha &&
+              main.commit.sha === requestedSha &&
+              checkRun.name === 'Check' &&
+              checkRun.event === 'pull_request' &&
+              checkRun.status === 'completed' &&
+              checkRun.conclusion === 'success'
             ) {
-              core.setOutput('deploy_sha', main.commit.sha);
+              core.setOutput('deploy_sha', requestedSha);
             }
 
   deploy:
@@ -155,4 +175,4 @@ jobs:
           echo 'workers.dev enabled with the committed Cloudflare Access audience.'
           echo 'Task-capture MCP rejects every request unless its separate Access audience secret verifies.'
           echo 'Preview URLs remain disabled.'
-          echo 'Deployment targeted the current main SHA after a successful merged-PR Check rerun or an explicit manual dispatch.'
+          echo 'Deployment targeted the current main SHA after an owner-authorized merged-PR command or an explicit manual dispatch.'
