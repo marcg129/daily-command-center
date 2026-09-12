@@ -77,7 +77,7 @@ export function TaskHorizon({ tasks, onOpen }: { tasks: TaskItem[]; onOpen: () =
   </section>;
 }
 
-export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: { task: TaskItem; workspaceId: ProductWorkspaceId; onComplete: () => void; onChange: (patch: Partial<TaskItem>) => void; onDelete: () => void }) {
+export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete, focused = false }: { task: TaskItem; workspaceId: ProductWorkspaceId; onComplete: () => void; onChange: (patch: Partial<TaskItem>) => void; onDelete: () => void; focused?: boolean }) {
   const overdue = taskIsOverdue(task);
   const [error, setError] = useState("");
   const status = task.status ?? (task.done ? "DONE" : "OPEN");
@@ -88,6 +88,12 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
   const [person, setPerson] = useState(task.person || "");
   const [followUp, setFollowUp] = useState(task.followUpAt ? isoToProductWallClock(task.followUpAt) : "");
   const actionsRef = useRef<HTMLDetailsElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focused) return;
+    rowRef.current?.focus({ preventScroll: true });
+    rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focused]);
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const actions = actionsRef.current;
@@ -111,7 +117,7 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete }: {
   const setPreset = (preset: "LATER_TODAY" | "TOMORROW_MORNING" | "NEXT_BUSINESS_DAY") => {
     const iso = reminderPresetIso(preset); setReminder(isoToProductWallClock(iso)); onChange({ remindAt: iso });
   };
-  return <div className={`task-row ${overdue ? "is-overdue" : ""}`} data-priority={task.priority.toLowerCase()}>
+  return <div ref={rowRef} tabIndex={-1} className={`task-row ${overdue ? "is-overdue" : ""} ${focused ? "is-calendar-focus" : ""}`} data-priority={task.priority.toLowerCase()}>
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
     <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>

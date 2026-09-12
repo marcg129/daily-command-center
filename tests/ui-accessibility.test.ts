@@ -44,6 +44,7 @@ test("desktop task action popover stays below the sticky header", async () => {
   ]);
   assert.match(layout, /import "\.\/task-menu-viewport\.css"/);
   assert.match(css, /@media \(min-width: 621px\)/);
+  assert.match(css, /\.task-list\.reveal \{[\s\S]*animation-name: task-list-reveal;/);
   assert.match(css, /\.task-action-panel \{[\s\S]*position: fixed;[\s\S]*top: 84px;[\s\S]*bottom: auto;/);
   assert.match(css, /max-height: calc\(100dvh - 108px\);/);
   assert.match(css, /right: max\(24px, calc\(\(100vw - 1380px\) \/ 2 \+ 68px\)\);/);

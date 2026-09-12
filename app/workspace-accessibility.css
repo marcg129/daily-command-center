@@ -161,6 +161,17 @@
   background-image: linear-gradient(90deg, var(--priority-high-wash), transparent 28%);
 }
 
+.task-row.is-calendar-focus {
+  outline: 3px solid var(--teal);
+  outline-offset: 3px;
+  animation: calendar-focus 1.8s ease-out both;
+}
+
+@keyframes calendar-focus {
+  0%, 55% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--teal) 22%, transparent); }
+  100% { box-shadow: none; }
+}
+
 .task-meta,
 .attention-meta {
   display: flex;
