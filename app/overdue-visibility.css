@@ -1,0 +1,95 @@
+:root {
+  --overdue-bg: #fff0ef;
+  --overdue-border: #b33f42;
+  --overdue-ink: #7d2428;
+  --overdue-soft-border: #e6a3a4;
+}
+
+[data-theme="dark"] {
+  --overdue-bg: #3a2022;
+  --overdue-border: #f08a8d;
+  --overdue-ink: #ffd7d8;
+  --overdue-soft-border: #87494c;
+}
+
+/* Overdue is deliberately separate from priority: danger border/tint + explicit text.
+   No flashing, pulsing, or motion is used to communicate urgency. */
+.overdue-badge,
+.overdue-count-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--overdue-border);
+  border-radius: 999px;
+  background: var(--overdue-bg);
+  color: var(--overdue-ink);
+  font: 900 7px var(--mono);
+  letter-spacing: .08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.overdue-badge {
+  padding: 3px 7px;
+}
+
+.overdue-count-badge {
+  padding: 4px 8px;
+}
+
+.task-attention-totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.task-attention-total {
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.attention-list button.is-overdue {
+  border-color: var(--overdue-soft-border);
+  border-left: 4px solid var(--overdue-border);
+  background: linear-gradient(90deg, var(--overdue-bg), var(--paper) 46%);
+}
+
+.horizon-groups button.is-overdue {
+  border-color: var(--overdue-soft-border);
+  border-left: 4px solid var(--overdue-border);
+  background: var(--overdue-bg);
+  color: var(--overdue-ink);
+  font-weight: 800;
+}
+
+.horizon-groups button.is-overdue small {
+  color: var(--overdue-ink);
+}
+
+.task-row.is-overdue {
+  border-left: 4px solid var(--overdue-border);
+  background-image: linear-gradient(90deg, var(--overdue-bg), transparent 42%);
+}
+
+.task-row.is-overdue .task-copy > small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.task-row.is-overdue .overdue-badge {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 620px) {
+  .task-attention-totals {
+    gap: 4px;
+  }
+
+  .attention-list button.is-overdue,
+  .horizon-groups button.is-overdue {
+    border-left-width: 3px;
+  }
+}

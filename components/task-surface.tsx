@@ -13,6 +13,7 @@ import {
   taskAttentionLabel,
   VISIBLE_HORIZON_GROUPS,
 } from "@/lib/tasks";
+import { taskOverdueBadgeLabel } from "@/lib/task-overdue-ui";
 import {
   taskPlanningDueBucket,
   taskPlanningDurationBucket,
@@ -101,9 +102,13 @@ export function QuickTaskAdd({ workspaceId, onAdd }: { workspaceId: ProductWorks
 
 export function TaskAttentionPanel({ tasks, workspaceId, onOpenTask, onOpenAll }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpenTask: (taskId: TaskItem["id"]) => void; onOpenAll: () => void }) {
   const attention = tasksRequiringAttentionToday(tasks);
+  const overdueCount = attention.filter((task) => taskIsOverdue(task)).length;
   const visibleAttention = attention.slice(0, 5);
-  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Needs action today</h2></div><b aria-label={`${attention.length} tasks need action today`}>{attention.length}</b></div>
-    {visibleAttention.length ? <div className="attention-list">{visibleAttention.map((task) => <button key={task.id} onClick={() => onOpenTask(task.id)}><span><b>{task.title}</b><small className="attention-meta"><span>{taskAttentionLabel(task)}</span><PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">Nothing requires action today.</p>}
+  return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Needs action today</h2></div><div className="task-attention-totals"><b className="task-attention-total" aria-label={`${attention.length} tasks need action today`}>{attention.length}</b>{overdueCount > 0 && <span className="overdue-count-badge" aria-label={`${overdueCount} ${overdueCount === 1 ? "task is" : "tasks are"} overdue`}>{overdueCount} overdue</span>}</div></div>
+    {visibleAttention.length ? <div className="attention-list">{visibleAttention.map((task) => {
+      const overdue = taskIsOverdue(task);
+      return <button key={task.id} className={overdue ? "is-overdue" : undefined} onClick={() => onOpenTask(task.id)}><span><b>{task.title}</b><small className="attention-meta">{overdue ? <span className="overdue-badge">{taskOverdueBadgeLabel(task)}</span> : <span>{taskAttentionLabel(task)}</span>}<PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>;
+    })}</div> : <p className="inline-empty">Nothing requires action today.</p>}
     <TodayTaskAgenda tasks={tasks} workspaceId={workspaceId} onOpenTask={onOpenTask} />
     <button className="text-button" onClick={onOpenAll}>Open task list</button>
   </section>;
@@ -113,7 +118,7 @@ export function TaskHorizon({ tasks, onOpen }: { tasks: TaskItem[]; onOpen: () =
   const horizon = taskHorizon(tasks);
   const populated = VISIBLE_HORIZON_GROUPS.filter((group) => horizon.get(group)!.length);
   return <section className="panel task-horizon"><div className="panel-header"><div><p className="eyebrow">45-day horizon</p><h2>What’s ahead</h2></div><CalendarDays size={20} /></div>
-    {populated.length ? <div className="horizon-groups">{populated.map((group) => <button key={group} onClick={onOpen}><span>{GROUP_LABELS[group as keyof typeof GROUP_LABELS]}</span><b>{horizon.get(group)!.length}</b><small>{horizon.get(group)!.slice(0, 2).map((task) => task.title).join(" · ")}</small></button>)}</div> : <p className="inline-empty">Nothing due in the next 45 days.</p>}
+    {populated.length ? <div className="horizon-groups">{populated.map((group) => <button key={group} className={group === "OVERDUE" ? "is-overdue" : undefined} data-horizon-group={group.toLowerCase().replaceAll("_", "-")} onClick={onOpen}><span>{GROUP_LABELS[group as keyof typeof GROUP_LABELS]}</span><b>{horizon.get(group)!.length}</b><small>{horizon.get(group)!.slice(0, 2).map((task) => task.title).join(" · ")}</small></button>)}</div> : <p className="inline-empty">Nothing due in the next 45 days.</p>}
   </section>;
 }
 
@@ -167,7 +172,7 @@ export function TaskRow({ task, workspaceId, onComplete, onChange, onDelete, foc
     data-planning-duration={planningFilterValue(taskPlanningDurationBucket(task))}
   >
     <button className="round-check" aria-label={`Complete ${task.title}`} onClick={onComplete}><Check size={14} /></button>
-    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta"><span>{overdue ? "Overdue · " : ""}{task.due || "No due date"}</span><PriorityBadge priority={task.priority} /><span>· {status}{task.estimatedDuration ? ` · Estimated ${task.estimatedDuration}` : ""}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
+    <div className="task-copy"><div><b>{task.title}</b><WorkspaceBadge task={task} viewing={workspaceId} /></div>{task.description !== "No additional details." && <p>{task.description}</p>}<small className="task-meta">{overdue ? <><span className="overdue-badge">{taskOverdueBadgeLabel(task)}</span><span>Due {task.due}</span></> : <span>{task.due || "No due date"}</span>}<PriorityBadge priority={task.priority} /><span>· {status}{task.estimatedDuration ? ` · Estimated ${task.estimatedDuration}` : ""}{task.remindAt ? ` · Reminder ${new Date(task.remindAt).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}{status === "WAITING" ? ` · Waiting for ${task.person} · Follow up ${new Date(task.followUpAt!).toLocaleString("en-US", { timeZone: "America/New_York" })}` : ""}</span></small></div>
     <span className="repeat-text"><RefreshCw size={13} />{task.recurrence}</span>
     <details ref={actionsRef} className="task-actions"><summary className="more-button" aria-label={`Actions for ${task.title}`}><MoreHorizontal size={15} /></summary><div className="task-action-panel">
       <strong>Task actions</strong>
