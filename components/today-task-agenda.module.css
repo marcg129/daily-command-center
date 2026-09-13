@@ -1,0 +1,74 @@
+.agenda {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header h3 {
+  margin: 2px 0 0;
+  font-size: .98rem;
+}
+
+.header > b {
+  min-width: 28px;
+  text-align: center;
+}
+
+.list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover,
+.item:focus-visible {
+  border-color: currentColor;
+}
+
+.copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.copy b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy small,
+.more {
+  color: var(--muted);
+}
+
+.overdue .copy small {
+  font-weight: 700;
+}
+
+.more {
+  display: block;
+  margin-top: 9px;
+}
