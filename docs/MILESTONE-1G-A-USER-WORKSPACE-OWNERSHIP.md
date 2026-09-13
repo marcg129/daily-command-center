@@ -4,6 +4,9 @@ Date: 2026-09-13
 
 Branch: `milestone/1g-a-user-workspace-ownership`
 
+Status: **Complete, merged, deployed, and verified.** This milestone is closed and
+must not be reopened unless a regression or security problem is discovered.
+
 ## Goal
 
 Introduce a durable application-user and workspace-membership boundary without changing the current Personal or Indelitech experience.

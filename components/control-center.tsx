@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
 import {
   browserRuntimeMode,
+  loadHostedApplicationSession,
   loadBrowserWorkspace,
+  selectAuthorizedWorkspace,
   taskMutationEndpoint,
   type BrowserRuntimeMode,
 } from "@/lib/runtime/browser-runtime";
@@ -101,6 +103,7 @@ import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   DEFAULT_WORKSPACE_ID,
   WORKSPACES,
+  WORKSPACE_OPTIONS,
   WORKSPACE_SELECTION_STORAGE_KEY,
   isWorkspacePageAvailable,
   parseWorkspaceId,
@@ -3167,6 +3170,10 @@ export function ControlCenter() {
   const [workspaceSaveError, setWorkspaceSaveError] = useState("");
   const [focusedTaskId, setFocusedTaskId] = useState<Task["id"]>();
   const [runtimeMode, setRuntimeMode] = useState<BrowserRuntimeMode | null>(null);
+  const [identityReady, setIdentityReady] = useState(false);
+  const [authorizedWorkspaceIds, setAuthorizedWorkspaceIds] = useState<readonly ProductWorkspaceId[]>(
+    WORKSPACE_OPTIONS.map(({ id }) => id),
+  );
   const taskSaveQueue = useRef(new OrderedSaveQueue());
   const reminderSaveQueue = useRef(new OrderedSaveQueue());
   const lastScheduledTasks = useRef<Task[] | null>(null);
@@ -3182,11 +3189,6 @@ export function ControlCenter() {
 
   useEffect(() => {
     window.queueMicrotask(() => {
-      try {
-        setActiveWorkspaceId(parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY)));
-      } catch {
-        setActiveWorkspaceId(DEFAULT_WORKSPACE_ID);
-      }
       setRuntimeMode(browserRuntimeMode(window.location.hostname));
     });
   }, []);
@@ -3194,10 +3196,40 @@ export function ControlCenter() {
   useEffect(() => {
     if (!runtimeMode) return;
     let cancelled = false;
+    const resolveIdentity = async () => {
+      try {
+        const persisted = window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY);
+        if (runtimeMode === "local") {
+          const workspaceId = parseWorkspaceId(persisted);
+          if (cancelled) return;
+          setActiveWorkspaceId(workspaceId);
+          setIdentityReady(true);
+          return;
+        }
+        const session = await loadHostedApplicationSession(fetch);
+        const workspaceId = selectAuthorizedWorkspace(session.workspaces, persisted);
+        if (cancelled) return;
+        setAuthorizedWorkspaceIds(session.workspaces.map(({ workspaceId: id }) => id));
+        setActiveWorkspaceId(workspaceId);
+        setIdentityReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        setBootstrapError(error instanceof Error ? error.message : "Your Command Center identity could not be resolved.");
+        setBootstrapStatus("error");
+      }
+    };
+    void resolveIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapAttempt, runtimeMode]);
+
+  useEffect(() => {
+    if (!runtimeMode || !identityReady) return;
+    let cancelled = false;
     window.queueMicrotask(() => {
       const requested = new URLSearchParams(window.location.search).get("tab") as WorkspacePageId | null;
-      const persistedWorkspace = parseWorkspaceId(window.localStorage.getItem(WORKSPACE_SELECTION_STORAGE_KEY));
-      if (requested && isWorkspacePageAvailable(persistedWorkspace, requested)) setActiveTab(requested);
+      if (requested && isWorkspacePageAvailable(activeWorkspaceId, requested)) setActiveTab(requested);
     });
     const load = async () => {
       try {
@@ -3262,7 +3294,7 @@ export function ControlCenter() {
     return () => {
       cancelled = true;
     };
-  }, [bootstrapAttempt, runtimeMode, workspaceRequestId]);
+  }, [activeWorkspaceId, bootstrapAttempt, identityReady, runtimeMode, workspaceRequestId]);
   // Keep the emergency browser copy current independently of normal persistence.
   useEffect(() => {
     if (!workspaceReady || runtimeMode !== "local") return;
@@ -3496,6 +3528,7 @@ export function ControlCenter() {
               setBootstrapStatus("loading");
               setBootstrapError("");
               setWorkspaceReady(false);
+              setIdentityReady(false);
               setBootstrapAttempt((value) => value + 1);
             }}
           >
@@ -3518,10 +3551,14 @@ export function ControlCenter() {
           </span>
           <span>
             <b>DAILY COMMAND CENTER</b>
-            <small>MARC&apos;S COMMAND CENTER</small>
+            <small>MY COMMAND CENTER</small>
           </span>
         </button>
-        <WorkspaceSwitcher value={activeWorkspaceId} onChange={selectWorkspace} />
+        <WorkspaceSwitcher
+          value={activeWorkspaceId}
+          onChange={selectWorkspace}
+          options={WORKSPACE_OPTIONS.filter(({ id }) => authorizedWorkspaceIds.includes(id))}
+        />
         <button
           className="mobile-menu"
           onClick={() => setMobileOpen((value) => !value)}
