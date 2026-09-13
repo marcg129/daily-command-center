@@ -93,7 +93,7 @@ test("chat preview normalizes every confirmation field without persisting", asyn
   assert.equal(state.tasks.size, 0);
 });
 
-test("chat create requires explicit confirmation before any persistence", async () => {
+test("chat create still requires a user-authorized write before persistence", async () => {
   const { tasks, state } = service();
   await assert.rejects(
     tasks.create({ ...proposed, requestId: "chat:proposal-123" }),
@@ -107,7 +107,7 @@ test("chat create requires explicit confirmation before any persistence", async 
   assert.equal(state.tasks.size, 0);
 });
 
-test("confirmed chat capture creates one canonical D1-shaped task with existing roll-up and replay semantics", async () => {
+test("an explicit user-authorized capture can create directly without a preview and remains idempotent", async () => {
   const { tasks, state } = service();
   const input = { ...proposed, requestId: "chat:proposal-123", confirmedByUser: true };
   const created = await tasks.create(input);
@@ -153,14 +153,30 @@ test("MCP transport fails closed before parsing tools or touching D1", async () 
   assert.deepEqual(await crossSite.json(), { error: "Cross-site requests are blocked." });
 });
 
-test("MCP tool metadata encodes preview-before-confirmation and bounded private writes", async () => {
+test("MCP metadata makes SEND TO TASKS a direct explicit command while inferred tasks still require confirmation", async () => {
   const source = await readFile(new URL("../workers/task-capture-mcp.ts", import.meta.url), "utf8");
-  assert.match(source, /Always call preview_task first/);
-  assert.match(source, /explicit confirmation/);
+  assert.match(source, /SEND TO TASKS/);
+  assert.match(source, /call create_task directly/);
+  assert.match(source, /do not ask the user to repeat known fields/);
+  assert.match(source, /merely infer a likely task/);
+  assert.match(source, /Ask whether the user wants it added/);
   assert.match(source, /confirmedByUser: z\.literal\(true\)/);
   assert.match(source, /readOnlyHint: true/);
   assert.match(source, /readOnlyHint: false/);
+  assert.doesNotMatch(source, /Always call preview_task first/);
   assert.doesNotMatch(source, /api[_-]?key|bearer-token bypass|Access-Control-Allow-Origin/i);
+});
+
+test("future-ready Skill mirrors the explicit command and confirmation boundary", async () => {
+  const skill = await readFile(
+    new URL("../skills/daily-command-center-tasks/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /^---[\s\S]*name: daily-command-center-tasks[\s\S]*description:/);
+  assert.match(skill, /SEND TO TASKS/);
+  assert.match(skill, /Do not create a task merely because a likely action appears/);
+  assert.match(skill, /Do not ask the user to repeat fields already clear/);
+  assert.match(skill, /Do not claim success unless the Daily Command Center action succeeds/);
 });
 
 test("deployment documentation uses the account's canonical workers.dev subdomain", async () => {
