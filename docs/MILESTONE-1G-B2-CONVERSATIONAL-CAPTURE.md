@@ -4,7 +4,7 @@ Date: 2026-09-13
 
 Branch: `milestone/1g-b2-conversational-capture`
 
-Status: **Active implementation after verified 1G-B1 production deployment.**
+Status: **Complete, merged, deployed, and verified.**
 
 ## Objective
 

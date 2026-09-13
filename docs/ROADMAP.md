@@ -2,268 +2,129 @@
 
 Last updated: 2026-09-13
 
-This document is the canonical near-term delivery order. Milestone implementation
-notes describe what shipped; this roadmap records what is complete, what is active,
-and what is intentionally deferred.
+This document is the canonical near-term delivery order. Completed milestone notes preserve implementation detail; this roadmap records the current boundary and what comes next.
 
 ## Milestone status
 
-| Milestone | Status                                       | Scope                                                                                 |
-| --------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 1G-A      | **Complete, merged, deployed, and verified** | Durable user, principal, and workspace-membership authorization foundation            |
-| 1G-B      | **Active**                                   | True multi-user identity, conversational task capture, and stronger overdue treatment |
-| 1G-C      | **Later**                                    | `command.coreyg.dev` and related domain work                                          |
+| Milestone | Status | Scope |
+| --- | --- | --- |
+| 1G-A | **Complete, merged, deployed, and verified** | Durable application users, principals, workspace memberships, and server authorization |
+| 1G-B | **Complete, merged, deployed, and verified** | Physical per-user workspace isolation, conversational ChatGPT task capture, and stronger overdue treatment |
+| 1G-C | **Active next milestone** | Move the user-facing web app to `command.coreyg.dev` while preserving Cloudflare Access protection and rollback safety |
 
-Milestone 1G-A is closed. Do not reopen it unless a regression or security problem
-is discovered. Follow-on identity and capture work belongs to 1G-B.
+Milestones 1G-A and 1G-B are closed. Do not reopen them unless a regression or security problem is discovered.
 
-## Milestone 1G-B — True Multi-User Identity + Conversational Task Capture
+## Milestone 1G-A — User/workspace ownership foundation
+
+Completed and verified in production.
+
+Delivered:
+
+- durable application users;
+- cryptographically verified authentication-principal mappings;
+- role-bearing workspace memberships;
+- membership-based server authorization; and
+- fail-closed cross-user/cross-workspace protection.
+
+See `docs/MILESTONE-1G-A-USER-WORKSPACE-OWNERSHIP.md` for implementation detail.
+
+## Milestone 1G-B — Multi-user identity + conversational task capture
+
+Completed and verified in production on 2026-09-13.
+
+### 1G-B1 — Physical workspace instances
+
+Delivered:
+
+- separation of the logical user-facing workspace key (`personal` / `indelitech`) from the exact physical D1 workspace ID;
+- preservation of Marc's existing physical `personal` and `indelitech` rows without moving production data;
+- support for another user to map logical Personal to a different physical workspace;
+- physical-workspace isolation for tasks, visibility, collector snapshots, and workspace-domain data;
+- an explicit physical `workspace_rollups` policy preserving Marc's Indelitech-to-Personal roll-up; and
+- fail-closed handling for unmapped, disabled, ambiguous, unauthorized, or forged workspace access.
+
+See `docs/MILESTONE-1G-B1-WORKSPACE-INSTANCES.md`.
+
+### 1G-B2 — Conversational Daily Command Center capture
+
+Delivered:
+
+- `SEND TO TASKS` as the canonical explicit capture command;
+- direct `create_task` for an unambiguous explicit user capture request without a mandatory preview/reconfirmation loop;
+- confirmation before persistence when a task is merely inferred from ordinary conversation;
+- reuse of clear conversation context without asking the user to restate known fields;
+- a future-ready `skills/daily-command-center-tasks/SKILL.md` artifact;
+- documented ChatGPT platform limitations around app/Skill availability, `@` invocation, and product-level action confirmation; and
+- capture tests proving the same per-user physical-workspace boundary used by hosted routes.
+
+The backend remains authoritative for identity, workspace membership, authorization, idempotency, and persistence. ChatGPT invocation mechanics are intentionally replaceable.
+
+See `docs/MILESTONE-1G-B2-CONVERSATIONAL-CAPTURE.md`.
+
+### 1G-B3 — Stronger overdue visibility
+
+Delivered:
+
+- deterministic product-timezone overdue age labels such as `OVERDUE · 1 DAY`;
+- a prominent overdue count near “Needs action today”;
+- restrained danger-border/tint treatment for overdue Today cards and canonical task rows;
+- a visually distinct 45-day Overdue horizon row;
+- separate overdue and priority signals; and
+- explicit light/dark styling with no flashing or urgency animation.
+
+The existing overdue-first attention ordering and stored priority semantics were preserved.
+
+See `docs/MILESTONE-1G-B3-OVERDUE-VISIBILITY.md`.
+
+## Milestone 1G-C — `command.coreyg.dev` custom domain
 
 ### Goal
 
-Move from the migrated legacy-owner identity model to a durable true multi-user
-experience, and make ChatGPT task capture resolve a real Command Center user and
-authorized workspace. Preserve all server-side authorization and isolation
-guarantees established in 1G-A.
+Make `https://command.coreyg.dev` the canonical user-facing web address for Daily Command Center without weakening Cloudflare Access, changing application data, or coupling the web-domain transition to the separate task-capture MCP endpoint.
 
-Deliver the milestone in this order:
+The current web deployment is a Cloudflare Worker, so this milestone should use a **Worker Custom Domain**, not a Pages-domain migration. Cloudflare can attach a Custom Domain directly to a Worker, create the DNS record, and provision the certificate when the hostname belongs to an active Cloudflare zone.
 
-1. Implement and verify 1G-B1 true multi-user identity and physical workspace instances.
-2. Complete the ChatGPT platform-capability gate, then implement 1G-B2.
-3. Test cross-user and cross-workspace capture authorization.
-4. Implement 1G-B3 as a separate, tightly scoped UI pull request.
-5. Leave 1G-C as the later domain milestone.
+### Preconditions
 
-### 1G-B1 — True multi-user identity
+Before changing production routing, verify in Cloudflare that:
 
-Implement the smallest safe path that:
+- `coreyg.dev` is an active zone in the same Cloudflare account, or onboard it and complete the registrar nameserver change first;
+- `command.coreyg.dev` does not already have a conflicting CNAME or other incompatible DNS record; and
+- the existing Daily Command Center Access application can be extended to protect `command.coreyg.dev` while preserving its current policies and application audience.
 
-- resolves a cryptographically verified Cloudflare Access identity to the correct
-  active Command Center user;
-- loads only workspaces in which that user has an active membership;
-- preserves Marc's current Personal and Indelitech behavior;
-- supports separate physical Personal workspace instances for Marc, Christa, and
-  Marc's sister while keeping the public product slot named `personal`;
-- supports a future shared Household workspace without adding Household UI now;
-- keeps physical workspace IDs server-side and exposes only safe logical workspace
-  choices to the browser;
-- enforces authorization and workspace isolation on the server for every hosted
-  read and mutation;
-- never exposes another user's private resources; and
-- fails closed when the user mapping, user state, or workspace membership cannot
-  be established.
+Do not guess these account-level facts from repository configuration.
 
-The smallest safe implementation may add provisioning or administrative support
-needed to create and link durable users, principals, and memberships. It must not
-add invitations, Household product UI, Bills, or domain changes unless a narrowly
-scoped identity-architecture requirement makes one unavoidable.
+### Delivery order
 
-#### 1G-B1 acceptance criteria
+1. Record the current production Worker, Access application, audience, and rollback hostname before any routing change.
+2. Add `command.coreyg.dev` as the web Worker's Custom Domain using Wrangler configuration (`custom_domain: true`) only after the Cloudflare zone prerequisite is confirmed.
+3. Add/protect the new public hostname in the existing Cloudflare Access application when possible so the current policy and audience remain stable. Do not create a replacement Access application unless the existing one cannot safely cover the hostname.
+4. Update protected-deploy validation so the committed custom-domain posture is checked before deployment.
+5. Deploy through the existing owner-authorized current-main gate.
+6. Verify from the public Internet that unauthenticated access is intercepted by Access and authenticated access reaches the same hosted application/session/workspace boundary.
+7. Verify hosted APIs, Personal/Indelitech switching, task reads/writes, Intel, and existing identity isolation through the new hostname.
+8. Keep the current Access-protected `workers.dev` web hostname only as a short rollback path during cutover. After the custom domain is verified, decide in a separate hardening step whether to disable the web Worker's `workers.dev` route. Do not change the MCP Worker's hostname merely to match the web domain.
 
-- Each supported Access principal resolves to exactly one active application user.
-- The hosted session/bootstrap response contains only that user's authorized
-  logical workspace choices and safe display metadata.
-- Marc continues to see and use Personal and Indelitech without a data migration
-  regression.
-- A second user can map logical Personal to a distinct physical workspace without
-  inheriting Marc's Personal or Indelitech access.
-- A disabled user, unmapped principal, missing membership, duplicate/ambiguous
-  identity mapping, or unknown workspace is denied.
-- Directly supplied physical workspace IDs cannot bypass membership checks.
-- Cross-user task, visibility, collector snapshot, and workspace-domain reads and
-  mutations remain isolated by physical workspace instance.
-- Marc's existing Indelitech-to-Personal task roll-up remains intact without moving
-  existing production task rows.
+### 1G-C acceptance criteria
 
-### 1G-B2 — Daily Command Center conversational task-capture Skill
+- `https://command.coreyg.dev` resolves to the production Daily Command Center Worker with a valid Cloudflare-managed certificate.
+- An unauthenticated request to the custom hostname cannot reach application content without passing Cloudflare Access.
+- The existing authorized user still resolves to the same application user and logical Personal/Indelitech memberships.
+- No task, workspace, D1, KV, Intel, or MCP data migration is required.
+- Cross-user and cross-workspace authorization remains unchanged.
+- The protected deployment workflow verifies the committed domain/security posture before deploying.
+- The old web hostname is either retained temporarily as an Access-protected rollback path or intentionally retired after verification; it is never left as an unprotected bypass.
+- The task-capture MCP endpoint remains independent unless a separate tested migration is intentionally approved.
 
-Make the existing Daily Command Center task-capture capability usable as naturally
-as the current ChatGPT platform permits. The backend remains authoritative for
-identity, authorization, interpretation, and persistence. ChatGPT invocation
-mechanics must remain replaceable so future platform improvements do not require a
-backend redesign.
+### Explicitly deferred beyond 1G-C
 
-#### Platform-capability gate
+Do not bundle the following into the domain transition:
 
-Before writing 1G-B2 implementation code, verify the current supported ChatGPT
-custom-app/plugin/Skill invocation model against current official platform behavior
-and record the result in the milestone implementation note.
-
-Current observed constraint for this project: the Daily Command Center task app is
-not presently offered in the user's `@` selector in ordinary ChatGPT conversations.
-Therefore, `@Daily Command Center` must NOT be an acceptance requirement for 1G-B2.
-If explicit app/Skill selection becomes available later, support it as an additional
-fallback rather than redesigning the capture backend around it.
-
-Keep the ownership boundary explicit:
-
-| Daily Command Center controls                                               | ChatGPT product controls                                                       |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Tool/app names, descriptions, schemas, response shape, and error guidance   | Whether an app or Skill is available or automatically selected for a message   |
-| Authentication handoff and application-user resolution                      | `@`, picker, Project, or other invocation surfaces available to the user        |
-| Server-side workspace authorization and task persistence                    | When ChatGPT elects to offer or call an available capability                   |
-| Skill instructions and examples packaged with the integration where allowed | The surrounding conversation context and automatic Skill-routing behavior      |
-
-Do not claim that Command Center code can make its ChatGPT app automatically
-available in every conversation. Optimize every integration surface we do control,
-document the minimum current user interaction honestly, and keep explicit fallbacks.
-
-#### Canonical explicit command
-
-Adopt the phrase:
-
-`SEND TO TASKS`
-
-as the stable human-readable command for Daily Command Center task capture.
-
-A message that clearly uses `SEND TO TASKS` to supply or refer to an action is an
-explicit request to create the task. The capture workflow should not ask for a
-second confirmation unless a materially required field is ambiguous or the
-requested workspace cannot be safely resolved.
-
-Example:
-
-```text
-SEND TO TASKS
-Task: Test ChatGPT performance after reboot using a fresh chat and Firefox
-When: Next convenient work session
-Workspace: Indelitech
-Priority: Low
-```
-
-Include `SEND TO TASKS` prominently in Skill instructions, app/tool descriptions,
-and examples so that any ChatGPT surface capable of automatic capability selection
-has a strong, low-ambiguity routing signal. Treat it as an application-level command
-contract, not as a guaranteed ChatGPT platform-level selector.
-
-#### Skill/package direction
-
-Where the current ChatGPT platform permits it, package a dedicated Daily Command
-Center task-capture Skill around the existing app/MCP task actions.
-
-The Skill owns conversational behavior such as:
-
-- recognizing explicit capture intent;
-- recognizing the `SEND TO TASKS` command;
-- using already-known conversation context;
-- asking for confirmation when a task is only inferred; and
-- requesting the minimum clarification when a required field is materially
-  ambiguous.
-
-The underlying app/MCP action owns the actual authorized write. Do not duplicate
-persistence, user resolution, workspace membership checks, or task business rules
-inside the Skill.
-
-If the user's current ChatGPT plan/surface cannot install or automatically invoke
-that Skill, keep the Skill/package in the repository as a future-ready artifact and
-optimize the currently available app/MCP metadata instead. Do not make unsupported
-Skill availability a blocker for the secure capture backend.
-
-#### Capture behavior
-
-For explicit requests such as “Add that to my tasks,” “Put that on my list,”
-“Add that to Indelitech,” or a `SEND TO TASKS` block, the integration should create
-a task using details already clear in the conversation. The user should not have to
-repeat a known title, workspace, due date, priority, context, recurrence, category,
-or estimate.
-
-If ChatGPT identifies a likely action during ordinary conversation, it must not
-silently create a task. Preferred behavior is:
-
-“Want me to add that to your Command Center?”
-
-A user confirmation such as “yes,” “do it,” “add it,” or “put it on my list” then
-becomes explicit capture authorization and may reuse the existing conversation
-context.
-
-Useful diagnostic or planning context should be stored in the task description or
-context field. Dates, priorities, recurrence, workspace, or other material details
-must not be invented when ambiguous. Existing preview/confirmation behavior may be
-simplified only where the explicit user instruction or confirmation provides
-equivalent authorization.
-
-#### Authorization requirements
-
-Every capture must:
-
-- authenticate and resolve the actual Command Center application user;
-- resolve a logical requested workspace such as Personal to that user's exact
-  physical workspace instance;
-- validate the requested workspace against that user's memberships on the server;
-- reject an unauthorized or forged physical workspace ID even if ChatGPT supplies
-  it;
-- never default an unknown authenticated principal to Marc; and
-- fail closed when identity or workspace authorization is missing or ambiguous.
-
-The same phrase therefore has user-specific behavior:
-
-- Marc: “Add that to Personal” → Marc's physical Personal workspace.
-- Christa: “Add that to Personal” → Christa's different physical Personal workspace.
-
-Neither user should need to know a physical workspace ID.
-
-#### 1G-B2 acceptance criteria
-
-- `SEND TO TASKS` is documented as the canonical explicit capture command and is
-  represented in available Skill/app/tool metadata.
-- An explicit capture with complete conversational context can be completed without
-  restating known fields when the Daily Command Center capability is available to
-  the conversation.
-- A materially ambiguous field is omitted, given a safe existing product default,
-  or clarified; it is not fabricated.
-- A likely task inferred from ordinary conversation requires user confirmation
-  before creation.
-- Captured context is useful and bounded, without copying unnecessary sensitive
-  conversation content.
-- The same application-user and physical-workspace boundary used by hosted routes
-  protects conversational capture.
-- Tests prove same-user/same-workspace success, cross-user denial,
-  cross-workspace denial, disabled/unmapped-user denial, forged-physical-workspace
-  denial, and accidental duplicate/replay safety.
-- Documentation states the current ChatGPT invocation limitations and distinguishes
-  them from behavior controlled by Command Center.
-- `@` invocation is tested/documented only if the user's current ChatGPT surface
-  actually exposes the installed Daily Command Center capability; its absence does
-  not fail the milestone.
-
-### 1G-B3 — Stronger overdue visual treatment
-
-Deliver this work only after the identity/capture work, in a separate focused UI
-pull request. The hosted Today case with a task due yesterday is the primary
-acceptance case.
-
-Required behavior:
-
-- overdue tasks sort above tasks due today;
-- overdue status is immediately recognizable but restrained;
-- use the existing design system with an accessible danger/red accent, considering
-  a left danger border and lightly tinted background;
-- replace the tiny status text with a stronger badge such as
-  `OVERDUE · 1 DAY`;
-- make the Overdue row in the 45-day horizon visually distinct;
-- show an overdue count prominently near “Needs action today” when applicable;
-- keep priority visually and semantically separate from overdue status; and
-- do not use flashing or pulsing animation.
-
-#### 1G-B3 acceptance criteria
-
-- A task due yesterday is unmistakably overdue on Today and relevant task views.
-- Overdue items precede due-today items without changing priority semantics.
-- Singular/plural overdue age and count text is correct.
-- Light and dark themes meet the project's accessibility and contrast expectations.
-- Keyboard, screen-reader, reduced-motion, narrow-screen, and existing task-action
-  behavior do not regress.
-
-## Explicitly deferred from 1G-B
-
-Do not bundle any of the following into 1G-B:
-
-- Bills or banking integrations;
-- Household product UI;
-- invitations;
-- PWA or native mobile work;
-- widgets;
-- DNS migration or `command.coreyg.dev` domain changes; or
+- Household product UI or invitations;
+- Bills, banking, or full budgeting;
+- PWA/native mobile packaging;
+- Home Screen or Lock Screen widgets;
+- location/Focus behavior; or
 - unrelated feature-level RBAC expansion.
 
-The `command.coreyg.dev` and domain transition remains Milestone 1G-C.
+Those belong to later productization milestones after the canonical web domain is stable.

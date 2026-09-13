@@ -4,6 +4,8 @@ Date: 2026-09-13
 
 Branch: `milestone/1g-b3-overdue-visibility`
 
+Status: **Complete, merged, deployed, and verified.**
+
 ## Objective
 
 Make overdue work unmistakable at a glance without changing stored priority semantics or adding distracting motion. The primary acceptance case is a hosted Today task due yesterday.
@@ -23,12 +25,16 @@ Make overdue work unmistakable at a glance without changing stored priority sema
 
 This slice does not alter task persistence, due-date rules, recurrence, priority values, workspace authorization, conversational capture, navigation, or notification behavior.
 
-## Validation targets
+## Validation
+
+The focused PR and the merged `main` revision both passed the full Ubuntu, macOS, and Windows CI matrix, including repository checks, MCP build, Intel Worker build, and smoke tests. The protected production deployment completed successfully for the web Worker, Intel Worker, MCP Worker, and final deployment-posture validation.
+
+Validated behavior:
 
 - A task due yesterday reads `OVERDUE · 1 DAY`.
 - Singular/plural labels are correct.
 - Same-day late timestamps do not claim a full day late.
-- Overdue items remain ahead of due-today items without changing stored priority.
+- Overdue items remain ahead of due-today items without changing priority semantics.
 - Today exposes both total attention and overdue count.
 - Overdue status is textually and visually distinct from priority.
 - The 45-day Overdue row is visually distinct.
