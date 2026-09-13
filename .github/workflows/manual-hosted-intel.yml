@@ -1,0 +1,166 @@
+name: Run Hosted Intel Now
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-hosted-intel
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: collect and verify production Intel snapshot
+    if: ${{ github.actor == github.repository_owner && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out dispatched main revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js 24.19.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Require exact current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          current_main="$(git rev-parse origin/main)"
+          if [ "$current_main" != "$GITHUB_SHA" ]; then
+            echo "main moved after this workflow was dispatched; rerun against the new current main." >&2
+            exit 1
+          fi
+
+      - name: Require Cloudflare CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'Missing CLOUDFLARE_API_TOKEN secret' >&2; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID secret' >&2; exit 1; }
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify Cloudflare authentication
+        run: npx wrangler whoami
+
+      - name: Prepare ephemeral remote-D1 dev config
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const raw = fs.readFileSync('wrangler.intel.jsonc', 'utf8');
+          const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+          const database = (config.d1_databases ?? []).find((item) => item.binding === 'DB');
+          if (config.main !== 'workers/hosted-intel-collector.ts') throw new Error('Unexpected Intel Worker entry');
+          if (config.workers_dev !== false || config.preview_urls !== false) throw new Error('Intel Worker exposure posture changed');
+          if (database?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected Intel production D1 binding');
+          database.remote = true;
+          config.name = 'daily-command-center-intel-manual-runner';
+          config.triggers = { crons: [] };
+          fs.writeFileSync('.wrangler.intel.manual.json', `${JSON.stringify(config, null, 2)}\n`);
+          EOF
+
+      - name: Run one scheduled collection against remote D1
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_file="$RUNNER_TEMP/manual-intel-wrangler.log"
+          npx wrangler dev --test-scheduled --config .wrangler.intel.manual.json --ip 127.0.0.1 --port 8787 --log-level info >"$log_file" 2>&1 &
+          wrangler_pid=$!
+          cleanup() {
+            kill "$wrangler_pid" 2>/dev/null || true
+            wait "$wrangler_pid" 2>/dev/null || true
+            rm -f .wrangler.intel.manual.json
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --silent --output /dev/null --connect-timeout 1 http://127.0.0.1:8787/; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$wrangler_pid" 2>/dev/null; then
+              echo 'Wrangler dev exited before becoming ready.' >&2
+              cat "$log_file" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo 'Timed out waiting for the local scheduled-event runner.' >&2
+            cat "$log_file" >&2
+            exit 1
+          fi
+
+          scheduled_time_ms="$(node -p 'Date.now()')"
+          response="$(curl --fail-with-body --silent --show-error --max-time 90 \
+            "http://127.0.0.1:8787/cdn-cgi/local/scheduled?format=json&cron=17%20%2A%2F6%20%2A%20%2A%20%2A&time=${scheduled_time_ms}")" || {
+              cat "$log_file" >&2
+              exit 1
+            }
+          printf '%s\n' "$response"
+          RESPONSE="$response" node --input-type=module <<'EOF'
+          const result = JSON.parse(process.env.RESPONSE ?? '{}');
+          if (result.outcome !== 'ok') throw new Error(`Scheduled handler outcome was ${String(result.outcome)}`);
+          EOF
+          echo "scheduled_time_ms=$scheduled_time_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Read back and verify the exact production snapshot
+        shell: bash
+        env:
+          EXPECTED_SCHEDULED_TIME_MS: ${{ steps.collect.outputs.scheduled_time_ms }}
+        run: |
+          set -euo pipefail
+          snapshot_file="$RUNNER_TEMP/manual-intel-snapshot.json"
+          npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.intel.jsonc \
+            --command "SELECT scope, checked_at, payload_json FROM collector_snapshots WHERE workspace_id='indelitech' AND collector='industry' ORDER BY checked_at DESC LIMIT 1" \
+            --json > "$snapshot_file"
+          SNAPSHOT_FILE="$snapshot_file" node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const document = JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, 'utf8'));
+          const containers = Array.isArray(document) ? document : [document];
+          const rows = containers.flatMap((entry) => Array.isArray(entry?.results) ? entry.results : []);
+          const row = rows[0];
+          if (!row) throw new Error('No Indelitech industry snapshot was found after collection.');
+          if (row.scope !== 'hosted-indelitech-intel-v1') throw new Error(`Unexpected Intel snapshot scope: ${String(row.scope)}`);
+          const expected = new Date(Number(process.env.EXPECTED_SCHEDULED_TIME_MS)).toISOString();
+          if (row.checked_at !== expected) {
+            throw new Error(`Manual run did not publish the expected snapshot. Expected ${expected}, found ${String(row.checked_at)}.`);
+          }
+          const payload = JSON.parse(row.payload_json);
+          const statuses = Array.isArray(payload.sourceStatuses) ? payload.sourceStatuses : [];
+          const liveSources = statuses.filter((item) => item?.state === 'live').length;
+          const totalSources = statuses.length;
+          const surfaced = Array.isArray(payload.items) ? payload.items.length : 0;
+          const errors = Array.isArray(payload.errors) ? payload.errors.length : 0;
+          const discovered = Number.isFinite(payload.discoveredCount) ? payload.discoveredCount : 0;
+          const providerState = Array.isArray(payload.providerStatuses) ? payload.providerStatuses[0]?.state : undefined;
+          const summary = [
+            '## Hosted Intel manual collection',
+            '',
+            `- Checked at: ${row.checked_at}`,
+            `- Source health: ${liveSources}/${totalSources} live`,
+            `- Fresh discoveries: ${discovered}`,
+            `- Surfaced Intel items: ${surfaced}`,
+            `- Source errors: ${errors}`,
+            `- Collector state: ${providerState ?? 'unknown'}`,
+          ].join('\n');
+          console.log(summary);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+          EOF
