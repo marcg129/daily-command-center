@@ -12,20 +12,29 @@ import {
   collectHostedIntel,
   fetchHostedIntelFeed,
   hostedIntelQueryUrl,
+  hostedIntelTldr,
+  isHostedIntelRelevantStory,
   parseHostedIntelFeed,
+  stripHostedIntelPublisherSuffix,
 } from "@/lib/runtime/hosted-intel-collector";
 
 const now = new Date("2026-09-13T01:00:00.000Z");
 const recentDate = "Sun, 13 Sep 2026 00:30:00 GMT";
 
-function feed(options: { title?: string; url?: string; publishedAt?: string; source?: string } = {}) {
+function feed(options: {
+  title?: string;
+  url?: string;
+  publishedAt?: string;
+  source?: string;
+  description?: string;
+} = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>Google News</title><item>
 <title>${options.title ?? "Critical Microsoft 365 security breach update"}</title>
 <link>${options.url ?? "https://news.google.com/rss/articles/story-1"}</link>
 <guid>story-1</guid>
 <pubDate>${options.publishedAt ?? recentDate}</pubDate>
-<description>Cybersecurity update for managed service providers and small businesses.</description>
+<description>${options.description ?? "Cybersecurity update for managed service providers and small businesses."}</description>
 <source>${options.source ?? "Security Wire"}</source>
 </item></channel></rss>`;
 }
@@ -92,15 +101,52 @@ test("hosted Intel blocks redirects, oversized bodies, and unexpected content ty
   );
 });
 
-test("hosted Intel feed parsing keeps only dated HTTPS stories", () => {
-  const valid = parseHostedIntelFeed(feed(), "Fallback");
+test("hosted Intel feed parsing keeps only dated HTTPS stories and removes duplicated publisher suffixes", () => {
+  const valid = parseHostedIntelFeed(feed({
+    title: "Florida investigates data breach tied to cybercriminal organization - Yahoo",
+    source: "Yahoo",
+  }), "Fallback");
   assert.equal(valid.length, 1);
-  assert.equal(valid[0].source, "Security Wire");
+  assert.equal(valid[0].source, "Yahoo");
+  assert.equal(valid[0].title, "Florida investigates data breach tied to cybercriminal organization");
   assert.equal(valid[0].kind, "topic");
+  assert.equal(stripHostedIntelPublisherSuffix("Security update - Example News", "Example News"), "Security update");
 
   assert.equal(parseHostedIntelFeed(feed({ url: "http://example.com/story" }), "Fallback").length, 0);
   assert.equal(parseHostedIntelFeed(feed({ publishedAt: "" }), "Fallback").length, 0);
   assert.equal(parseHostedIntelFeed(feed({ publishedAt: "Mon, 14 Sep 2026 12:00:00 GMT" }), "Fallback").length, 0);
+});
+
+test("hosted Intel requires real cyber context instead of scoring an ambiguous breach headline", () => {
+  const physicalBreach = {
+    title: "The Breach at Lal Chowk",
+    summary: "The Breach at Lal Chowk Greater Kashmir",
+  };
+  const cyberBreach = {
+    title: "Florida investigates data breach tied to cybercriminal organization",
+    summary: "Florida officials are investigating a data breach tied to a cybercriminal organization.",
+  };
+  assert.equal(isHostedIntelRelevantStory(physicalBreach), false);
+  assert.equal(isHostedIntelRelevantStory(cyberBreach), true);
+});
+
+test("hosted Intel turns duplicate feed descriptions into a concise non-duplicate TLDR", () => {
+  const title = "Florida investigates data breach tied to cybercriminal organization";
+  const tldr = hostedIntelTldr({
+    title,
+    source: "Yahoo",
+    summary: `${title} - Yahoo`,
+  });
+  assert.notEqual(tldr.toLowerCase(), title.toLowerCase());
+  assert.match(tldr, /data-security incident/i);
+  assert.ok(tldr.length < 200);
+
+  const useful = hostedIntelTldr({
+    title: "CISA warns of exploited flaw",
+    source: "Security Wire",
+    summary: "Federal defenders added the flaw to the exploited vulnerabilities catalog and urged rapid patching.",
+  });
+  assert.match(useful, /Federal defenders added the flaw/);
 });
 
 test("hosted Intel uses the fixed query set, degrades on partial failure, and keeps output bounded", async () => {
@@ -112,6 +158,13 @@ test("hosted Intel uses the fixed query set, degrades on partial failure, and ke
       const query = url.searchParams.get("q") ?? "";
       requested.push(query);
       if (query.includes("Microsoft 365")) throw new Error("provider unavailable");
+      if (query.includes("cyberattack")) {
+        return new Response(feed({
+          title: "The Breach at Lal Chowk - Greater Kashmir",
+          source: "Greater Kashmir",
+          description: "The Breach at Lal Chowk Greater Kashmir",
+        }), { headers: { "content-type": "application/rss+xml" } });
+      }
       return new Response(feed(), { headers: { "content-type": "application/rss+xml" } });
     },
   });
@@ -124,6 +177,9 @@ test("hosted Intel uses the fixed query set, degrades on partial failure, and ke
   assert.ok(payload.items.length >= 1);
   assert.ok(payload.items.every((item) => item.id.startsWith("hosted-industry:")));
   assert.ok(payload.items.every((item) => typeof item.importanceScore === "number"));
+  assert.ok(payload.items.every((item) => item.title !== "The Breach at Lal Chowk"));
+  assert.ok((payload.filteredOut ?? 0) >= 1);
+  assert.ok(payload.items.every((item) => item.summary && item.summary !== item.title));
 });
 
 test("a total provider failure preserves the prior D1 snapshot by refusing to write", async () => {
