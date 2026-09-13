@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./workspace-accessibility.css";
+import "./overdue-visibility.css";
 import "./task-menu-viewport.css";
 import "./task-planning-filters.css";
 import "./navigation-overflow.css";
