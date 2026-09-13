@@ -13,12 +13,19 @@ export class D1WorkspaceResolver implements WorkspaceResolver {
     if (!principal?.principalId) throw new Error("Authentication required.");
     if (!isProductWorkspaceId(requestedWorkspaceId)) throw new Error("Unknown workspace.");
 
-    const grant = await this.database.prepare(
-      `SELECT 1 AS allowed FROM principal_workspace_grants
-       WHERE principal_id = ? AND workspace_id = ? LIMIT 1`,
+    const membership = await this.database.prepare(
+      `SELECT 1 AS allowed
+       FROM user_principals p
+       JOIN users u ON u.user_id = p.user_id
+       JOIN workspace_memberships m ON m.user_id = u.user_id
+       WHERE p.principal_id = ?
+         AND u.status = 'ACTIVE'
+         AND m.workspace_id = ?
+         AND m.role IN ('OWNER', 'MEMBER')
+       LIMIT 1`,
     ).bind(principal.principalId, requestedWorkspaceId).first<{ allowed: number }>();
 
-    if (!grant) throw new Error("Workspace access denied.");
+    if (!membership) throw new Error("Workspace access denied.");
     return { workspaceId: requestedWorkspaceId };
   }
 }

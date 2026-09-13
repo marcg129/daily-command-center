@@ -30,6 +30,7 @@ class TestD1 implements D1Database {
       "0002_tasks.sql",
       "0005_task_capture_metadata.sql",
       "0006_principal_workspace_grants.sql",
+      "0007_user_workspace_ownership.sql",
     ]) this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -57,6 +58,17 @@ async function accessFixture() {
   return { keyResolver, assertion };
 }
 
+function grant(d1: TestD1, workspaceId: "personal" | "indelitech") {
+  const principal = "cf-user:marc-runtime";
+  const userId = `user:${principal}`;
+  d1.sqlite.prepare("INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES (?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+    .run(userId);
+  d1.sqlite.prepare("INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', CURRENT_TIMESTAMP)")
+    .run(principal, userId);
+  d1.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'OWNER')")
+    .run(userId, workspaceId);
+}
+
 function request(assertion: string, workspaceId: "personal" | "indelitech", requestId: string) {
   return new Request("https://command.example/api/tasks/capture", {
     method: "POST",
@@ -71,9 +83,7 @@ function request(assertion: string, workspaceId: "personal" | "indelitech", requ
 test("hosted runtime composes verified Access identity, D1 grant, repository, and HTTP handler", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
-  d1.sqlite.prepare(
-    "INSERT INTO principal_workspace_grants (principal_id, workspace_id) VALUES (?, ?)",
-  ).run("cf-user:marc-runtime", "personal");
+  grant(d1, "personal");
 
   const post = createHostedTaskCaptureRuntime(
     { DB: d1, TEAM_DOMAIN: teamDomain, POLICY_AUD: audience },
@@ -95,9 +105,7 @@ test("hosted runtime composes verified Access identity, D1 grant, repository, an
 test("hosted runtime denies a verified principal without the requested D1 grant before task creation", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
-  d1.sqlite.prepare(
-    "INSERT INTO principal_workspace_grants (principal_id, workspace_id) VALUES (?, ?)",
-  ).run("cf-user:marc-runtime", "personal");
+  grant(d1, "personal");
 
   const post = createHostedTaskCaptureRuntime(
     { DB: d1, TEAM_DOMAIN: teamDomain, POLICY_AUD: audience },
@@ -115,9 +123,7 @@ test("hosted runtime denies a verified principal without the requested D1 grant 
 test("hosted runtime preserves Indelitech roll-up visibility when explicitly granted", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
-  d1.sqlite.prepare(
-    "INSERT INTO principal_workspace_grants (principal_id, workspace_id) VALUES (?, ?)",
-  ).run("cf-user:marc-runtime", "indelitech");
+  grant(d1, "indelitech");
 
   const post = createHostedTaskCaptureRuntime(
     { DB: d1, TEAM_DOMAIN: teamDomain, POLICY_AUD: audience },

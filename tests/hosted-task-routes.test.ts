@@ -32,7 +32,7 @@ class TestD1 implements D1Database {
   prepareCount = 0;
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql"])
+    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) {
@@ -60,9 +60,15 @@ class TestD1 implements D1Database {
 const now = "2026-09-12T08:00:00.000Z";
 const clock: Clock = { now: () => new Date(now) };
 const alice = principalId("principal-alice");
+const bob = principalId("principal-bob");
 const session: AuthenticatedSession = {
   sessionId: "verified-session",
   principal: { principalId: alice },
+  expiresAt: "2026-09-12T09:00:00.000Z",
+};
+const bobSession: AuthenticatedSession = {
+  sessionId: "verified-bob-session",
+  principal: { principalId: bob },
   expiresAt: "2026-09-12T09:00:00.000Z",
 };
 
@@ -88,9 +94,14 @@ function fixture(sessions: ReadonlyMap<string, AuthenticatedSession> = new Map([
   return { database, handlers };
 }
 
-function grant(database: TestD1, workspaceId: "personal" | "indelitech") {
-  database.sqlite.prepare("INSERT INTO principal_workspace_grants (principal_id, workspace_id, created_at) VALUES (?, ?, ?)")
-    .run(alice, workspaceId, now);
+function grant(database: TestD1, workspaceId: "personal" | "indelitech", principal = alice) {
+  const userId = `user:${principal}`;
+  database.sqlite.prepare("INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES (?, 'ACTIVE', ?, ?)")
+    .run(userId, now, now);
+  database.sqlite.prepare("INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', ?)")
+    .run(principal, userId, now);
+  database.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role, created_at, updated_at) VALUES (?, ?, 'OWNER', ?, ?)")
+    .run(userId, workspaceId, now, now);
 }
 
 async function seed(database: TestD1, item: TaskItem) {
@@ -131,6 +142,29 @@ test("Personal reads its roll-up while Indelitech excludes Personal", async () =
   const team = await (await handlers.GET(request("/api/hosted/workspace?workspaceId=indelitech"))).json() as { tasks: TaskItem[] };
   assert.deepEqual(personal.tasks.map(({ id }) => id).sort(), ["private", "team"]);
   assert.deepEqual(team.tasks.map(({ id }) => id), ["team"]);
+});
+
+test("another authenticated user cannot read or mutate the owner's private workspace", async () => {
+  const sessions = new Map<string, AuthenticatedSession>([["assertion", session], ["bob-assertion", bobSession]]);
+  const { database, handlers } = fixture(sessions);
+  grant(database, "personal");
+  await seed(database, task({ id: "alice-private", title: "Alice private" }));
+
+  const read = await handlers.GET(request(
+    "/api/hosted/workspace?workspaceId=personal",
+    undefined,
+    "bob-assertion",
+  ));
+  assert.equal(read.status, 403);
+  assert.deepEqual(await read.json(), { error: "Workspace access denied." });
+
+  const mutate = await handlers.POST(request(
+    "/api/hosted/tasks/mutations?workspaceId=personal",
+    { mutations: [{ kind: "DELETE", taskId: "alice-private" }] },
+    "bob-assertion",
+  ));
+  assert.equal(mutate.status, 403);
+  assert.equal(database.sqlite.prepare("SELECT title FROM tasks WHERE task_id='alice-private'").get()!.title, "Alice private");
 });
 
 test("authorized mutations use the query workspace, not client identity or first-task ownership", async () => {

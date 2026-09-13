@@ -21,3 +21,9 @@ Newsletter intelligence requires a configured cloud or local AI model. Matching 
 LM Studio and Ollama endpoints must be numeric loopback URLs, with `localhost` normalized to loopback, and cannot redirect. Only loaded text-generation models are offered; recognizable remote/cloud aliases are excluded. The app never downloads or loads a model. A loopback destination does not prove the separate runtime processes data locally: disable LM Link or other remote forwarding if computer-only processing is required. Control Center cannot audit another runtime's internal routing. Optional local-server tokens are separate from cloud API keys; `OLLAMA_API_KEY` is never treated as a local token.
 
 User-configured Industry sources are limited to public HTTP and HTTPS addresses. DNS answers are validated and the request is pinned to the validated public address; redirects repeat the same validation. Private, loopback, local-link, and reserved network destinations are rejected. These controls are defense in depth for a local application, not authorization to expose the dashboard as a public URL-fetching service.
+
+## Hosted authorization model
+
+The hosted application verifies the Cloudflare Access application assertion at each protected API boundary. A valid Access identity is authentication only; it does not itself grant access to application data.
+
+The verified principal must map to an active application user with an exact `OWNER` or `MEMBER` entry in `workspace_memberships`. Hosted task reads, mutations, structured capture, and Intel reads resolve that membership server-side before workspace-scoped repository access. Client-provided principal fields are ignored, and client-side workspace visibility is not an authorization control.

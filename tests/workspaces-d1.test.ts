@@ -24,7 +24,7 @@ class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql"])
+    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
