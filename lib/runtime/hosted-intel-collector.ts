@@ -57,7 +57,6 @@ const parser = new XMLParser({
 });
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
 type RawFeedItem = Record<string, unknown>;
 
 function arrayify<T>(value: T | T[] | undefined): T[] {
@@ -94,8 +93,7 @@ function cleanHttpsUrl(value: unknown) {
 }
 
 function feedSource(item: RawFeedItem, fallback: string) {
-  const source = item.source;
-  const cleaned = cleanText(source);
+  const cleaned = cleanText(item.source);
   return cleaned || fallback;
 }
 
@@ -252,6 +250,10 @@ export async function collectHostedIntel(
     }
   });
 
+  if (!successfulQueries) {
+    throw new Error("Hosted Intel collection failed for every fixed query.");
+  }
+
   const curated = curateIndustryDiscoveries(discoveries, {
     now: nowMs,
     limit: HOSTED_INTEL_SURFACED_LIMIT,
@@ -280,7 +282,7 @@ export async function collectHostedIntel(
     curationMode: "local",
     providerStatuses: [{
       provider: "Hosted RSS collector",
-      state: successfulQueries ? (successfulQueries === HOSTED_INTEL_QUERIES.length ? "live" : "degraded") : "degraded",
+      state: successfulQueries === HOSTED_INTEL_QUERIES.length ? "live" : "degraded",
       message: `${successfulQueries}/${HOSTED_INTEL_QUERIES.length} fixed queries succeeded; ${items.length} updates surfaced from ${discoveries.length} fresh discoveries.`,
     }],
     archivedItems: [],
