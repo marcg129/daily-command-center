@@ -28,8 +28,13 @@ class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql"])
-      this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+    for (const name of [
+      "0001_workspaces.sql",
+      "0002_tasks.sql",
+      "0006_principal_workspace_grants.sql",
+      "0007_user_workspace_ownership.sql",
+      "0008_workspace_instances.sql",
+    ]) this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch<T>(statements: D1PreparedStatement[]) {
@@ -37,7 +42,19 @@ class TestD1 implements D1Database {
   }
 }
 
-function grant(database: TestD1, principal: string, workspaceId: ProductWorkspaceId) {
+function addWorkspace(database: TestD1, workspaceId: string) {
+  database.sqlite.prepare(`INSERT INTO workspaces
+    (workspace_id, name, workspace_type, theme_key, created_at, updated_at)
+    VALUES (?, 'Personal', 'PERSONAL', 'personal-tech-blue', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+    .run(workspaceId);
+}
+
+function grant(
+  database: TestD1,
+  principal: string,
+  workspaceKey: ProductWorkspaceId,
+  physicalWorkspaceId: string = workspaceKey,
+) {
   const userId = `user:${principal}`;
   database.sqlite.prepare(
     "INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES (?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -46,8 +63,8 @@ function grant(database: TestD1, principal: string, workspaceId: ProductWorkspac
     "INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', CURRENT_TIMESTAMP)",
   ).run(principal, userId);
   database.sqlite.prepare(
-    "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'OWNER')",
-  ).run(userId, workspaceId);
+    "INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role) VALUES (?, ?, ?, 'OWNER')",
+  ).run(userId, physicalWorkspaceId, workspaceKey);
 }
 
 function memoryTaskRepository() {
@@ -56,14 +73,13 @@ function memoryTaskRepository() {
   let creates = 0;
   const repository: HostedTaskRepository = {
     async list(context) {
-      return [...tasks.values()].filter((task) =>
-        visibility.get(task.taskId)?.includes(context.workspaceId as ProductWorkspaceId));
+      const workspaceKey = (context.workspaceKey ?? context.workspaceId) as ProductWorkspaceId;
+      return [...tasks.values()].filter((task) => visibility.get(task.taskId)?.includes(workspaceKey));
     },
     async get(context, taskId) {
+      const workspaceKey = (context.workspaceKey ?? context.workspaceId) as ProductWorkspaceId;
       const task = tasks.get(taskId);
-      return task && visibility.get(taskId)?.includes(context.workspaceId as ProductWorkspaceId)
-        ? structuredClone(task)
-        : null;
+      return task && visibility.get(taskId)?.includes(workspaceKey) ? structuredClone(task) : null;
     },
     async create(_context, task, visibleIn) {
       if (tasks.has(task.taskId)) throw new Error("duplicate");
@@ -84,44 +100,60 @@ const alice = principalId("cf-user:alice-123");
 const bob = principalId("cf-user:bob-456");
 const now = new Date("2026-09-11T18:00:00.000Z");
 
-test("D1WorkspaceResolver fails closed without authentication, valid workspace, and exact grant", async () => {
+test("D1WorkspaceResolver fails closed and resolves a logical slot to the exact physical workspace", async () => {
   const d1 = new TestD1();
   const resolver = new D1WorkspaceResolver(d1);
-  grant(d1, alice, "personal");
+  addWorkspace(d1, "personal:alice");
+  grant(d1, alice, "personal", "personal:alice");
 
   await assert.rejects(resolver.resolve(null, "personal"), /Authentication required/);
   await assert.rejects(resolver.resolve({ principalId: alice }, "legacy-local"), /Unknown workspace/);
-  await assert.rejects(resolver.resolve({ principalId: alice }, "invented"), /Unknown workspace/);
+  await assert.rejects(resolver.resolve({ principalId: alice }, "personal:alice"), /Unknown workspace/);
   await assert.rejects(resolver.resolve({ principalId: alice }, "indelitech"), /Workspace access denied/);
   await assert.rejects(resolver.resolve({ principalId: bob }, "personal"), /Workspace access denied/);
-  assert.deepEqual(await resolver.resolve({ principalId: alice }, "personal"), { workspaceId: "personal" });
+  assert.deepEqual(await resolver.resolve({ principalId: alice }, "personal"), {
+    userId: `user:${alice}`,
+    workspaceId: "personal:alice",
+    workspaceKey: "personal",
+  });
 
   d1.sqlite.close();
 });
 
-test("D1WorkspaceResolver supports independent grants for both product workspaces", async () => {
+test("D1WorkspaceResolver supports independent logical slots for one user", async () => {
   const d1 = new TestD1();
   const resolver = new D1WorkspaceResolver(d1);
   grant(d1, alice, "personal");
   grant(d1, alice, "indelitech");
 
-  assert.deepEqual(await resolver.resolve({ principalId: alice }, "personal"), { workspaceId: "personal" });
-  assert.deepEqual(await resolver.resolve({ principalId: alice }, "indelitech"), { workspaceId: "indelitech" });
+  assert.deepEqual(await resolver.resolve({ principalId: alice }, "personal"), {
+    userId: `user:${alice}`,
+    workspaceId: "personal",
+    workspaceKey: "personal",
+  });
+  assert.deepEqual(await resolver.resolve({ principalId: alice }, "indelitech"), {
+    userId: `user:${alice}`,
+    workspaceId: "indelitech",
+    workspaceKey: "indelitech",
+  });
 
   d1.sqlite.close();
 });
 
-test("workspace membership schema rejects unknown workspaces and duplicate memberships", () => {
+test("workspace-instance schema rejects unknown physical workspaces and ambiguous logical slots", () => {
   const d1 = new TestD1();
   grant(d1, alice, "personal");
   assert.throws(
     () => d1.sqlite.prepare(
-      "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'MEMBER')",
+      "INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role) VALUES (?, ?, 'indelitech', 'MEMBER')",
     ).run(`user:${alice}`, "missing-workspace"),
     /FOREIGN KEY constraint failed/,
   );
+  addWorkspace(d1, "personal:alice-2");
   assert.throws(
-    () => grant(d1, alice, "personal"),
+    () => d1.sqlite.prepare(
+      "INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role) VALUES (?, ?, 'personal', 'OWNER')",
+    ).run(`user:${alice}`, "personal:alice-2"),
     /UNIQUE constraint failed/,
   );
   d1.sqlite.close();
@@ -163,15 +195,35 @@ test("migration 0007 preserves grants as durable users, principals, and owner me
       JOIN task_visibility v ON v.task_id=t.task_id WHERE t.task_id='existing-private-task'`).get()! },
     { title: "Keep me", primary_workspace_id: "personal", workspace_id: "personal" },
   );
-  sqlite.prepare(`INSERT INTO workspaces (workspace_id, name, workspace_type, theme_key, created_at, updated_at)
-    VALUES ('household', 'Household', 'SHARED', 'household', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
-  sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, 'household', 'MEMBER')")
-    .run(`legacy:${alice}`);
-  assert.throws(
-    () => sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, 'missing', 'MEMBER')")
-      .run(`legacy:${alice}`),
-    /FOREIGN KEY constraint failed/,
+  sqlite.close();
+});
+
+test("migration 0008 preserves existing rows and creates explicit logical slots and physical roll-up", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec("PRAGMA foreign_keys=ON");
+  for (const name of [
+    "0001_workspaces.sql",
+    "0002_tasks.sql",
+    "0006_principal_workspace_grants.sql",
+    "0007_user_workspace_ownership.sql",
+  ]) sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+  sqlite.prepare("INSERT INTO users (user_id, status, created_at, updated_at) VALUES ('user:test', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)").run();
+  sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ('user:test', 'personal', 'OWNER')").run();
+  sqlite.prepare(`INSERT INTO tasks (task_id, primary_workspace_id, title, type, priority, status,
+    due_is_date_only, created_at, source, updated_at) VALUES ('existing', 'personal', 'Keep me', 'ONE_TIME', 'MEDIUM', 'OPEN', 0,
+    CURRENT_TIMESTAMP, 'manual', CURRENT_TIMESTAMP)`).run();
+  sqlite.prepare("INSERT INTO task_visibility (task_id, workspace_id) VALUES ('existing', 'personal')").run();
+
+  sqlite.exec(readFileSync(new URL("../migrations/0008_workspace_instances.sql", import.meta.url), "utf8"));
+  assert.deepEqual(
+    sqlite.prepare("SELECT workspace_id, workspace_key, role FROM workspace_memberships WHERE user_id='user:test'").all().map((row) => ({ ...row })),
+    [{ workspace_id: "personal", workspace_key: "personal", role: "OWNER" }],
   );
+  assert.deepEqual(
+    { ...sqlite.prepare("SELECT source_workspace_id, target_workspace_id FROM workspace_rollups").get()! },
+    { source_workspace_id: "indelitech", target_workspace_id: "personal" },
+  );
+  assert.equal(sqlite.prepare("SELECT title FROM tasks WHERE task_id='existing'").get()!.title, "Keep me");
   sqlite.close();
 });
 

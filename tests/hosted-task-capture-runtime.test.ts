@@ -31,6 +31,7 @@ class TestD1 implements D1Database {
       "0005_task_capture_metadata.sql",
       "0006_principal_workspace_grants.sql",
       "0007_user_workspace_ownership.sql",
+      "0008_workspace_instances.sql",
     ]) this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -65,8 +66,8 @@ function grant(d1: TestD1, workspaceId: "personal" | "indelitech") {
     .run(userId);
   d1.sqlite.prepare("INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', CURRENT_TIMESTAMP)")
     .run(principal, userId);
-  d1.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'OWNER')")
-    .run(userId, workspaceId);
+  d1.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role) VALUES (?, ?, ?, 'OWNER')")
+    .run(userId, workspaceId, workspaceId);
 }
 
 function request(assertion: string, workspaceId: "personal" | "indelitech", requestId: string) {
@@ -80,7 +81,7 @@ function request(assertion: string, workspaceId: "personal" | "indelitech", requ
   });
 }
 
-test("hosted runtime composes verified Access identity, D1 grant, repository, and HTTP handler", async () => {
+test("hosted runtime composes verified Access identity, D1 membership, repository, and HTTP handler", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
   grant(d1, "personal");
@@ -102,7 +103,7 @@ test("hosted runtime composes verified Access identity, D1 grant, repository, an
   d1.sqlite.close();
 });
 
-test("hosted runtime denies a verified principal without the requested D1 grant before task creation", async () => {
+test("hosted runtime denies a verified principal without the requested D1 membership before task creation", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
   grant(d1, "personal");
@@ -120,9 +121,10 @@ test("hosted runtime denies a verified principal without the requested D1 grant 
   d1.sqlite.close();
 });
 
-test("hosted runtime preserves Indelitech roll-up visibility when explicitly granted", async () => {
+test("hosted runtime preserves Marc's Indelitech to Personal roll-up visibility", async () => {
   const d1 = new TestD1();
   const { keyResolver, assertion } = await accessFixture();
+  grant(d1, "personal");
   grant(d1, "indelitech");
 
   const post = createHostedTaskCaptureRuntime(

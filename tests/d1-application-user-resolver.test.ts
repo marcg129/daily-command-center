@@ -45,8 +45,10 @@ class TestD1 implements D1Database {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
     for (const name of [
       "0001_workspaces.sql",
+      "0002_tasks.sql",
       "0006_principal_workspace_grants.sql",
       "0007_user_workspace_ownership.sql",
+      "0008_workspace_instances.sql",
     ]) {
       this.sqlite.exec(
         readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"),
@@ -79,45 +81,67 @@ function addUser(
     .run(principal, userId);
 }
 
+function addWorkspace(database: TestD1, workspaceId: string, name = "Personal") {
+  database.sqlite.prepare(`INSERT INTO workspaces
+    (workspace_id, name, workspace_type, theme_key, created_at, updated_at)
+    VALUES (?, ?, 'PERSONAL', 'personal-tech-blue', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+    .run(workspaceId, name);
+}
+
 function grant(
   database: TestD1,
   userId: string,
-  workspaceId: "personal" | "indelitech",
+  workspaceId: string,
+  workspaceKey: string,
   role: "OWNER" | "MEMBER",
 ) {
   database.sqlite
     .prepare(
-      "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, ?)",
+      "INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role) VALUES (?, ?, ?, ?)",
     )
-    .run(userId, workspaceId, role);
+    .run(userId, workspaceId, workspaceKey, role);
 }
 
-test("application user resolution returns only the authenticated active user's memberships", async () => {
+test("application user resolution returns only the authenticated active user's logical memberships", async () => {
   const database = new TestD1();
   addUser(database, "cf-user:marc", "user:marc");
   addUser(database, "cf-user:christa", "user:christa");
-  grant(database, "user:marc", "personal", "OWNER");
-  grant(database, "user:marc", "indelitech", "OWNER");
-  grant(database, "user:christa", "personal", "MEMBER");
+  addWorkspace(database, "personal:christa");
+  grant(database, "user:marc", "personal", "personal", "OWNER");
+  grant(database, "user:marc", "indelitech", "indelitech", "OWNER");
+  grant(database, "user:christa", "personal:christa", "personal", "OWNER");
 
-  const resolved = await new D1ApplicationUserResolver(database).resolve({
+  const marc = await new D1ApplicationUserResolver(database).resolve({
     principalId: principalId("cf-user:marc"),
   });
-  assert.equal(resolved.userId, "user:marc");
+  assert.equal(marc.userId, "user:marc");
   assert.deepEqual(
-    resolved.workspaces.map(({ workspaceId, role }) => ({ workspaceId, role })),
+    marc.workspaces.map(({ workspaceId, role }) => ({ workspaceId, role })),
     [
       { workspaceId: "personal", role: "OWNER" },
       { workspaceId: "indelitech", role: "OWNER" },
     ],
   );
+
+  const christa = await new D1ApplicationUserResolver(database).resolve({
+    principalId: principalId("cf-user:christa"),
+  });
+  assert.equal(christa.userId, "user:christa");
+  assert.deepEqual(christa.workspaces, [{
+    workspaceId: "personal",
+    displayName: "Personal",
+    workspaceType: "PERSONAL",
+    themeKey: "personal-tech-blue",
+    role: "OWNER",
+  }]);
+  assert.doesNotMatch(JSON.stringify(christa), /personal:christa/);
   database.sqlite.close();
 });
 
 test("application user resolution fails closed for unmapped, disabled, and membership-less users", async () => {
   const database = new TestD1();
   addUser(database, "cf-user:disabled", "user:disabled", "DISABLED");
-  grant(database, "user:disabled", "personal", "OWNER");
+  grant(database, "user:disabled", "personal", "personal", "OWNER");
   addUser(database, "cf-user:empty", "user:empty");
   const resolver = new D1ApplicationUserResolver(database);
 
@@ -134,18 +158,14 @@ test("application user resolution fails closed for unmapped, disabled, and membe
   database.sqlite.close();
 });
 
-test("unsupported future workspaces are not exposed before their UI is implemented", async () => {
+test("unsupported future workspace keys are not exposed before their UI is implemented", async () => {
   const database = new TestD1();
   addUser(database, "cf-user:marc", "user:marc");
-  grant(database, "user:marc", "personal", "OWNER");
+  grant(database, "user:marc", "personal", "personal", "OWNER");
   database.sqlite.exec(`INSERT INTO workspaces
     (workspace_id, name, workspace_type, theme_key, created_at, updated_at)
     VALUES ('household', 'Household', 'SHARED', 'household', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`);
-  database.sqlite
-    .prepare(
-      "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ('user:marc', 'household', 'MEMBER')",
-    )
-    .run();
+  grant(database, "user:marc", "household", "household", "MEMBER");
 
   const resolved = await new D1ApplicationUserResolver(database).resolve({
     principalId: principalId("cf-user:marc"),

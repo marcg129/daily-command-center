@@ -1,5 +1,5 @@
 import type { CollectorCacheKey } from "@/lib/collector-cache";
-import { isProductWorkspaceId, requireRequestContext, type RequestContext } from "@/lib/runtime/context";
+import { requireRequestContext, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import type { CollectorSnapshot, CollectorSnapshotRepository } from "@/lib/runtime/collector-snapshot-repository";
 import { applyArchiveToPayload, type CachedFeedPayload } from "@/lib/live-response";
@@ -8,7 +8,6 @@ export class D1CollectorSnapshotRepository implements CollectorSnapshotRepositor
   constructor(private readonly database: D1Database) {}
   private workspace(context: RequestContext) {
     requireRequestContext(context);
-    if (!isProductWorkspaceId(context.workspaceId)) throw new Error("A hosted product workspace context is required.");
     return context.workspaceId;
   }
   async read<T>(context: RequestContext, collector: CollectorCacheKey, scope?: string): Promise<CollectorSnapshot<T> | null> {

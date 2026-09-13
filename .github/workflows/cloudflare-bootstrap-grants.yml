@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           USER_ID="legacy:$PRINCIPAL_ID"
-          SQL="INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES ('$USER_ID', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES ('$PRINCIPAL_ID', '$USER_ID', 'CLOUDFLARE_ACCESS', CURRENT_TIMESTAMP); INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, role) SELECT user_id, 'personal', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID'; INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, role) SELECT user_id, 'indelitech', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID';"
+          SQL="INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES ('$USER_ID', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES ('$PRINCIPAL_ID', '$USER_ID', 'CLOUDFLARE_ACCESS', CURRENT_TIMESTAMP); INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, workspace_key, role) SELECT user_id, 'personal', 'personal', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID'; INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, workspace_key, role) SELECT user_id, 'indelitech', 'indelitech', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID';"
           npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.jsonc --command "$SQL"
 
       - name: Verify exact owner memberships
@@ -70,5 +70,5 @@ jobs:
           PRINCIPAL_ID: ${{ inputs.principal_id }}
         run: |
           set -euo pipefail
-          SQL="SELECT m.workspace_id, m.role FROM user_principals p JOIN users u ON u.user_id = p.user_id JOIN workspace_memberships m ON m.user_id = u.user_id WHERE p.principal_id = '$PRINCIPAL_ID' AND u.status = 'ACTIVE' ORDER BY m.workspace_id;"
+          SQL="SELECT m.workspace_key, m.workspace_id, m.role FROM user_principals p JOIN users u ON u.user_id = p.user_id JOIN workspace_memberships m ON m.user_id = u.user_id WHERE p.principal_id = '$PRINCIPAL_ID' AND u.status = 'ACTIVE' ORDER BY m.workspace_key;"
           npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.jsonc --command "$SQL"

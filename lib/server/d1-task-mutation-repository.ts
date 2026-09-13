@@ -12,6 +12,10 @@ import type { HostedTask } from "@/lib/runtime/hosted-tasks";
 import type { TaskMutation, TaskMutationRepository } from "@/lib/runtime/task-mutations";
 import type { TaskItem } from "@/lib/types";
 import { D1TaskRepository } from "@/lib/server/d1-task-repository";
+import {
+  resolveAuthorizedWorkspaceInstances,
+  workspaceInstanceContext,
+} from "@/lib/server/d1-workspace-instances";
 
 type PlannedMutation =
   | { kind: "CREATE"; id: string; task: HostedTask }
@@ -22,8 +26,8 @@ const columns = `task_id, primary_workspace_id, title, context, category, projec
  due_at, due_is_date_only, remind_at, follow_up_at, estimated_duration, recurrence, series_id, recurrence_anchor_day, dependency, created_at,
  completed_at, source, source_context, last_notified_at, updated_at, capture_fingerprint, estimated_duration_label`;
 
-function values(task: HostedTask) {
-  return [task.taskId, task.primaryWorkspaceId, task.title, task.context, task.category, task.project, task.person,
+function values(task: HostedTask, primaryWorkspaceId: string = task.primaryWorkspaceId) {
+  return [task.taskId, primaryWorkspaceId, task.title, task.context, task.category, task.project, task.person,
     task.type, task.priority, task.status, task.dueAt, task.dueIsDateOnly ? 1 : 0, task.remindAt, task.followUpAt,
     task.estimatedDuration, task.recurrence, task.seriesId, task.recurrenceAnchorDay, task.dependency, task.createdAt,
     task.completedAt, task.source, task.sourceContext, task.lastNotifiedAt, task.updatedAt, task.captureFingerprint ?? null,
@@ -65,6 +69,7 @@ export class D1TaskMutationRepository implements TaskMutationRepository {
   async apply(mutations: TaskMutation[], now: string): Promise<TaskItem[]> {
     if (!Array.isArray(mutations) || mutations.length === 0) throw new Error("At least one task mutation is required.");
     const workspaceId = requireHostedContext(this.context);
+    const instance = workspaceInstanceContext(this.context);
     const visible = await this.tasks.list(this.context);
     const byId = new Map(visible.map((task) => [task.taskId, task]));
     const touched = new Set<string>();
@@ -93,24 +98,56 @@ export class D1TaskMutationRepository implements TaskMutationRepository {
       }
     }
 
+    const requiredWorkspaceKeys = new Set<ProductWorkspaceId>([workspaceId]);
+    for (const operation of planned) {
+      if (operation.kind !== "CREATE") continue;
+      requiredWorkspaceKeys.add(operation.task.primaryWorkspaceId);
+      for (const target of visibility(operation.task.primaryWorkspaceId)) requiredWorkspaceKeys.add(target);
+    }
+    const instances = await resolveAuthorizedWorkspaceInstances(
+      this.database,
+      this.context,
+      [...requiredWorkspaceKeys],
+    );
+    const currentPhysicalWorkspaceId = instance.userId === null
+      ? workspaceId
+      : instances.get(workspaceId);
+    if (!currentPhysicalWorkspaceId) throw new Error("Workspace access denied.");
+
     const statements: D1PreparedStatement[] = [];
     for (const operation of planned) {
       if (operation.kind === "CREATE") {
-        const placeholders = Array.from({ length: values(operation.task).length }, () => "?").join(",");
-        statements.push(this.database.prepare(`INSERT INTO tasks (${columns}) VALUES (${placeholders})`).bind(...values(operation.task)));
+        const physicalPrimaryWorkspaceId = instances.get(operation.task.primaryWorkspaceId);
+        if (!physicalPrimaryWorkspaceId) throw new Error("Workspace access denied.");
+        const placeholders = Array.from({ length: values(operation.task, physicalPrimaryWorkspaceId).length }, () => "?").join(",");
+        statements.push(this.database.prepare(`INSERT INTO tasks (${columns}) VALUES (${placeholders})`).bind(
+          ...values(operation.task, physicalPrimaryWorkspaceId),
+        ));
         for (const target of visibility(operation.task.primaryWorkspaceId)) {
           if (!taskVisibleInWorkspace(operation.task.primaryWorkspaceId, target)) throw new Error("Invalid task visibility.");
-          statements.push(this.database.prepare("INSERT INTO task_visibility (task_id, workspace_id) VALUES (?, ?)").bind(operation.id, target));
+          const physicalTarget = instances.get(target);
+          if (!physicalTarget) throw new Error("Workspace access denied.");
+          statements.push(this.database.prepare("INSERT INTO task_visibility (task_id, workspace_id) VALUES (?, ?)").bind(
+            operation.id,
+            physicalTarget,
+          ));
         }
       } else if (operation.kind === "UPDATE") {
         const mutable = values(operation.task).slice(2);
         statements.push(this.database.prepare(`UPDATE tasks SET title=?, context=?, category=?, project=?, person=?, type=?, priority=?, status=?, due_at=?,
           due_is_date_only=?, remind_at=?, follow_up_at=?, estimated_duration=?, recurrence=?, series_id=?, recurrence_anchor_day=?, dependency=?, created_at=?, completed_at=?, source=?,
           source_context=?, last_notified_at=?, updated_at=?, capture_fingerprint=?, estimated_duration_label=? WHERE task_id=? AND EXISTS
-          (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`).bind(...mutable, operation.id, workspaceId));
+          (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`).bind(
+            ...mutable,
+            operation.id,
+            currentPhysicalWorkspaceId,
+          ));
       } else {
         statements.push(this.database.prepare(`DELETE FROM tasks WHERE task_id=? AND EXISTS
-          (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`).bind(operation.id, workspaceId));
+          (SELECT 1 FROM task_visibility WHERE task_id=tasks.task_id AND workspace_id=?)`).bind(
+            operation.id,
+            currentPhysicalWorkspaceId,
+          ));
       }
     }
     const results = await this.database.batch(statements);

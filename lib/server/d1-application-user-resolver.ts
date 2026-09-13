@@ -11,7 +11,7 @@ import type { AuthenticatedPrincipal } from "@/lib/runtime/session";
 
 type MembershipRow = Readonly<{
   user_id: string;
-  workspace_id: string;
+  workspace_key: string;
   display_name: string;
   workspace_type: string;
   theme_key: string;
@@ -29,7 +29,7 @@ export class D1ApplicationUserResolver implements ApplicationUserResolver {
     const result = await this.database
       .prepare(
         `SELECT u.user_id,
-              w.workspace_id,
+              m.workspace_key,
               w.name AS display_name,
               w.workspace_type,
               w.theme_key,
@@ -41,9 +41,9 @@ export class D1ApplicationUserResolver implements ApplicationUserResolver {
        WHERE p.principal_id = ?
          AND u.status = 'ACTIVE'
          AND m.role IN ('OWNER', 'MEMBER')
-       ORDER BY CASE w.workspace_id WHEN 'personal' THEN 0 WHEN 'indelitech' THEN 1 ELSE 2 END,
+       ORDER BY CASE m.workspace_key WHEN 'personal' THEN 0 WHEN 'indelitech' THEN 1 ELSE 2 END,
                 w.name,
-                w.workspace_id`,
+                m.workspace_key`,
       )
       .bind(principal.principalId)
       .all<MembershipRow>();
@@ -57,7 +57,9 @@ export class D1ApplicationUserResolver implements ApplicationUserResolver {
 
     const workspaces = rows
       .map((row) => ({
-        workspaceId: row.workspace_id,
+        // Only the stable user-facing slot leaves the server. Physical workspace
+        // IDs remain an authorization/persistence detail.
+        workspaceId: row.workspace_key,
         displayName: row.display_name,
         workspaceType: row.workspace_type,
         themeKey: row.theme_key,
