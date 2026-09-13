@@ -11,7 +11,7 @@ and what is intentionally deferred.
 | Milestone | Status                                       | Scope                                                                                 |
 | --------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 1G-A      | **Complete, merged, deployed, and verified** | Durable user, principal, and workspace-membership authorization foundation            |
-| 1G-B      | **Active next milestone**                    | True multi-user identity, conversational task capture, and stronger overdue treatment |
+| 1G-B      | **Active**                                   | True multi-user identity, conversational task capture, and stronger overdue treatment |
 | 1G-C      | **Later**                                    | `command.coreyg.dev` and related domain work                                          |
 
 Milestone 1G-A is closed. Do not reopen it unless a regression or security problem
@@ -28,12 +28,11 @@ guarantees established in 1G-A.
 
 Deliver the milestone in this order:
 
-1. Inspect current `main` after the deployed and verified 1G-A release.
-2. Implement 1G-B1 true multi-user identity.
-3. Complete the ChatGPT platform-capability gate, then implement 1G-B2.
-4. Test cross-user and cross-workspace capture authorization.
-5. Implement 1G-B3 as a separate, tightly scoped UI pull request.
-6. Leave 1G-C as the later domain milestone.
+1. Implement and verify 1G-B1 true multi-user identity and physical workspace instances.
+2. Complete the ChatGPT platform-capability gate, then implement 1G-B2.
+3. Test cross-user and cross-workspace capture authorization.
+4. Implement 1G-B3 as a separate, tightly scoped UI pull request.
+5. Leave 1G-C as the later domain milestone.
 
 ### 1G-B1 — True multi-user identity
 
@@ -43,9 +42,11 @@ Implement the smallest safe path that:
   active Command Center user;
 - loads only workspaces in which that user has an active membership;
 - preserves Marc's current Personal and Indelitech behavior;
-- supports the identity architecture needed for separate Personal workspaces for
-  Christa and Marc's sister;
+- supports separate physical Personal workspace instances for Marc, Christa, and
+  Marc's sister while keeping the public product slot named `personal`;
 - supports a future shared Household workspace without adding Household UI now;
+- keeps physical workspace IDs server-side and exposes only safe logical workspace
+  choices to the browser;
 - enforces authorization and workspace isolation on the server for every hosted
   read and mutation;
 - never exposes another user's private resources; and
@@ -61,90 +62,169 @@ scoped identity-architecture requirement makes one unavoidable.
 
 - Each supported Access principal resolves to exactly one active application user.
 - The hosted session/bootstrap response contains only that user's authorized
-  workspace choices and safe display metadata.
+  logical workspace choices and safe display metadata.
 - Marc continues to see and use Personal and Indelitech without a data migration
   regression.
-- A second user can have a distinct Personal workspace without inheriting Marc's
-  Personal or Indelitech access.
+- A second user can map logical Personal to a distinct physical workspace without
+  inheriting Marc's Personal or Indelitech access.
 - A disabled user, unmapped principal, missing membership, duplicate/ambiguous
   identity mapping, or unknown workspace is denied.
-- Directly supplied workspace IDs cannot bypass membership checks.
-- Cross-user task, visibility, Intel, and workspace-domain reads and mutations
-  remain denied at the server boundary.
+- Directly supplied physical workspace IDs cannot bypass membership checks.
+- Cross-user task, visibility, collector snapshot, and workspace-domain reads and
+  mutations remain isolated by physical workspace instance.
+- Marc's existing Indelitech-to-Personal task roll-up remains intact without moving
+  existing production task rows.
 
-### 1G-B2 — Conversational ChatGPT task capture
+### 1G-B2 — Daily Command Center conversational task-capture Skill
 
-Review and update the existing MCP/plugin capture integration so explicit capture
-can reuse unambiguous conversation context instead of asking the user to restate
-known fields.
+Make the existing Daily Command Center task-capture capability usable as naturally
+as the current ChatGPT platform permits. The backend remains authoritative for
+identity, authorization, interpretation, and persistence. ChatGPT invocation
+mechanics must remain replaceable so future platform improvements do not require a
+backend redesign.
 
 #### Platform-capability gate
 
 Before writing 1G-B2 implementation code, verify the current supported ChatGPT
-custom-app/plugin invocation model against current official platform documentation
+custom-app/plugin/Skill invocation model against current official platform behavior
 and record the result in the milestone implementation note.
+
+Current observed constraint for this project: the Daily Command Center task app is
+not presently offered in the user's `@` selector in ordinary ChatGPT conversations.
+Therefore, `@Daily Command Center` must NOT be an acceptance requirement for 1G-B2.
+If explicit app/Skill selection becomes available later, support it as an additional
+fallback rather than redesigning the capture backend around it.
 
 Keep the ownership boundary explicit:
 
 | Daily Command Center controls                                               | ChatGPT product controls                                                       |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Tool names, descriptions, input schemas, response shape, and error guidance | Whether an app must be selected, mentioned, or otherwise invoked for a message |
-| Authentication handoff and application-user resolution                      | Automatic availability or routing of a custom app in arbitrary conversations   |
-| Server-side workspace authorization and task persistence                    | When ChatGPT elects to offer or call an available tool                         |
-| Context fields accepted from a tool call and ambiguity validation           | The surrounding conversation context supplied to the tool                      |
+| Tool/app names, descriptions, schemas, response shape, and error guidance   | Whether an app or Skill is available or automatically selected for a message   |
+| Authentication handoff and application-user resolution                      | `@`, picker, Project, or other invocation surfaces available to the user        |
+| Server-side workspace authorization and task persistence                    | When ChatGPT elects to offer or call an available capability                   |
+| Skill instructions and examples packaged with the integration where allowed | The surrounding conversation context and automatic Skill-routing behavior      |
 
 Do not claim that Command Center code can make its ChatGPT app automatically
-available in every conversation when the platform requires selection or explicit
-invocation. Optimize the integration for the most natural supported flow, document
-the minimum user interaction currently required, and keep the backend independent
-of invocation mechanics so future automatic routing does not require a redesign.
+available in every conversation. Optimize every integration surface we do control,
+document the minimum current user interaction honestly, and keep explicit fallbacks.
+
+#### Canonical explicit command
+
+Adopt the phrase:
+
+`SEND TO TASKS`
+
+as the stable human-readable command for Daily Command Center task capture.
+
+A message that clearly uses `SEND TO TASKS` to supply or refer to an action is an
+explicit request to create the task. The capture workflow should not ask for a
+second confirmation unless a materially required field is ambiguous or the
+requested workspace cannot be safely resolved.
+
+Example:
+
+```text
+SEND TO TASKS
+Task: Test ChatGPT performance after reboot using a fresh chat and Firefox
+When: Next convenient work session
+Workspace: Indelitech
+Priority: Low
+```
+
+Include `SEND TO TASKS` prominently in Skill instructions, app/tool descriptions,
+and examples so that any ChatGPT surface capable of automatic capability selection
+has a strong, low-ambiguity routing signal. Treat it as an application-level command
+contract, not as a guaranteed ChatGPT platform-level selector.
+
+#### Skill/package direction
+
+Where the current ChatGPT platform permits it, package a dedicated Daily Command
+Center task-capture Skill around the existing app/MCP task actions.
+
+The Skill owns conversational behavior such as:
+
+- recognizing explicit capture intent;
+- recognizing the `SEND TO TASKS` command;
+- using already-known conversation context;
+- asking for confirmation when a task is only inferred; and
+- requesting the minimum clarification when a required field is materially
+  ambiguous.
+
+The underlying app/MCP action owns the actual authorized write. Do not duplicate
+persistence, user resolution, workspace membership checks, or task business rules
+inside the Skill.
+
+If the user's current ChatGPT plan/surface cannot install or automatically invoke
+that Skill, keep the Skill/package in the repository as a future-ready artifact and
+optimize the currently available app/MCP metadata instead. Do not make unsupported
+Skill availability a blocker for the secure capture backend.
 
 #### Capture behavior
 
-For explicit requests such as “Add that to my tasks,” “Put that on my list,” or
-“Add that to Indelitech,” the integration should create a task using details that
-are already clear in the conversation. The user should not have to repeat a known
-title, workspace, due date, priority, context, recurrence, or estimate.
+For explicit requests such as “Add that to my tasks,” “Put that on my list,”
+“Add that to Indelitech,” or a `SEND TO TASKS` block, the integration should create
+a task using details already clear in the conversation. The user should not have to
+repeat a known title, workspace, due date, priority, context, recurrence, category,
+or estimate.
 
 If ChatGPT identifies a likely action during ordinary conversation, it must not
-silently create a task. The preferred interaction is: “Want me to add that to your
-Command Center?” A confirmed capture may then use the existing conversation
+silently create a task. Preferred behavior is:
+
+“Want me to add that to your Command Center?”
+
+A user confirmation such as “yes,” “do it,” “add it,” or “put it on my list” then
+becomes explicit capture authorization and may reuse the existing conversation
 context.
 
 Useful diagnostic or planning context should be stored in the task description or
 context field. Dates, priorities, recurrence, workspace, or other material details
 must not be invented when ambiguous. Existing preview/confirmation behavior may be
-simplified only where the platform interaction and user intent provide equivalent
-explicit confirmation.
+simplified only where the explicit user instruction or confirmation provides
+equivalent authorization.
 
 #### Authorization requirements
 
 Every capture must:
 
 - authenticate and resolve the actual Command Center application user;
+- resolve a logical requested workspace such as Personal to that user's exact
+  physical workspace instance;
 - validate the requested workspace against that user's memberships on the server;
-- reject an unauthorized workspace ID even if ChatGPT supplies it;
+- reject an unauthorized or forged physical workspace ID even if ChatGPT supplies
+  it;
 - never default an unknown authenticated principal to Marc; and
 - fail closed when identity or workspace authorization is missing or ambiguous.
 
+The same phrase therefore has user-specific behavior:
+
+- Marc: “Add that to Personal” → Marc's physical Personal workspace.
+- Christa: “Add that to Personal” → Christa's different physical Personal workspace.
+
+Neither user should need to know a physical workspace ID.
+
 #### 1G-B2 acceptance criteria
 
-- An explicit capture with complete conversational context can be completed
-  without restating known fields.
-- A materially ambiguous field is omitted, given a safe product default only when
-  already defined by the application, or clarified with the user; it is not
-  fabricated.
+- `SEND TO TASKS` is documented as the canonical explicit capture command and is
+  represented in available Skill/app/tool metadata.
+- An explicit capture with complete conversational context can be completed without
+  restating known fields when the Daily Command Center capability is available to
+  the conversation.
+- A materially ambiguous field is omitted, given a safe existing product default,
+  or clarified; it is not fabricated.
 - A likely task inferred from ordinary conversation requires user confirmation
   before creation.
 - Captured context is useful and bounded, without copying unnecessary sensitive
   conversation content.
-- The same application user and membership boundary used by hosted routes protects
-  MCP/plugin capture.
+- The same application-user and physical-workspace boundary used by hosted routes
+  protects conversational capture.
 - Tests prove same-user/same-workspace success, cross-user denial,
-  cross-workspace denial, disabled/unmapped-user denial, and forged-workspace-ID
-  denial.
-- Documentation states the current ChatGPT invocation requirement and distinguishes
-  it from behavior controlled by Command Center.
+  cross-workspace denial, disabled/unmapped-user denial, forged-physical-workspace
+  denial, and accidental duplicate/replay safety.
+- Documentation states the current ChatGPT invocation limitations and distinguishes
+  them from behavior controlled by Command Center.
+- `@` invocation is tested/documented only if the user's current ChatGPT surface
+  actually exposes the installed Daily Command Center capability; its absence does
+  not fail the milestone.
 
 ### 1G-B3 — Stronger overdue visual treatment
 
