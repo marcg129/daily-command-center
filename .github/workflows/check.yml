@@ -23,4 +23,5 @@ jobs:
       - run: npm run setup
       - run: npm run check
       - run: npm run build:mcp
+      - run: npm run build:intel
       - run: npm run smoke
