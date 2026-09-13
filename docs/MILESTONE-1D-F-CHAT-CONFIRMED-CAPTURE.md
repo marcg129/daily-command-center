@@ -69,7 +69,7 @@ After the first deployment:
 3. Apply the same user/identity-provider policy used for Daily Command Center. Do not add a bypass policy.
 4. Copy the generated Access application audience.
 5. Save it as the `MCP_POLICY_AUD` secret on the `daily-command-center-mcp` Worker.
-6. Confirm the existing `cf-user:<sub>` principal still has Personal and Indelitech grants in `principal_workspace_grants`.
+6. Confirm the existing `cf-user:<sub>` principal maps to an active user with Personal and Indelitech memberships in `workspace_memberships` (Milestone 1G-A and later).
 
 Cloudflare documents this managed OAuth posture for MCP servers that validate the Access JWT supplied by Cloudflare: <https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/secure-mcp-servers/>.
 

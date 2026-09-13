@@ -134,17 +134,12 @@ Record the returned `principalId`, which will have the form:
 
 `cf-user:<stable-access-subject>`
 
-Insert explicit grants for that exact principal:
-
-```sql
-INSERT INTO principal_workspace_grants (principal_id, workspace_id)
-VALUES ('<principal-id>', 'personal');
-
-INSERT INTO principal_workspace_grants (principal_id, workspace_id)
-VALUES ('<principal-id>', 'indelitech');
-```
-
-Use the remote D1 database. Duplicate grants should not be added blindly; verify existing rows first if retrying.
+> **Superseded by Milestone 1G-A:** migration `0007_user_workspace_ownership.sql`
+> replaces direct principal grants with durable users, principal mappings, and
+> workspace memberships. Use the **Cloudflare bootstrap workspace grants**
+> workflow with this verified principal. Do not insert into the removed
+> `principal_workspace_grants` table. The workflow is idempotent and verifies
+> the resulting Personal and Indelitech `OWNER` memberships.
 
 ## Phase G — Acceptance test
 

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const readDeploy = () => readFile(new URL("../.github/workflows/cloudflare-protected-deploy.yml", import.meta.url), "utf8");
+const readBootstrap = () => readFile(new URL("../.github/workflows/cloudflare-bootstrap-grants.yml", import.meta.url), "utf8");
 
 test("protected Cloudflare deployment accepts only the current merged PR revision", async () => {
   const deploy = await readDeploy();
@@ -38,4 +39,16 @@ test("production deploys serialize and retain the protected posture checks", asy
   assert.match(workflow, /npm run build:mcp/);
   assert.match(workflow, /npm run deploy:mcp/);
   assert.match(workflow, /MCP rejects every request unless its separate Access audience secret verifies/);
+});
+
+test("owner bootstrap provisions the canonical user and workspace membership model", async () => {
+  const workflow = await readBootstrap();
+  assert.match(workflow, /principal_id must be the verified cf-user:\* value returned by \/api\/hosted\/session/);
+  assert.match(workflow, /INSERT OR IGNORE INTO users/);
+  assert.match(workflow, /INSERT OR IGNORE INTO user_principals/);
+  assert.match(workflow, /INSERT OR IGNORE INTO workspace_memberships/);
+  assert.match(workflow, /'personal', 'OWNER'/);
+  assert.match(workflow, /'indelitech', 'OWNER'/);
+  assert.match(workflow, /JOIN workspace_memberships m ON m\.user_id = u\.user_id/);
+  assert.doesNotMatch(workflow, /INSERT OR IGNORE INTO principal_workspace_grants/);
 });

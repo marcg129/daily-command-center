@@ -28,7 +28,7 @@ class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0006_principal_workspace_grants.sql"])
+    for (const name of ["0001_workspaces.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -38,9 +38,16 @@ class TestD1 implements D1Database {
 }
 
 function grant(database: TestD1, principal: string, workspaceId: ProductWorkspaceId) {
+  const userId = `user:${principal}`;
   database.sqlite.prepare(
-    "INSERT INTO principal_workspace_grants (principal_id, workspace_id) VALUES (?, ?)",
-  ).run(principal, workspaceId);
+    "INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES (?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+  ).run(userId);
+  database.sqlite.prepare(
+    "INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', CURRENT_TIMESTAMP)",
+  ).run(principal, userId);
+  database.sqlite.prepare(
+    "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'OWNER')",
+  ).run(userId, workspaceId);
 }
 
 function memoryTaskRepository() {
@@ -104,19 +111,78 @@ test("D1WorkspaceResolver supports independent grants for both product workspace
   d1.sqlite.close();
 });
 
-test("principal workspace grant schema rejects unknown workspaces and duplicate grants", () => {
+test("workspace membership schema rejects unknown workspaces and duplicate memberships", () => {
   const d1 = new TestD1();
   grant(d1, alice, "personal");
   assert.throws(
     () => d1.sqlite.prepare(
-      "INSERT INTO principal_workspace_grants (principal_id, workspace_id) VALUES (?, ?)",
-    ).run(alice, "missing-workspace"),
-    /FOREIGN KEY constraint failed|CHECK constraint failed/,
+      "INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, ?, 'MEMBER')",
+    ).run(`user:${alice}`, "missing-workspace"),
+    /FOREIGN KEY constraint failed/,
   );
   assert.throws(
     () => grant(d1, alice, "personal"),
     /UNIQUE constraint failed/,
   );
+  d1.sqlite.close();
+});
+
+test("migration 0007 preserves grants as durable users, principals, and owner memberships", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec("PRAGMA foreign_keys=ON");
+  for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0006_principal_workspace_grants.sql"])
+    sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+  sqlite.prepare(`INSERT INTO tasks (task_id, primary_workspace_id, title, type, priority, status,
+    due_is_date_only, created_at, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    "existing-private-task", "personal", "Keep me", "ONE_TIME", "MEDIUM", "OPEN", 0,
+    "2026-09-01T00:00:00.000Z", "manual", "2026-09-01T00:00:00.000Z",
+  );
+  sqlite.prepare("INSERT INTO task_visibility (task_id, workspace_id) VALUES (?, ?)")
+    .run("existing-private-task", "personal");
+  sqlite.prepare("INSERT INTO principal_workspace_grants (principal_id, workspace_id, created_at) VALUES (?, ?, ?)")
+    .run(alice, "personal", "2026-09-01T00:00:00.000Z");
+  sqlite.prepare("INSERT INTO principal_workspace_grants (principal_id, workspace_id, created_at) VALUES (?, ?, ?)")
+    .run(alice, "indelitech", "2026-09-02T00:00:00.000Z");
+
+  sqlite.exec(readFileSync(new URL("../migrations/0007_user_workspace_ownership.sql", import.meta.url), "utf8"));
+
+  assert.deepEqual(
+    sqlite.prepare("SELECT principal_id, user_id, provider FROM user_principals").all().map((row) => ({ ...row })),
+    [{ principal_id: alice, user_id: `legacy:${alice}`, provider: "CLOUDFLARE_ACCESS" }],
+  );
+  assert.deepEqual(
+    sqlite.prepare("SELECT workspace_id, role FROM workspace_memberships ORDER BY workspace_id").all().map((row) => ({ ...row })),
+    [{ workspace_id: "indelitech", role: "OWNER" }, { workspace_id: "personal", role: "OWNER" }],
+  );
+  assert.equal(
+    sqlite.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='principal_workspace_grants'").get()!.count,
+    0,
+  );
+  assert.deepEqual(
+    { ...sqlite.prepare(`SELECT t.title, t.primary_workspace_id, v.workspace_id FROM tasks t
+      JOIN task_visibility v ON v.task_id=t.task_id WHERE t.task_id='existing-private-task'`).get()! },
+    { title: "Keep me", primary_workspace_id: "personal", workspace_id: "personal" },
+  );
+  sqlite.prepare(`INSERT INTO workspaces (workspace_id, name, workspace_type, theme_key, created_at, updated_at)
+    VALUES ('household', 'Household', 'SHARED', 'household', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
+  sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, 'household', 'MEMBER')")
+    .run(`legacy:${alice}`);
+  assert.throws(
+    () => sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES (?, 'missing', 'MEMBER')")
+      .run(`legacy:${alice}`),
+    /FOREIGN KEY constraint failed/,
+  );
+  sqlite.close();
+});
+
+test("disabled users and missing principal mappings fail closed", async () => {
+  const d1 = new TestD1();
+  const resolver = new D1WorkspaceResolver(d1);
+  grant(d1, alice, "personal");
+  d1.sqlite.prepare("UPDATE users SET status='DISABLED' WHERE user_id=?").run(`user:${alice}`);
+
+  await assert.rejects(resolver.resolve({ principalId: alice }, "personal"), /Workspace access denied/);
+  await assert.rejects(resolver.resolve({ principalId: bob }, "personal"), /Workspace access denied/);
   d1.sqlite.close();
 });
 
