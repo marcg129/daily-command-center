@@ -29,22 +29,34 @@ test("proxy allows local CLI requests without an Origin header", () => {
   assert.equal(proxy(apiRequest()).status, 200);
 });
 
-test("hosted proxy allows only the exact task MVP and session routes", () => {
+test("hosted proxy allows only the exact hosted MVP routes", () => {
   for (const path of [
     "/api/hosted/session",
     "/api/hosted/workspace?workspaceId=personal",
     "/api/hosted/tasks/mutations?workspaceId=personal",
     "/api/hosted/tasks/capture?workspaceId=personal",
+    "/api/hosted/intel?workspaceId=indelitech",
   ]) assert.equal(proxy(hostedRequest(path)).status, 200);
-  for (const path of ["/api/settings", "/api/workspace", "/api/hosted/other", "/api/hosted/workspace/extra", "/api/hosted/session/extra"])
-    assert.equal(proxy(hostedRequest(path)).status, 403);
+  for (const path of [
+    "/api/settings",
+    "/api/workspace",
+    "/api/hosted/other",
+    "/api/hosted/workspace/extra",
+    "/api/hosted/session/extra",
+    "/api/hosted/intel/extra",
+  ]) assert.equal(proxy(hostedRequest(path)).status, 403);
 });
 
 test("hosted proxy rejects cross-origin browser calls but permits no-Origin service calls", () => {
+  for (const path of [
+    "/api/hosted/workspace?workspaceId=personal",
+    "/api/hosted/intel?workspaceId=indelitech",
+  ]) {
+    assert.equal(proxy(hostedRequest(path, "https://command.example.com")).status, 200);
+    assert.equal(proxy(hostedRequest(path, "https://evil.example.com")).status, 403);
+    assert.equal(proxy(hostedRequest(path)).status, 200);
+  }
   const path = "/api/hosted/workspace?workspaceId=personal";
-  assert.equal(proxy(hostedRequest(path, "https://command.example.com")).status, 200);
-  assert.equal(proxy(hostedRequest(path, "https://evil.example.com")).status, 403);
-  assert.equal(proxy(hostedRequest(path)).status, 200);
   assert.equal(proxy(new NextRequest(`https://command.example.com${path}`, {
     headers: { host: "command.example.com", "x-principal-id": "pretend-admin" },
   })).status, 200, "proxy does not treat client identity as auth; the route still verifies Access JWT and grants");

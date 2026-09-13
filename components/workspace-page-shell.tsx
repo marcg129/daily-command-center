@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HostedIntelSnapshotView } from "./hosted-intel-snapshot";
 
 export function WorkspacePageShell({
   eyebrow,
@@ -15,6 +16,10 @@ export function WorkspacePageShell({
   emptyTitle: string;
   emptyDescription: string;
 }) {
+  if (eyebrow === "Indelitech · Intel" && title === "Intel") {
+    return <HostedIntelSnapshotView icon={icon} />;
+  }
+
   return (
     <div className="view workspace-page-shell">
       <div className="page-heading reveal">
