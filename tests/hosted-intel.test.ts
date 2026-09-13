@@ -3,7 +3,7 @@ import test from "node:test";
 import type { CollectorCacheKey } from "@/lib/collector-cache";
 import type { CollectorSnapshot, CollectorSnapshotRepository } from "@/lib/runtime/collector-snapshot-repository";
 import { hostedIntelSnapshotResponse, normalizeHostedIntelStory } from "@/lib/runtime/hosted-intel";
-import type { RequestContext } from "@/lib/runtime/context";
+import type { ProductWorkspaceId, RequestContext } from "@/lib/runtime/context";
 import type { Clock } from "@/lib/runtime/primitives";
 import { InMemorySessionProvider, principalId, type AuthenticatedSession } from "@/lib/runtime/session";
 import { FakeWorkspaceResolver } from "@/lib/runtime/workspace-resolver";
@@ -60,7 +60,10 @@ function request(workspaceId = "indelitech", assertion = "assertion") {
   });
 }
 
-function fixture(snapshot: CollectorSnapshot<LiveFeedResponse> | null = feed(), grants = new Set<"indelitech" | "personal">(["indelitech"])) {
+function fixture(
+  snapshot: CollectorSnapshot<LiveFeedResponse> | null = feed(),
+  grants: ReadonlySet<ProductWorkspaceId> = new Set<ProductWorkspaceId>(["indelitech"]),
+) {
   const snapshots = new FakeSnapshots(snapshot);
   const handlers = createAuthorizedHostedIntelHandler(
     new InMemorySessionProvider(new Map([["assertion", session]])),
@@ -106,7 +109,7 @@ test("hosted Intel requires Access authentication and the exact Indelitech grant
   assert.equal((await personal.handlers.GET(request("personal"))).status, 400);
   assert.equal(personal.snapshots.reads.length, 0);
 
-  const denied = fixture(feed(), new Set(["personal"]));
+  const denied = fixture(feed(), new Set<ProductWorkspaceId>(["personal"]));
   assert.equal((await denied.handlers.GET(request())).status, 403);
   assert.equal(denied.snapshots.reads.length, 0);
 });
