@@ -140,6 +140,17 @@ jobs:
           if (mcp.preview_urls !== false) throw new Error('MCP preview_urls must remain disabled');
           if (mcpD1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected MCP D1 binding');
           if (mcp.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Unexpected MCP Access team domain');
+
+          const intelRaw = fs.readFileSync('wrangler.intel.jsonc', 'utf8');
+          const intel = JSON.parse(intelRaw.replace(/^\s*\/\/.*$/gm, ''));
+          const intelD1 = (intel.d1_databases ?? []).find((x) => x.binding === 'DB');
+          if (intel.name !== 'daily-command-center-intel') throw new Error('Unexpected Intel Worker name');
+          if (intel.main !== 'workers/hosted-intel-collector.ts') throw new Error('Unexpected Intel Worker entry');
+          if (intel.workers_dev !== false) throw new Error('Intel Worker must not expose workers.dev');
+          if (intel.preview_urls !== false) throw new Error('Intel preview URLs must remain disabled');
+          if (intelD1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected Intel D1 binding');
+          if (JSON.stringify(intel.triggers?.crons ?? []) !== JSON.stringify(['17 */6 * * *'])) throw new Error('Unexpected Intel cron schedule');
+          if (intel.vars && Object.keys(intel.vars).length) throw new Error('Intel Worker must not require hosted secrets or settings vars');
           EOF
 
       - name: Confirm production migrations are current
@@ -161,11 +172,17 @@ jobs:
           if (config.vars?.POLICY_AUD !== '46a73a1e35edf7220a912c519941f0aa246864dc7bc9229a24997a826f8b8d3f') throw new Error('Generated POLICY_AUD mismatch');
           EOF
 
-      - name: Deploy protected Worker
-        run: npm run deploy:vinext
+      - name: Build hosted Intel collector Worker
+        run: npm run build:intel
 
       - name: Build task-capture MCP Worker
         run: npm run build:mcp
+
+      - name: Deploy protected Worker
+        run: npm run deploy:vinext
+
+      - name: Deploy cron-only hosted Intel collector Worker
+        run: npm run deploy:intel
 
       - name: Deploy fail-closed task-capture MCP Worker
         run: npm run deploy:mcp
@@ -173,6 +190,7 @@ jobs:
       - name: Confirm deployment posture
         run: |
           echo 'workers.dev enabled with the committed Cloudflare Access audience.'
+          echo 'Hosted Intel collector has no public workers.dev or preview URL and runs only from its fixed six-hour Cron Trigger.'
           echo 'Task-capture MCP rejects every request unless its separate Access audience secret verifies.'
           echo 'Preview URLs remain disabled.'
           echo 'Deployment targeted the current main SHA after an owner-authorized merged-PR command or an explicit manual dispatch.'
