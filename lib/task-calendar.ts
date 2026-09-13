@@ -70,6 +70,11 @@ export function taskCalendarEntries(tasks: TaskItem[], workspaceId: ProductWorks
     kindRank[a.kind] - kindRank[b.kind] || String(a.taskId).localeCompare(String(b.taskId)));
 }
 
+export function taskCalendarEntriesForToday(tasks: TaskItem[], workspaceId: ProductWorkspaceId, now = new Date()) {
+  const today = productDate(now);
+  return taskCalendarEntries(tasks, workspaceId, now).filter((entry) => entry.date === today);
+}
+
 export function monthCalendarDays(month: string) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("Month must use YYYY-MM.");
   const [year, index] = month.split("-").map(Number);

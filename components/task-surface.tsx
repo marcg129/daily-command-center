@@ -22,6 +22,7 @@ import {
 } from "@/lib/task-planning";
 import type { TaskItem } from "@/lib/types";
 import { isoToProductWallClock, productWallClockToIso, reminderPresetIso } from "@/lib/product-time";
+import { TodayTaskAgenda } from "@/components/today-task-agenda";
 
 const GROUP_LABELS = {
   OVERDUE: "Overdue", TODAY: "Today", NEXT_7_DAYS: "Next 7 days",
@@ -103,6 +104,7 @@ export function TaskAttentionPanel({ tasks, workspaceId, onOpenTask, onOpenAll }
   const visibleAttention = attention.slice(0, 5);
   return <section className="panel task-attention-panel"><div className="panel-header"><div><p className="eyebrow">Task attention</p><h2>Needs action today</h2></div><b aria-label={`${attention.length} tasks need action today`}>{attention.length}</b></div>
     {visibleAttention.length ? <div className="attention-list">{visibleAttention.map((task) => <button key={task.id} onClick={() => onOpenTask(task.id)}><span><b>{task.title}</b><small className="attention-meta"><span>{taskAttentionLabel(task)}</span><PriorityBadge priority={task.priority} /></small></span><WorkspaceBadge task={task} viewing={workspaceId} /></button>)}</div> : <p className="inline-empty">Nothing requires action today.</p>}
+    <TodayTaskAgenda tasks={tasks} workspaceId={workspaceId} onOpenTask={onOpenTask} />
     <button className="text-button" onClick={onOpenAll}>Open task list</button>
   </section>;
 }
