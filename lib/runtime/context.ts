@@ -46,6 +46,11 @@ export function requireRequestContext(context: RequestContext | null | undefined
   if (context.workspaceKey !== undefined && !isProductWorkspaceId(context.workspaceKey)) {
     throw new Error("A valid workspace context is required.");
   }
+  // A non-canonical physical workspace ID is server-only state. It is valid only
+  // after the resolver has paired it with a canonical logical workspace key.
+  if (context.workspaceKey === undefined && !isWorkspaceId(context.workspaceId)) {
+    throw new Error("A valid workspace context is required.");
+  }
 }
 
 /**
