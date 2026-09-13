@@ -96,6 +96,7 @@ import {
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { WorkspacePageShell } from "@/components/workspace-page-shell";
 import { TaskCalendar } from "@/components/task-calendar";
+import { HostedIntelTodayPanel } from "@/components/hosted-intel-today";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   DEFAULT_WORKSPACE_ID,
@@ -668,11 +669,12 @@ function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: T
   const personal = workspaceId === "personal";
   return (
     <div className="view">
-      <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Today`} title="What needs my attention today?" description={personal ? "Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." : "Indelitech task priorities and a focused 45-day outlook. Hosted intelligence and Daily Brief are deferred."} action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
+      <PageHeading eyebrow={`${WORKSPACES[workspaceId].displayName} · Today`} title="What needs my attention today?" description={personal ? "Personal priorities with a clear Indelitech roll-up and a focused 45-day outlook." : "Indelitech task priorities, a focused 45-day outlook, and the latest hosted Intel highlights."} action={<button className="button button-primary" onClick={() => goTo("tasks")}><ListTodo size={15} /> Open tasks</button>} />
       <div className="personal-today-grid reveal delay-1">
         <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
+      {!personal && <HostedIntelTodayPanel onOpenIntel={() => goTo("industry")} />}
     </div>
   );
 }
