@@ -3,6 +3,7 @@ import "./globals.css";
 import "./workspace-accessibility.css";
 import "./task-menu-viewport.css";
 import "./task-planning-filters.css";
+import "./navigation-overflow.css";
 
 export const metadata: Metadata = {
   title: "Marc's Daily Command Center",
