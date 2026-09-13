@@ -1,0 +1,31 @@
+/* Desktop navigation must keep every workspace tab reachable when the tab set is wider than its grid track. */
+@media (min-width: 901px) {
+  .main-nav {
+    min-width: 0;
+    justify-content: flex-start;
+    scroll-padding-inline: 8px;
+  }
+
+  /* Center the row only while spare room exists. These spacers collapse to zero before tabs can overflow both edges. */
+  .main-nav::before,
+  .main-nav::after {
+    content: "";
+    flex: 1 0 0;
+    min-width: 0;
+  }
+
+  .main-nav button {
+    flex: 0 0 auto;
+  }
+
+  /* Indelitech has the longest desktop tab set; reclaim a little width without hiding labels. */
+  .app-shell[data-workspace="indelitech"] .main-nav button {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .app-shell[data-workspace="indelitech"] .main-nav button::after {
+    left: 10px;
+    right: 10px;
+  }
+}
