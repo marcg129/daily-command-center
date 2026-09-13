@@ -4,6 +4,7 @@
 
 - Added the Milestone 1G-A user/workspace ownership foundation: durable users, authentication-principal mappings, role-bearing workspace memberships, a lossless grant backfill, and membership-based server authorization.
 - Updated the production owner bootstrap workflow and added negative cross-user task access tests while preserving the current Personal and Indelitech experience.
+- Recorded 1G-A as complete, merged, deployed, and verified, and established 1G-B as the active roadmap milestone for true multi-user identity, conversational ChatGPT task capture, and a separate overdue-visibility UI follow-up.
 
 ## 0.3.1 - 2026-08-25
 

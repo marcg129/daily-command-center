@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Clock } from "@/lib/runtime/primitives";
 import {
+  ApplicationUserAccessError,
+  applicationUserId,
+  type ApplicationUserResolver,
+} from "@/lib/runtime/application-user";
+import {
   InMemorySessionProvider,
   principalId,
   type AuthenticatedSession,
@@ -16,6 +21,29 @@ const validSession: AuthenticatedSession = {
   principal: { principalId: principalId("cf-user:user-123") },
   expiresAt: "2026-09-12T09:00:00.000Z",
 };
+const resolvedUser: ApplicationUserResolver = {
+  async resolve() {
+    return {
+      userId: applicationUserId("user:marc"),
+      workspaces: [
+        {
+          workspaceId: "personal",
+          displayName: "Personal",
+          workspaceType: "PERSONAL",
+          themeKey: "personal-tech-blue",
+          role: "OWNER",
+        },
+        {
+          workspaceId: "indelitech",
+          displayName: "Indelitech",
+          workspaceType: "BUSINESS",
+          themeKey: "indelitech-business",
+          role: "OWNER",
+        },
+      ],
+    };
+  },
+};
 
 function request(assertion = "assertion") {
   return new Request("https://command.example/api/hosted/session", {
@@ -23,15 +51,32 @@ function request(assertion = "assertion") {
   });
 }
 
-test("verified hosted session returns only stable principal ID and expiry", async () => {
+test("verified hosted session returns the durable user and only authorized workspaces", async () => {
   const handler = createAuthorizedHostedSessionHandler(
     new InMemorySessionProvider(new Map([["assertion", validSession]])),
+    resolvedUser,
     clock,
   );
   const response = await handler.GET(request());
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    principalId: "cf-user:user-123",
+    userId: "user:marc",
+    workspaces: [
+      {
+        workspaceId: "personal",
+        displayName: "Personal",
+        workspaceType: "PERSONAL",
+        themeKey: "personal-tech-blue",
+        role: "OWNER",
+      },
+      {
+        workspaceId: "indelitech",
+        displayName: "Indelitech",
+        workspaceType: "BUSINESS",
+        themeKey: "indelitech-business",
+        role: "OWNER",
+      },
+    ],
     expiresAt: "2026-09-12T09:00:00.000Z",
   });
 });
@@ -40,11 +85,17 @@ test("missing, invalid, and expired assertions fail closed", async () => {
   const sessions = new Map<string, AuthenticatedSession>([
     ["assertion", { ...validSession, expiresAt: now }],
   ]);
-  const handler = createAuthorizedHostedSessionHandler(new InMemorySessionProvider(sessions), clock);
+  const handler = createAuthorizedHostedSessionHandler(
+    new InMemorySessionProvider(sessions),
+    resolvedUser,
+    clock,
+  );
   for (const assertion of ["", "bad", "assertion"]) {
     const response = await handler.GET(request(assertion));
     assert.equal(response.status, 403);
-    assert.deepEqual(await response.json(), { error: "Authentication required." });
+    assert.deepEqual(await response.json(), {
+      error: "Authentication required.",
+    });
   }
 });
 
@@ -54,10 +105,35 @@ test("session provider failures are bounded and never expose sensitive detail", 
       throw new Error("JWKS internal secret token detail");
     },
   };
-  const handler = createAuthorizedHostedSessionHandler(failing, clock);
+  const handler = createAuthorizedHostedSessionHandler(
+    failing,
+    resolvedUser,
+    clock,
+  );
   const response = await handler.GET(request());
   assert.equal(response.status, 500);
   const body = await response.json();
   assert.deepEqual(body, { error: "Hosted session could not be read safely." });
-  assert.doesNotMatch(JSON.stringify(body).toLowerCase(), /jwks|secret|token|assertion/);
+  assert.doesNotMatch(
+    JSON.stringify(body).toLowerCase(),
+    /jwks|secret|token|assertion/,
+  );
+});
+
+test("unmapped or disabled application users fail closed", async () => {
+  const denied: ApplicationUserResolver = {
+    async resolve() {
+      throw new ApplicationUserAccessError();
+    },
+  };
+  const handler = createAuthorizedHostedSessionHandler(
+    new InMemorySessionProvider(new Map([["assertion", validSession]])),
+    denied,
+    clock,
+  );
+  const response = await handler.GET(request());
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: "Authentication required.",
+  });
 });

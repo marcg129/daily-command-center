@@ -32,7 +32,7 @@ class TestD1 implements D1Database {
   prepareCount = 0;
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
-    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql"])
+    for (const name of ["0001_workspaces.sql", "0002_tasks.sql", "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql", "0008_workspace_instances.sql"])
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) {
@@ -100,8 +100,8 @@ function grant(database: TestD1, workspaceId: "personal" | "indelitech", princip
     .run(userId, now, now);
   database.sqlite.prepare("INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES (?, ?, 'TEST', ?)")
     .run(principal, userId, now);
-  database.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, role, created_at, updated_at) VALUES (?, ?, 'OWNER', ?, ?)")
-    .run(userId, workspaceId, now, now);
+  database.sqlite.prepare("INSERT INTO workspace_memberships (user_id, workspace_id, workspace_key, role, created_at, updated_at) VALUES (?, ?, ?, 'OWNER', ?, ?)")
+    .run(userId, workspaceId, workspaceId, now, now);
 }
 
 async function seed(database: TestD1, item: TaskItem) {
@@ -124,7 +124,7 @@ test("missing, invalid, and expired assertions fail before any D1 statement", as
   assert.equal(database.prepareCount, 0);
 });
 
-test("unknown workspace is bounded and exact workspace grants are required", async () => {
+test("unknown workspace is bounded and exact logical workspace memberships are required", async () => {
   const { database, handlers } = fixture();
   assert.equal((await handlers.GET(request("/api/hosted/workspace?workspaceId=other"))).status, 400);
   const denied = await handlers.GET(request("/api/hosted/workspace?workspaceId=personal"));
@@ -134,7 +134,7 @@ test("unknown workspace is bounded and exact workspace grants are required", asy
   assert.equal((await handlers.GET(request("/api/hosted/workspace?workspaceId=personal"))).status, 403);
 });
 
-test("Personal reads its roll-up while Indelitech excludes Personal", async () => {
+test("Personal reads its authorized roll-up while Indelitech excludes Personal", async () => {
   const { database, handlers } = fixture(); grant(database, "personal"); grant(database, "indelitech");
   await seed(database, task({ id: "private" }));
   await seed(database, task({ id: "team", primaryWorkspaceId: "indelitech" }));
@@ -167,7 +167,7 @@ test("another authenticated user cannot read or mutate the owner's private works
   assert.equal(database.sqlite.prepare("SELECT title FROM tasks WHERE task_id='alice-private'").get()!.title, "Alice private");
 });
 
-test("authorized mutations use the query workspace, not client identity or first-task ownership", async () => {
+test("authorized mutations use the logical query workspace, not client identity or first-task ownership", async () => {
   const { database, handlers } = fixture(); grant(database, "personal"); grant(database, "indelitech");
   await seed(database, task({ id: "team", primaryWorkspaceId: "indelitech" }));
   const current = task({ id: "team", primaryWorkspaceId: "indelitech", title: "Edited" });
@@ -188,7 +188,7 @@ test("authorized mutations use the query workspace, not client identity or first
 });
 
 test("recurring Personal roll-up completion is atomic through the HTTP boundary", async () => {
-  const { database, handlers } = fixture(); grant(database, "personal");
+  const { database, handlers } = fixture(); grant(database, "personal"); grant(database, "indelitech");
   await seed(database, task({ id: "series", primaryWorkspaceId: "indelitech", recurrence: "Weekly", type: "RECURRING" }));
   const parent = task({ id: "series", primaryWorkspaceId: "indelitech", recurrence: "Weekly", type: "RECURRING" });
   const occurrence = { ...parent, id: "occurrence", done: true, status: "DONE" as const, seriesId: "series", completedAt: now };
