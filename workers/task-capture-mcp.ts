@@ -21,24 +21,26 @@ type Env = Readonly<{
 const text = (maximum: number) => z.string().trim().min(1).max(maximum).optional();
 const captureShape = {
   workspaceId: z.enum(["personal", "indelitech"]).describe(
-    "Use personal for personal work and indelitech for Indelitech work.",
+    "Use personal for personal work and indelitech for Indelitech work. Infer only when the conversation makes the workspace unambiguous; otherwise ask one clarification before writing.",
   ),
   title: z.string().trim().min(1).max(240),
-  context: text(4_000).describe("Useful task description or optional context."),
+  context: text(4_000).describe(
+    "Useful bounded task description or diagnostic/planning context already relevant to the action. Do not copy unrelated conversation content.",
+  ),
   category: text(120),
   project: text(160),
   person: text(160),
   type: z.enum(["ONE_TIME", "DEADLINE", "FOLLOW_UP", "WAITING", "RECURRING", "BACKLOG"]).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().describe(
-    "Concrete due date in YYYY-MM-DD form. Never pass relative language.",
+    "Concrete due date in YYYY-MM-DD form. Never pass relative language or invent a date.",
   ),
-  remindAt: z.string().max(64).nullable().optional().describe("ISO timestamp with timezone."),
-  followUpAt: z.string().max(64).nullable().optional().describe("ISO timestamp with timezone."),
+  remindAt: z.string().max(64).nullable().optional().describe("ISO timestamp with timezone. Omit when not clear."),
+  followUpAt: z.string().max(64).nullable().optional().describe("ISO timestamp with timezone. Omit when not clear."),
   estimatedDuration: z.enum(["5m", "15m", "30m", "1h", "2h+", "Project"]).optional(),
   recurrence: z.enum(["One-time", "Daily", "Weekly", "Monthly"]).optional(),
   dependency: text(240),
-  sourceContext: text(500).describe("Short chat/thread reference, when available."),
+  sourceContext: text(500).describe("Short chat/thread reference when useful; never paste unnecessary sensitive conversation text."),
 };
 
 function toolError(error: unknown) {
@@ -65,19 +67,25 @@ function createServer(env: Env, principal: ReturnType<typeof requireAuthenticate
     systemClock,
   );
   const server = new McpServer(
-    { name: "Daily Command Center Tasks", version: "1.0.0" },
+    { name: "Daily Command Center Tasks", version: "1.1.0" },
     {
-      instructions:
-        "Always call preview_task first. Present every returned task field to the user and ask for explicit confirmation. Call create_task only after the user clearly confirms that exact proposal. If any field changes, preview again. Never invent a due date, reminder, recurrence, workspace, or duration.",
+      instructions: [
+        "Treat an explicit user request to save or create a task as authorization to perform the write.",
+        "The exact phrase SEND TO TASKS is the canonical explicit command. Direct requests such as add that to my tasks, put that on my list, or add that to Indelitech are also explicit authorization.",
+        "When the user explicitly requests capture and the task is unambiguous from the current conversation, call create_task directly with the known details. Do not require preview_task first, do not ask the user to repeat known fields, and do not ask for a redundant second confirmation.",
+        "If you merely infer a likely task from ordinary conversation, do not write it. Ask whether the user wants it added. A clear yes, do it, add it, or equivalent reply then authorizes create_task using the existing conversation context.",
+        "Use preview_task only when the exact interpretation itself needs review before saving. If preview_task is used, show the material proposal and wait for confirmation before create_task.",
+        "Clarify only a materially required ambiguity, especially workspace. Omit optional fields that are unknown. Never invent a due date, reminder, recurrence, workspace, duration, or other material detail.",
+      ].join(" "),
     },
   );
 
   server.registerTool(
     "preview_task",
     {
-      title: "Preview a Daily Command Center task",
+      title: "Preview a Daily Command Center task when review is needed",
       description:
-        "Validate and normalize a proposed task without saving it. Use this before asking the user to confirm workspace, title, context, due date, priority, recurrence, and estimated duration.",
+        "Validate and normalize a proposed task without saving it. Use only when the exact interpretation needs user review or clarification before a write. It is not required for an unambiguous explicit capture request such as SEND TO TASKS.",
       inputSchema: captureShape,
       annotations: {
         readOnlyHint: true,
@@ -93,7 +101,7 @@ function createServer(env: Env, principal: ReturnType<typeof requireAuthenticate
           structuredContent: { proposal },
           content: [{
             type: "text",
-            text: "Task proposal validated. Show every proposal field to the user and ask for explicit confirmation before calling create_task.",
+            text: "Task proposal validated for review. Present the material proposal to the user and wait for explicit confirmation before calling create_task.",
           }],
         };
       } catch (error) {
@@ -105,12 +113,16 @@ function createServer(env: Env, principal: ReturnType<typeof requireAuthenticate
   server.registerTool(
     "create_task",
     {
-      title: "Create a confirmed Daily Command Center task",
+      title: "Create an authorized Daily Command Center task",
       description:
-        "Create the exact canonical task returned by preview_task. Call only after the user explicitly confirms the displayed proposal in the current conversation. Set confirmedByUser to true only after that confirmation.",
+        "Create a canonical Daily Command Center task when the user has explicitly requested capture or explicitly confirmed a capture suggestion/proposal. SEND TO TASKS is explicit authorization. When conversational context is complete and unambiguous, call this tool directly without preview_task and reuse the known details instead of asking the user to restate them. Never use it for a merely inferred task before the user says yes.",
       inputSchema: {
-        requestId: z.string().regex(/^chat:[A-Za-z0-9._:-]{1,123}$/),
-        confirmedByUser: z.literal(true).describe("Must reflect explicit confirmation in the current chat."),
+        requestId: z.string().regex(/^chat:[A-Za-z0-9._:-]{1,123}$/).describe(
+          "Stable unique ID for this user-authorized capture. Reuse the same ID if the same tool call is retried.",
+        ),
+        confirmedByUser: z.literal(true).describe(
+          "Set true only when the user explicitly requested capture (including SEND TO TASKS or an equivalent direct instruction) or explicitly confirmed a capture suggestion/proposal in the current conversation.",
+        ),
         ...captureShape,
       },
       annotations: {
