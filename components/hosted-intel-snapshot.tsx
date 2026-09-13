@@ -5,6 +5,8 @@ import type { HostedIntelSnapshotResponse } from "@/lib/runtime/hosted-intel";
 import { PRODUCT_TIME_ZONE } from "@/lib/product-time";
 import styles from "./hosted-intel-snapshot.module.css";
 
+const INITIAL_VISIBLE_STORIES = 8;
+
 type LoadState =
   | { state: "loading" }
   | { state: "error"; message: string }
@@ -36,6 +38,7 @@ function storyDate(value: string) {
 
 export function HostedIntelSnapshotView({ icon }: { icon: ReactNode }) {
   const [load, setLoad] = useState<LoadState>({ state: "loading" });
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,6 +56,10 @@ export function HostedIntelSnapshotView({ icon }: { icon: ReactNode }) {
     });
     return () => controller.abort();
   }, []);
+
+  const allStories = load.state === "ready" && load.data.status !== "empty" ? load.data.items : [];
+  const visibleStories = expanded ? allStories : allStories.slice(0, INITIAL_VISIBLE_STORIES);
+  const hasExpandableStories = allStories.length > INITIAL_VISIBLE_STORIES;
 
   return (
     <div className="view workspace-page-shell">
@@ -96,20 +103,31 @@ export function HostedIntelSnapshotView({ icon }: { icon: ReactNode }) {
               </span>
               <span className={styles.checkedAt}>Checked {load.data.checkedAt ? formatInstant(load.data.checkedAt) : "at an unknown time"}</span>
             </div>
-            {load.data.items.length ? (
-              <div className={styles.storyList}>
-                {load.data.items.map((story) => (
-                  <a className={styles.story} href={story.url} target="_blank" rel="noreferrer noopener" key={story.id}>
-                    <div className={styles.storyMeta}>
-                      <span>{story.source}</span>
-                      <span>{storyDate(story.publishedAt)}</span>
-                    </div>
-                    <h3>{story.title}</h3>
-                    {(story.aiSummary || story.summary) && <p>{story.aiSummary || story.summary}</p>}
-                    {story.importanceReason && <p className={styles.reason}>{story.importanceReason}</p>}
-                  </a>
-                ))}
-              </div>
+            {allStories.length ? (
+              <>
+                <div className={styles.storyList}>
+                  {visibleStories.map((story) => (
+                    <a className={styles.story} href={story.url} target="_blank" rel="noreferrer noopener" key={story.id}>
+                      <div className={styles.storyMeta}>
+                        <span>{story.source}</span>
+                        <span>{storyDate(story.publishedAt)}</span>
+                      </div>
+                      <h3>{story.title}</h3>
+                      {(story.aiSummary || story.summary) && (
+                        <p className={styles.tldr}><strong>TL;DR</strong><span>{story.aiSummary || story.summary}</span></p>
+                      )}
+                      {story.importanceReason && (
+                        <p className={styles.reason}><strong>Why surfaced</strong><span>{story.importanceReason}</span></p>
+                      )}
+                    </a>
+                  ))}
+                </div>
+                {hasExpandableStories && (
+                  <button type="button" className={styles.showMore} onClick={() => setExpanded((value) => !value)}>
+                    {expanded ? `Show top ${INITIAL_VISIBLE_STORIES}` : `Show ${allStories.length - INITIAL_VISIBLE_STORIES} more`}
+                  </button>
+                )}
+              </>
             ) : (
               <div className={styles.emptyState}>
                 <h2>No current items in this snapshot</h2>
