@@ -4,6 +4,8 @@ import test from "node:test";
 
 const readDeploy = () => readFile(new URL("../.github/workflows/cloudflare-protected-deploy.yml", import.meta.url), "utf8");
 const readBootstrap = () => readFile(new URL("../.github/workflows/cloudflare-bootstrap-grants.yml", import.meta.url), "utf8");
+const readWebWrangler = () => readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+const readMcpWrangler = () => readFile(new URL("../wrangler.mcp.jsonc", import.meta.url), "utf8");
 
 test("protected Cloudflare deployment accepts only the current merged PR revision", async () => {
   const deploy = await readDeploy();
@@ -27,18 +29,37 @@ test("protected Cloudflare deployment accepts only the current merged PR revisio
   assert.doesNotMatch(deploy, /pull_request:/);
 });
 
-test("production deploys serialize and retain the protected posture checks", async () => {
+test("production deploys serialize and retain the protected custom-domain posture checks", async () => {
   const workflow = await readDeploy();
   assert.match(workflow, /group: cloudflare-production\s+cancel-in-progress: false/);
   assert.match(workflow, /permissions:\s+actions: read\s+contents: read\s+issues: read\s+pull-requests: read/);
-  assert.match(workflow, /deploy:\s+name:[\s\S]+env:\s+CLOUDFLARE_API_TOKEN:[\s\S]+CLOUDFLARE_ACCOUNT_ID:/);
+  assert.match(workflow, /deploy:\s+name: deploy Access-protected web Worker[\s\S]+env:\s+CLOUDFLARE_API_TOKEN:[\s\S]+CLOUDFLARE_ACCOUNT_ID:/);
+  assert.match(workflow, /command\.coreyg\.dev/);
+  assert.match(workflow, /Unexpected web Worker Custom Domain/);
+  assert.match(workflow, /Generated Custom Domain mismatch/);
+  assert.match(workflow, /workers_dev must remain enabled as the Access-protected rollback path during 1G-C cutover/);
   assert.match(workflow, /preview_urls must remain disabled/);
   assert.match(workflow, /Generated POLICY_AUD mismatch/);
   assert.match(workflow, /npm run deploy:vinext/);
+  assert.match(workflow, /MCP Worker must remain independent from the web Custom Domain/);
   assert.match(workflow, /Unexpected MCP D1 binding/);
   assert.match(workflow, /npm run build:mcp/);
   assert.match(workflow, /npm run deploy:mcp/);
-  assert.match(workflow, /MCP rejects every request unless its separate Access audience secret verifies/);
+  assert.match(workflow, /Task-capture MCP remains on its separate hostname/);
+});
+
+test("web Worker declares only the canonical custom domain while keeping a temporary rollback hostname", async () => {
+  const config = JSON.parse(await readWebWrangler());
+  assert.equal(config.workers_dev, true);
+  assert.equal(config.preview_urls, false);
+  assert.deepEqual(config.routes, [{ pattern: "command.coreyg.dev", custom_domain: true }]);
+});
+
+test("task-capture MCP remains independent from the web-domain migration", async () => {
+  const config = JSON.parse(await readMcpWrangler());
+  assert.equal(config.workers_dev, true);
+  assert.equal(config.preview_urls, false);
+  assert.equal(config.routes, undefined);
 });
 
 test("owner bootstrap provisions the canonical user and workspace membership model", async () => {

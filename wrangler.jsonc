@@ -8,6 +8,12 @@
   "workers_dev": true,
   "preview_urls": false,
   "main": "vinext/server/fetch-handler",
+  "routes": [
+    {
+      "pattern": "command.coreyg.dev",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
