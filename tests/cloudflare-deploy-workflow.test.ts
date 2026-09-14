@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const readDeploy = () => readFile(new URL("../.github/workflows/cloudflare-protected-deploy.yml", import.meta.url), "utf8");
+const readCheck = () => readFile(new URL("../.github/workflows/check.yml", import.meta.url), "utf8");
 const readBootstrap = () => readFile(new URL("../.github/workflows/cloudflare-bootstrap-grants.yml", import.meta.url), "utf8");
 const readWebWrangler = () => readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
 const readMcpWrangler = () => readFile(new URL("../wrangler.mcp.jsonc", import.meta.url), "utf8");
@@ -46,6 +47,15 @@ test("production deploys serialize and retain the protected custom-domain postur
   assert.match(workflow, /npm run build:mcp/);
   assert.match(workflow, /npm run deploy:mcp/);
   assert.match(workflow, /Task-capture MCP remains on its separate hostname/);
+});
+
+test("pull request CI proves the generated vinext artifact keeps the custom domain", async () => {
+  const check = await readCheck();
+  assert.match(check, /Build vinext deployment artifact[\s\S]+npm run build:vinext/);
+  assert.match(check, /Verify generated web Custom Domain/);
+  assert.match(check, /command\.coreyg\.dev/);
+  assert.match(check, /Generated Custom Domain mismatch/);
+  assert.match(check, /matrix\.os == 'ubuntu-latest'/);
 });
 
 test("web Worker declares only the canonical custom domain while keeping a temporary rollback hostname", async () => {
