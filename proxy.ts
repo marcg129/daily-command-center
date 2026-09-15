@@ -30,6 +30,8 @@ export function proxy(request: NextRequest) {
     "/api/hosted/tasks/mutations",
     "/api/hosted/tasks/capture",
     "/api/hosted/intel",
+    "/api/hosted/bills",
+    "/api/hosted/bills/occurrences",
   ]);
   if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
