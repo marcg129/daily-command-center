@@ -80,7 +80,7 @@ jobs:
             }
 
   deploy:
-    name: deploy Access-protected workers.dev
+    name: deploy Access-protected web Worker
     needs: resolve-deploy-target
     if: needs.resolve-deploy-target.outputs.deploy_sha != ''
     runs-on: ubuntu-latest
@@ -123,9 +123,11 @@ jobs:
           const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
           const d1 = (config.d1_databases ?? []).find((x) => x.binding === 'DB');
           const kv = (config.kv_namespaces ?? []).find((x) => x.binding === 'VINEXT_KV_CACHE');
+          const routes = config.routes ?? [];
           if (config.name !== 'daily-command-center') throw new Error('Unexpected Worker name');
-          if (config.workers_dev !== true) throw new Error('workers_dev must be enabled only after Access is attached');
+          if (config.workers_dev !== true) throw new Error('workers_dev must remain enabled as the Access-protected rollback path during 1G-C cutover');
           if (config.preview_urls !== false) throw new Error('preview_urls must remain disabled');
+          if (routes.length !== 1 || routes[0]?.pattern !== 'command.coreyg.dev' || routes[0]?.custom_domain !== true) throw new Error('Unexpected web Worker Custom Domain');
           if (d1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected D1 database binding');
           if (kv?.id !== '1eeed318e05d45c7896f7c0dad3d8b85') throw new Error('Unexpected KV namespace binding');
           if (config.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Unexpected Access team domain');
@@ -138,6 +140,7 @@ jobs:
           if (mcp.main !== 'workers/task-capture-mcp.ts') throw new Error('Unexpected MCP Worker entry');
           if (mcp.workers_dev !== true) throw new Error('MCP workers_dev must be enabled for Access Managed OAuth');
           if (mcp.preview_urls !== false) throw new Error('MCP preview_urls must remain disabled');
+          if ((mcp.routes ?? []).length !== 0) throw new Error('MCP Worker must remain independent from the web Custom Domain');
           if (mcpD1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected MCP D1 binding');
           if (mcp.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Unexpected MCP Access team domain');
 
@@ -166,8 +169,10 @@ jobs:
           node --input-type=module <<'EOF'
           import fs from 'node:fs';
           const config = JSON.parse(fs.readFileSync('dist/server/wrangler.json', 'utf8'));
-          if (config.workers_dev !== true) throw new Error('Generated workers_dev must be true');
+          const routes = config.routes ?? [];
+          if (config.workers_dev !== true) throw new Error('Generated workers_dev must remain true during the rollback window');
           if (config.preview_urls !== false) throw new Error('Generated preview_urls must remain false');
+          if (routes.length !== 1 || routes[0]?.pattern !== 'command.coreyg.dev' || routes[0]?.custom_domain !== true) throw new Error('Generated Custom Domain mismatch');
           if (config.vars?.TEAM_DOMAIN !== 'https://young-truth-3b40.cloudflareaccess.com') throw new Error('Generated TEAM_DOMAIN mismatch');
           if (config.vars?.POLICY_AUD !== '46a73a1e35edf7220a912c519941f0aa246864dc7bc9229a24997a826f8b8d3f') throw new Error('Generated POLICY_AUD mismatch');
           EOF
@@ -189,8 +194,9 @@ jobs:
 
       - name: Confirm deployment posture
         run: |
-          echo 'workers.dev enabled with the committed Cloudflare Access audience.'
-          echo 'Hosted Intel collector has no public workers.dev or preview URL and runs only from its fixed six-hour Cron Trigger.'
-          echo 'Task-capture MCP rejects every request unless its separate Access audience secret verifies.'
+          echo 'Web Worker declares command.coreyg.dev as its sole Custom Domain.'
+          echo 'Web workers.dev remains enabled only as the short Access-protected rollback path during 1G-C cutover.'
           echo 'Preview URLs remain disabled.'
+          echo 'Hosted Intel collector has no public workers.dev or preview URL and runs only from its fixed six-hour Cron Trigger.'
+          echo 'Task-capture MCP remains on its separate hostname and rejects every request unless its separate Access audience secret verifies.'
           echo 'Deployment targeted the current main SHA after an owner-authorized merged-PR command or an explicit manual dispatch.'
