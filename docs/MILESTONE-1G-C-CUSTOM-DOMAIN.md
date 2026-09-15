@@ -21,22 +21,25 @@ Make `https://command.coreyg.dev` the canonical user-facing Daily Command Center
 
 ## Cloudflare/Squarespace onboarding state
 
-As of 2026-09-13:
+As of 2026-09-15:
 
 - `coreyg.dev` remains registered at Squarespace.
 - Squarespace DNSSEC was disabled before the authoritative nameserver change.
-- Cloudflare onboarding has been started on the Free plan.
-- Cloudflare assigned authoritative nameservers:
+- Authoritative nameservers are now:
   - `rose.ns.cloudflare.com`
   - `wesley.ns.cloudflare.com`
-- The registrar nameserver switch has intentionally NOT been made yet so the prior DNSSEC DS record has time to clear.
+- Cloudflare reports `coreyg.dev` as Active.
+- `www.coreyg.dev` still serves the existing Google-hosted site.
+- Cloudflare now provides the apex `coreyg.dev` -> `https://www.coreyg.dev` permanent redirect with path/query preservation.
+- The existing Daily Command Center Access application has `command.coreyg.dev` added as a whole-hostname public destination while retaining the Worker destination.
+- The Access application audience remains the committed `POLICY_AUD`.
 
-DNS records prepared in Cloudflare before activation:
+DNS posture:
 
-- apex `coreyg.dev` uses a proxied placeholder for a later Cloudflare redirect to `https://www.coreyg.dev`;
+- apex `coreyg.dev` uses the proxied placeholder required for the Cloudflare redirect;
 - `www` remains a DNS-only CNAME to `ghs.googlehosted.com`;
 - the existing Google verification CNAME is preserved DNS-only; and
-- the Squarespace-only `_domainconnect` record is not required after Cloudflare becomes authoritative.
+- the Squarespace-only `_domainconnect` record is not required after Cloudflare became authoritative.
 
 ## Repository preparation
 
@@ -62,24 +65,23 @@ Deployment validation now requires:
 - the MCP Worker to have no web Custom Domain route; and
 - generated vinext Worker configuration to preserve the same domain/security posture before deployment.
 
+## Authentication clarification
+
+Daily Command Center currently uses **Cloudflare Access** as its application authentication boundary. A repository audit on 2026-09-15 found no application-level Google OAuth/Gmail callback route or Google OAuth client configuration in the current codebase.
+
+The earlier proposed prerequisite to add `https://command.coreyg.dev/api/auth/google/callback` to Google Cloud was therefore incorrect and has been removed. Cloudflare Access login identity/provider configuration is separate from an application-owned Google OAuth client.
+
 ## Manual cutover prerequisites — MUST all be true before merge/deploy
 
-1. Wait at least the planned DNSSEC safety interval after disabling Squarespace DNSSEC before changing nameservers.
-2. At Squarespace, replace the previous Google Domains nameservers with only:
-   - `rose.ns.cloudflare.com`
-   - `wesley.ns.cloudflare.com`
-3. In Cloudflare, confirm `coreyg.dev` reaches **Active** status.
-4. Confirm `www.coreyg.dev` still resolves to the existing Google-hosted site.
-5. Create/verify the Cloudflare apex redirect from `coreyg.dev` to `https://www.coreyg.dev`, preserving path and query string.
+1. Wait at least the planned DNSSEC safety interval after disabling Squarespace DNSSEC before changing nameservers. **Verified.**
+2. At Squarespace, replace the previous Google Domains nameservers with only `rose.ns.cloudflare.com` and `wesley.ns.cloudflare.com`. **Verified.**
+3. In Cloudflare, confirm `coreyg.dev` reaches **Active** status. **Verified.**
+4. Confirm `www.coreyg.dev` still resolves to the existing Google-hosted site. **Verified.**
+5. Create/verify the Cloudflare apex redirect from `coreyg.dev` to `https://www.coreyg.dev`, preserving path and query string. **Verified.**
 6. Confirm `command.coreyg.dev` has no conflicting existing DNS record. The Worker Custom Domain deployment is expected to create/manage its DNS and certificate.
-7. In Zero Trust > Access > Applications, extend the EXISTING Daily Command Center self-hosted application to protect `command.coreyg.dev` using the same policies. Do not create a replacement Access application unless the existing application cannot safely cover the hostname.
-8. Verify that the existing Access application audience remains the same value committed as `POLICY_AUD`. If Cloudflare would require a different audience, STOP and review the application auth configuration before deployment.
-9. In the existing Google OAuth client used by Daily Command Center newsletters/Gmail, add this authorized redirect URI while retaining the rollback URI during cutover:
-
-   `https://command.coreyg.dev/api/auth/google/callback`
-
-   The application derives the Google callback URI from the incoming request hostname, so the new hostname must be authorized before reconnect/testing Google OAuth there.
-10. Only after steps 1-9 are verified should this branch be merged and deployed through the existing owner-authorized current-main gate.
+7. In Zero Trust > Access > Applications, extend the EXISTING Daily Command Center self-hosted application to protect `command.coreyg.dev` using the same policies. **Verified.**
+8. Verify that the existing Access application audience remains the same value committed as `POLICY_AUD`. **Verified.**
+9. Only after the remaining DNS conflict check is verified should this branch be merged and deployed through the existing owner-authorized current-main gate.
 
 ## Deployment verification
 
@@ -88,9 +90,8 @@ After deployment:
 1. Open `https://command.coreyg.dev` in an unauthenticated/private session and confirm Cloudflare Access intercepts the request before application content is reachable.
 2. Authenticate and confirm the hosted session resolves the same application user and Personal/Indelitech memberships.
 3. Verify Today, Tasks, Calendar, task create/edit/complete, workspace switching, and hosted Intel through the custom hostname.
-4. Verify Google OAuth start/callback behavior if that feature is currently in use.
-5. Verify the task-capture MCP integration remains functional on its existing separate hostname.
-6. Verify `daily-command-center.mecg129.workers.dev` remains Access-protected during the rollback window.
+4. Verify the task-capture MCP integration remains functional on its existing separate hostname.
+5. Verify `daily-command-center.mecg129.workers.dev` remains Access-protected during the rollback window.
 
 ## Rollback
 
@@ -98,7 +99,7 @@ If the custom hostname fails after deployment:
 
 - use the still-protected `daily-command-center.mecg129.workers.dev` hostname;
 - do not alter D1/KV data;
-- correct the Custom Domain, certificate, DNS, Access hostname, or OAuth configuration;
+- correct the Custom Domain, certificate, DNS, or Access hostname/configuration;
 - redeploy only through the protected current-main gate.
 
 No data rollback or migration should be necessary because 1G-C changes routing, not application storage.
