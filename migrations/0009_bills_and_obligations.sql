@@ -36,7 +36,9 @@ CREATE TABLE bills (
   CHECK (
     (recurrence_unit IN ('NONE','WEEK') AND recurrence_day_mode IS NULL)
     OR
-    (recurrence_unit IN ('MONTH','YEAR') AND recurrence_day_mode IN ('ANCHOR_DATE','LAST_DAY'))
+    (recurrence_unit IN ('MONTH','YEAR')
+      AND recurrence_day_mode IS NOT NULL
+      AND recurrence_day_mode IN ('ANCHOR_DATE','LAST_DAY'))
   )
 ) STRICT;
 
