@@ -114,7 +114,7 @@ test("hosted Intel feed parsing keeps only dated HTTPS stories and removes dupli
 
   assert.equal(parseHostedIntelFeed(feed({ url: "http://example.com/story" }), "Fallback").length, 0);
   assert.equal(parseHostedIntelFeed(feed({ publishedAt: "" }), "Fallback").length, 0);
-  assert.equal(parseHostedIntelFeed(feed({ publishedAt: "Mon, 14 Sep 2026 12:00:00 GMT" }), "Fallback").length, 0);
+  assert.equal(parseHostedIntelFeed(feed({ publishedAt: "Thu, 01 Jan 2099 12:00:00 GMT" }), "Fallback").length, 0);
 });
 
 test("hosted Intel requires real cyber context instead of scoring an ambiguous breach headline", () => {
