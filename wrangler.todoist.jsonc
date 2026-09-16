@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daily-command-center-todoist-ingress",
+  "main": "workers/todoist-task-ingress.ts",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "daily-command-center-prod",
+      "database_id": "2f67ea9a-bf97-4008-9031-2ebfdb5a6e57"
+    }
+  ],
+  "vars": {
+    "TODOIST_PROJECT_ID": "6XGgm6PHrGgMpCFX"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
