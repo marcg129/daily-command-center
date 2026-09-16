@@ -1,5 +1,6 @@
 import { isProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
+import { TodoistWorkspaceAuthorizationError } from "@/lib/runtime/todoist-task-ingress-service";
 
 type MembershipRow = Readonly<{
   user_id: string;
@@ -20,7 +21,9 @@ export class D1UserWorkspaceResolver {
   }
 
   async resolve(requestedWorkspaceId: string): Promise<RequestContext> {
-    if (!isProductWorkspaceId(requestedWorkspaceId)) throw new Error("Unknown workspace.");
+    if (!isProductWorkspaceId(requestedWorkspaceId)) {
+      throw new TodoistWorkspaceAuthorizationError("Unknown workspace.");
+    }
 
     const result = await this.database.prepare(
       `SELECT u.user_id, m.workspace_id, m.workspace_key
@@ -40,7 +43,7 @@ export class D1UserWorkspaceResolver {
       rows[0].user_id !== this.userId ||
       rows[0].workspace_key !== requestedWorkspaceId
     ) {
-      throw new Error("Workspace access denied.");
+      throw new TodoistWorkspaceAuthorizationError("Workspace access denied.");
     }
 
     return {
