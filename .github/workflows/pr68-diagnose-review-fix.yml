@@ -41,5 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr68-patch-diagnostic
-          path: /tmp/pr68-patch-diagnostic.txt
+          path: |
+            /tmp/pr68-patch-diagnostic.txt
+            /tmp/pr68-review-fix.patch
           if-no-files-found: error
