@@ -76,11 +76,11 @@ test("occurrence display state is date-only and resolved-safe", () => {
 
 test("shape change matches the repository occurrence-affecting contract", () => {
   const original = bill();
-  assert.equal(billOccurrenceShapeChanged(original, { ...original, name: "Fiber Internet" }), false);
-  assert.equal(billOccurrenceShapeChanged(original, { ...original, status: "PAUSED" }), false);
-  assert.equal(billOccurrenceShapeChanged(original, { ...original, defaultAmountMinor: 7600 }), true);
-  assert.equal(billOccurrenceShapeChanged(original, { ...original, scheduleStartDate: "2026-09-21" }), true);
-  assert.equal(billOccurrenceShapeChanged(original, { ...original, recurrenceInterval: 2 }), true);
+  assert.equal(billOccurrenceShapeChanged(original, bill({ name: "Fiber Internet" })), false);
+  assert.equal(billOccurrenceShapeChanged(original, bill({ status: "PAUSED" })), false);
+  assert.equal(billOccurrenceShapeChanged(original, bill({ defaultAmountMinor: 7600 })), true);
+  assert.equal(billOccurrenceShapeChanged(original, bill({ scheduleStartDate: "2026-09-21" })), true);
+  assert.equal(billOccurrenceShapeChanged(original, bill({ recurrenceInterval: 2 })), true);
 });
 
 test("amount presentation keeps variable estimates and unknowns explicit", () => {
