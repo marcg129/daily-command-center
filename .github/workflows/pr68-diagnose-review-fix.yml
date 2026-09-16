@@ -1,4 +1,4 @@
-name: Execute corrected PR68 recovery patch
+name: Diagnose corrected PR68 recovery patch
 
 on:
   push:
@@ -6,22 +6,17 @@ on:
       - milestone/1g-f3-cashflow-ui
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-corrected-patch:
-    if: github.actor != 'github-actions[bot]'
+  diagnose-corrected-patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: milestone/1g-f3-cashflow-ui
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.19.0
-          cache: npm
-      - name: Extract and correct malformed hunk context
+      - name: Extract, correct, and inspect patch
         shell: bash
         run: |
           set -euo pipefail
@@ -30,29 +25,39 @@ jobs:
             capture && /^[[:space:]]*PATCH[[:space:]]*$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/pr68-apply-review-fix.yml > /tmp/pr68-review-fix.patch
-          python - <<'PY'
+          python - <<'PY' > /tmp/replacement.log 2>&1
           from pathlib import Path
           path = Path('/tmp/pr68-review-fix.patch')
           text = path.read_text()
           old = '         setBaselineError("");\n+        setLoadedWorkspaceId(workspaceId);\n       }\n'
           new = '           setBaselineError("");\n+          setLoadedWorkspaceId(workspaceId);\n         }\n'
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one malformed hunk context, found {text.count(old)}')
+          count = text.count(old)
+          print(f'malformed hunk matches: {count}')
+          if count != 1:
+              raise SystemExit(f'expected exactly one malformed hunk context, found {count}')
           path.write_text(text.replace(old, new, 1))
+          print('replacement completed')
           PY
-          test "$(git hash-object components/cash-flow-view.tsx)" = "60a7d02e19a8640f53499b4ee13a54958e0975c1"
-          test "$(git hash-object tests/cash-flow-ui-contract.test.ts)" = "587f2acada9211d11f6c2f79554a3b535319ce79"
-          git apply --check --verbose /tmp/pr68-review-fix.patch
-          git apply /tmp/pr68-review-fix.patch
-      - run: npm run setup
-      - run: npm run check
-      - name: Commit reviewed fix
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/cash-flow-view.tsx tests/cash-flow-ui-contract.test.ts
-          git diff --cached --check
-          git commit -m "Fix Cash Flow financial integrity review findings"
-          git push origin HEAD:milestone/1g-f3-cashflow-ui
+          replacement_status=$?
+          set +e
+          git apply --check --verbose /tmp/pr68-review-fix.patch > /tmp/apply-check.log 2>&1
+          apply_status=$?
+          set -e
+          {
+            echo "replacement exit status: ${replacement_status}"
+            cat /tmp/replacement.log
+            echo "git apply --check exit status: ${apply_status}"
+            echo "head: $(git rev-parse HEAD)"
+            echo "cash-flow-view blob: $(git hash-object components/cash-flow-view.tsx)"
+            echo "cash-flow contract blob: $(git hash-object tests/cash-flow-ui-contract.test.ts)"
+            echo
+            cat /tmp/apply-check.log
+          } | tee /tmp/pr68-corrected-patch-diagnostic.txt
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr68-corrected-patch-diagnostic
+          path: |
+            /tmp/pr68-corrected-patch-diagnostic.txt
+            /tmp/pr68-review-fix.patch
+          if-no-files-found: error
