@@ -113,11 +113,11 @@ test("Today and Calendar use canonical bill occurrences instead of synthetic tas
     readFile(new URL("../components/task-calendar.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(today, /useProjectedBills\(workspaceId\)/);
-  assert.match(today, /window\.location\.assign\(`\/bills\?workspaceId=/);
+  assert.match(today, /router\.push\(`\/bills\?workspaceId=/);
   assert.match(today, /WalletCards/);
   assert.match(calendar, /useProjectedBills\(workspaceId\)/);
   assert.match(calendar, /Derived from canonical tasks and bill occurrences/);
-  assert.match(calendar, /window\.location\.assign\(`\/bills\?workspaceId=/);
+  assert.match(calendar, /router\.push\(`\/bills\?workspaceId=/);
   assert.doesNotMatch(today, /createTaskItem/);
   assert.doesNotMatch(calendar, /createTaskItem/);
 });
