@@ -1,0 +1,128 @@
+.panel {
+  margin-top: 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.header h2 { margin: .2rem 0 0; }
+
+.openLink {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--teal-copy-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.openLink:hover { text-decoration: underline; }
+
+.openLink:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.grid article {
+  min-width: 0;
+  padding: .9rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.grid article[data-attention="true"] {
+  border-style: dashed;
+}
+
+.grid small,
+.grid strong,
+.grid span { display: block; }
+
+.grid small {
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.grid strong {
+  margin: .35rem 0 .3rem;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.grid span {
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.35;
+}
+
+.loading,
+.error {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-height: 5rem;
+  color: var(--muted);
+}
+
+.error {
+  flex-wrap: wrap;
+  color: var(--text);
+}
+
+.error button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--teal-copy-strong);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.disclaimer {
+  margin: .9rem 0 0;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .panel {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 14px;
+  }
+
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .grid { grid-template-columns: 1fr; }
+
+  .grid article { padding: .8rem; }
+}
