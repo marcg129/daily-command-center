@@ -1,0 +1,799 @@
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.summaryCard {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 20px;
+}
+
+.summaryCard > small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.summaryCard > strong {
+  font-family: var(--serif);
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.summaryCard > span,
+.summaryCard > em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.summaryCard > em {
+  color: var(--coral-dark);
+  font-weight: 700;
+}
+
+.attentionCard {
+  border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.viewTabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-medium);
+}
+
+.viewTabs button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.viewTabs button:hover,
+.viewTabs button.activeTab {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+}
+
+.listPanel {
+  padding: 24px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.sectionHead h2 {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.sectionHead > span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.archiveToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.archiveToggle input,
+.checkboxLabel input {
+  accent-color: var(--coral);
+}
+
+.occurrenceList {
+  display: grid;
+  gap: 9px;
+}
+
+.occurrenceRow {
+  display: grid;
+  grid-template-columns: minmax(132px, .7fr) minmax(220px, 1.7fr) minmax(130px, .7fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-medium);
+}
+
+.occurrenceRow.overdue {
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
+  box-shadow: inset 4px 0 0 var(--danger);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--danger) 8%, transparent), transparent 30%);
+}
+
+.occurrenceRow.dueToday {
+  border-color: var(--coral);
+  box-shadow: inset 4px 0 0 var(--coral);
+}
+
+.dateBlock,
+.occurrenceCopy,
+.amount {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dateBlock > b {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.dateBadge,
+.overdueBadge,
+.autopayBadge,
+.variableBadge,
+.statusBadge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid var(--line-dark);
+  border-radius: 999px;
+  background: var(--surface-label);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.overdueBadge {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+  color: var(--danger);
+}
+
+.autopayBadge {
+  border-color: var(--positive-border);
+  background: var(--teal-soft);
+  color: var(--positive);
+}
+
+.variableBadge {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.titleLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.titleLine h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.occurrenceCopy p,
+.billCardHead p,
+.billNotes {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.occurrenceCopy small {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.amount {
+  align-items: flex-start;
+}
+
+.amount > b {
+  font-size: 14px;
+}
+
+.amount > small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.rowActions,
+.billCardActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.rowActions button,
+.rowActions a,
+.billCardActions button,
+.billCardActions a {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.rowActions button:hover,
+.rowActions a:hover,
+.billCardActions button:hover,
+.billCardActions a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.rowActions button.primaryAction {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: white;
+}
+
+.actionLink {
+  white-space: nowrap;
+}
+
+.billGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.billCard {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+  padding: 19px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-medium);
+}
+
+.billCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.billCardHead h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.statusACTIVE {
+  border-color: var(--positive-border);
+  color: var(--positive);
+}
+
+.statusPAUSED {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.statusARCHIVED {
+  opacity: .72;
+}
+
+.billCardFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.billCardFacts > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.billCardFacts b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.billCardFacts small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.billNotes {
+  padding: 10px 12px;
+  border-left: 3px solid var(--line-dark);
+  background: var(--surface-soft);
+}
+
+.billCardActions {
+  justify-content: flex-start;
+  margin-top: auto;
+}
+
+.emptyState,
+.centerState {
+  min-height: 290px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px;
+  text-align: center;
+}
+
+.centerState {
+  margin-top: 40px;
+}
+
+.emptyState h3,
+.centerState h1,
+.centerState h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 500;
+}
+
+.emptyState h3 {
+  font-size: 24px;
+}
+
+.centerState h1 {
+  font-size: 34px;
+}
+
+.emptyState p,
+.centerState p {
+  max-width: 560px;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.errorNotice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--danger);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.errorNotice span {
+  flex: 1;
+}
+
+.errorNotice button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .58);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(800px, 100%);
+  max-height: min(88vh, 920px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  border: 1px solid var(--line-dark);
+  border-radius: 14px;
+  background: var(--paper-deep);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, .32);
+}
+
+.resolutionModal {
+  width: min(560px, 100%);
+}
+
+.modalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.modalHead h2 {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.closeButton {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.form label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.form label > span:first-child {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.form input,
+.form select,
+.form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.form label > small,
+.formHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.moneyInput,
+.suffixInput {
+  display: grid;
+  align-items: center;
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.moneyInput {
+  grid-template-columns: auto 1fr;
+}
+
+.suffixInput {
+  grid-template-columns: 1fr auto;
+}
+
+.moneyInput i,
+.suffixInput i {
+  padding: 0 10px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.moneyInput input,
+.suffixInput input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.checkboxLabel {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 9px !important;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-medium);
+}
+
+.checkboxLabel input {
+  width: 16px;
+  min-height: 16px;
+  margin-top: 2px;
+}
+
+.checkboxLabel > span {
+  display: grid;
+  gap: 2px;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-family: var(--sans) !important;
+}
+
+.checkboxLabel b {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.checkboxLabel small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.effectiveDate {
+  padding: 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  background: var(--warning-bg);
+}
+
+.formHint {
+  padding: 9px 11px;
+  border-left: 3px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.formError {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.resolutionContext {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: var(--surface-medium);
+}
+
+.resolutionContext span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.spin {
+  animation: bills-spin .8s linear infinite;
+}
+
+@keyframes bills-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1050px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .occurrenceRow {
+    grid-template-columns: 132px 1fr 130px;
+  }
+
+  .rowActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+}
+
+@media (max-width: 760px) {
+  .summaryGrid,
+  .billGrid,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .wide {
+    grid-column: auto;
+  }
+
+  .toolbar,
+  .sectionHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .viewTabs {
+    width: 100%;
+  }
+
+  .viewTabs button {
+    flex: 1;
+  }
+
+  .occurrenceRow {
+    grid-template-columns: 1fr auto;
+    gap: 11px;
+  }
+
+  .dateBlock,
+  .occurrenceCopy,
+  .rowActions {
+    grid-column: 1 / -1;
+  }
+
+  .amount {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+    align-items: flex-end;
+  }
+
+  .billCardFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .modalBackdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding: 20px;
+  }
+}
+
+@media (max-width: 520px) {
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .summaryCard {
+    min-height: 118px;
+    padding: 15px;
+  }
+
+  .summaryCard > strong {
+    font-size: 30px;
+  }
+
+  .listPanel {
+    padding: 16px;
+  }
+
+  .occurrenceRow {
+    padding: 14px;
+  }
+
+  .rowActions button,
+  .rowActions a {
+    flex: 1 1 120px;
+  }
+
+  .modalActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
