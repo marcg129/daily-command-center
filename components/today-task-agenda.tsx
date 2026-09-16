@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Bell, Clock3, ListTodo, WalletCards } from "lucide-react";
 import { billAmountPresentation } from "@/lib/bill-ui";
 import {
@@ -44,6 +45,7 @@ export function TodayTaskAgenda({
   workspaceId: ProductWorkspaceId;
   onOpenTask: (taskId: TaskItem["id"]) => void;
 }) {
+  const router = useRouter();
   const today = billProjectionToday();
   const projectedBills = useProjectedBills(workspaceId);
   const taskEntries = taskCalendarEntriesForToday(tasks, workspaceId);
@@ -73,7 +75,7 @@ export function TodayTaskAgenda({
             type="button"
             key={item.id}
             className={`${styles.item} ${overdue ? styles.overdue : ""}`}
-            onClick={() => window.location.assign(`/bills?workspaceId=${encodeURIComponent(entry.workspaceId)}`)}
+            onClick={() => router.push(`/bills?workspaceId=${encodeURIComponent(entry.workspaceId)}`)}
             aria-label={`${entry.bill.name}, bill ${billDueLabel(entry, today)}, ${amount.label}${workspaceLabel}`}
           >
             <WalletCards size={15} aria-hidden="true" />
