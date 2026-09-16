@@ -32,6 +32,9 @@ export function proxy(request: NextRequest) {
     "/api/hosted/intel",
     "/api/hosted/bills",
     "/api/hosted/bills/occurrences",
+    "/api/hosted/income",
+    "/api/hosted/income/occurrences",
+    "/api/hosted/cashflow/baseline",
   ]);
   if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
