@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CircleAlert, RefreshCw, WalletCards } from "lucide-react";
 import { billProjectionToday } from "@/lib/bill-projections";
 import { browserRuntimeMode, loadHostedApplicationSession } from "@/lib/runtime/browser-runtime";
@@ -34,6 +34,8 @@ type BaselineSummary = Readonly<{
   baseline: HostedCashflowBaseline | null;
 }>;
 
+const subscribeRuntimeMode = () => () => {};
+
 function responseError(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "error" in payload && typeof (payload as { error?: unknown }).error === "string") {
     return (payload as { error: string }).error;
@@ -56,7 +58,11 @@ function formatDateOnly(value: string): string {
 
 export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorkspaceId }) {
   const today = billProjectionToday();
-  const [hosted, setHosted] = useState(false);
+  const hosted = useSyncExternalStore(
+    subscribeRuntimeMode,
+    () => browserRuntimeMode(window.location.hostname) === "hosted",
+    () => false,
+  );
   const [income, setIncome] = useState<IncomeSummary>({ incomeSources: [], occurrences: [] });
   const [bills, setBills] = useState<BillsSummary>({ bills: [], occurrences: [] });
   const [baseline, setBaseline] = useState<HostedCashflowBaseline | null>(null);
@@ -64,10 +70,6 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
-
-  useEffect(() => {
-    setHosted(browserRuntimeMode(window.location.hostname) === "hosted");
-  }, []);
 
   useEffect(() => {
     if (!hosted) return;
