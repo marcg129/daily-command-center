@@ -5,19 +5,35 @@ import {
   runTodoistIngressBatch,
   type TodoistIngressControlState,
   type TodoistIngressControlStore,
+  type TodoistIngressControlWriteMetadata,
   type TodoistIngressQueue,
 } from "@/lib/runtime/todoist-ingress-runner";
 import type { TodoistTaskIngressOutcome } from "@/lib/runtime/todoist-task-ingress-service";
 import type { TodoistRelayTask } from "@/lib/runtime/todoist-task-ingress";
 
-function relayTask(id: string): TodoistRelayTask {
-  return { id, content: `Task ${id}`, description: "workspace: personal" };
+const TASK_EPOCH = Date.parse("2026-09-16T12:00:00.000Z");
+
+function relayTask(id: string, position = 0): TodoistRelayTask {
+  return {
+    id,
+    content: `Task ${id}`,
+    description: "workspace: personal",
+    addedAt: new Date(TASK_EPOCH + position * 1000).toISOString(),
+  };
 }
 
 class MemoryControlStore implements TodoistIngressControlStore {
-  state: TodoistIngressControlState = { rotationOffset: 0, cooldownUntilMs: null };
+  state: TodoistIngressControlState = {
+    cursorAddedAt: null,
+    cursorTaskId: null,
+    cooldownUntilMs: null,
+  };
+  writes: TodoistIngressControlWriteMetadata[] = [];
   async load() { return this.state; }
-  async save(state: TodoistIngressControlState) { this.state = state; }
+  async save(state: TodoistIngressControlState, metadata: TodoistIngressControlWriteMetadata) {
+    this.state = state;
+    this.writes.push(metadata);
+  }
 }
 
 function text(path: string) {
@@ -29,7 +45,7 @@ function jsonc(path: string) {
 }
 
 test("batch runner bounds one cron invocation and isolates one bad task from the rest", async () => {
-  const tasks = Array.from({ length: 55 }, (_, index) => relayTask(`task-${index + 1}`));
+  const tasks = Array.from({ length: 55 }, (_, index) => relayTask(`task-${index + 1}`, index + 1));
   const queue: TodoistIngressQueue = { async listRelayTasks() { return tasks; } };
   const seen: string[] = [];
   const summary = await runTodoistIngressBatch(queue, async (task): Promise<TodoistTaskIngressOutcome> => {
@@ -57,7 +73,7 @@ test("batch runner bounds one cron invocation and isolates one bad task from the
 
 test("batch runner counts idempotent replays separately", async () => {
   const queue: TodoistIngressQueue = {
-    async listRelayTasks() { return [relayTask("a"), relayTask("b")]; },
+    async listRelayTasks() { return [relayTask("a", 1), relayTask("b", 2)]; },
   };
   const summary = await runTodoistIngressBatch(queue, async (task) => ({
     status: "already-imported",
@@ -69,37 +85,41 @@ test("batch runner counts idempotent replays separately", async () => {
   assert.equal(summary.deferred, 0);
 });
 
-test("provider retry-after stops the batch and persists a durable cooldown", async () => {
+test("provider retry-after starts when observed and persists a durable cooldown", async () => {
   const queue: TodoistIngressQueue = {
-    async listRelayTasks() { return [relayTask("a"), relayTask("b"), relayTask("c")]; },
+    async listRelayTasks() { return [relayTask("a", 1), relayTask("b", 2), relayTask("c", 3)]; },
   };
   const control = new MemoryControlStore();
   const seen: string[] = [];
-  const nowMs = Date.parse("2026-09-16T20:00:00.000Z");
+  const startMs = Date.parse("2026-09-16T20:00:00.000Z");
+  let currentMs = startMs;
 
   const summary = await runTodoistIngressBatch(queue, async (task) => {
     seen.push(task.id);
     if (task.id === "b") {
+      currentMs = startMs + 120_000;
       return { status: "transient-failure", todoistTaskId: task.id, retryAfterSeconds: 180 };
     }
     return { status: "imported", todoistTaskId: task.id };
-  }, { control, nowMs });
+  }, { control, clock: () => currentMs });
 
   assert.deepEqual(seen, ["a", "b"]);
   assert.equal(summary.retryAfterSeconds, 180);
   assert.equal(summary.attempted, 2);
-  assert.equal(control.state.cooldownUntilMs, nowMs + 180_000);
-  assert.equal(control.state.rotationOffset, 2);
+  assert.equal(control.state.cooldownUntilMs, startMs + 300_000);
+  assert.equal(control.state.cursorTaskId, "b");
+  assert.equal(control.state.cursorAddedAt, relayTask("b", 2).addedAt);
 
   let listedAgain = false;
+  currentMs = startMs + 180_000;
   const skipped = await runTodoistIngressBatch({
     async listRelayTasks() {
       listedAgain = true;
-      return [relayTask("a")];
+      return [relayTask("a", 1)];
     },
   }, async () => ({ status: "imported", todoistTaskId: "a" }), {
     control,
-    nowMs: nowMs + 60_000,
+    clock: () => currentMs,
   });
 
   assert.equal(listedAgain, false);
@@ -107,27 +127,33 @@ test("provider retry-after stops the batch and persists a durable cooldown", asy
   assert.equal(skipped.attempted, 0);
 });
 
-test("rotation prevents permanently failed leading tasks from starving later relays", async () => {
-  const tasks = Array.from({ length: 80 }, (_, index) => relayTask(`task-${index + 1}`));
-  const queue: TodoistIngressQueue = { async listRelayTasks() { return tasks; } };
+test("stable task cursor survives closed tasks and new arrivals without starving the deferred relay", async () => {
+  const initial = Array.from({ length: 51 }, (_, index) => relayTask(`task-${index + 1}`, index + 1));
+  let listed = initial;
+  const queue: TodoistIngressQueue = { async listRelayTasks() { return listed; } };
   const control = new MemoryControlStore();
   const firstSeen: string[] = [];
   const secondSeen: string[] = [];
+  let currentMs = 1_000;
 
   await runTodoistIngressBatch(queue, async (task) => {
     firstSeen.push(task.id);
-    return { status: "permanent-failure", todoistTaskId: task.id, diagnostic: "bad metadata" };
-  }, { control, nowMs: 1_000 });
+    return task.id === "task-1"
+      ? { status: "imported", todoistTaskId: task.id }
+      : { status: "permanent-failure", todoistTaskId: task.id, diagnostic: "bad metadata" };
+  }, { control, clock: () => currentMs });
 
+  listed = [...initial.slice(1), relayTask("task-52", 52)];
+  currentMs = 61_000;
   await runTodoistIngressBatch(queue, async (task) => {
     secondSeen.push(task.id);
     return { status: "imported", todoistTaskId: task.id };
-  }, { control, nowMs: 61_000 });
+  }, { control, clock: () => currentMs });
 
   assert.equal(firstSeen.length, 50);
-  assert.equal(secondSeen.length, 50);
+  assert.equal(firstSeen.at(-1), "task-50");
   assert.equal(secondSeen[0], "task-51");
-  assert.ok(secondSeen.includes("task-80"));
+  assert.ok(secondSeen.includes("task-52"));
 });
 
 test("queue-read failure rejects the run instead of pretending the inbox was empty", async () => {
@@ -150,6 +176,7 @@ test("Todoist ingress Worker is cron-only, private, and uses explicit bindings",
   assert.match(worker, /D1TodoistIngressControlStore/);
   assert.match(worker, /createTodoistApiClient/);
   assert.match(worker, /runTodoistIngressBatch/);
+  assert.match(worker, /clock:\s*\(\)\s*=>\s*Date\.now\(\)/);
 
   assert.equal(config.name, "daily-command-center-todoist-ingress");
   assert.equal(config.main, "workers/todoist-task-ingress.ts");
@@ -171,7 +198,9 @@ test("Todoist deploy applies migrations before deploying the Worker", () => {
   assert.match(deployWorkflow, /d1 migrations apply daily-command-center-prod --remote --config wrangler\.todoist\.jsonc/);
   assert.match(migration, /CREATE TABLE todoist_ingress_control/);
   assert.match(migration, /cooldown_until_ms INTEGER/);
-  assert.match(migration, /rotation_offset INTEGER NOT NULL/);
+  assert.match(migration, /cursor_added_at TEXT/);
+  assert.match(migration, /cursor_task_id TEXT/);
+  assert.match(migration, /cursor_run_started_ms INTEGER NOT NULL/);
 });
 
 test("CI dry-runs the Todoist Worker without embedding deployment secrets", () => {
