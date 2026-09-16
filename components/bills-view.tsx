@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Activity,
@@ -317,14 +318,12 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
     setEditingBill(bill);
   };
 
-  let formCore: BillDefinitionCore | null = null;
   let shapeChanged = false;
-  if (editingBill !== undefined) {
+  if (editingBill) {
     try {
-      formCore = coreFromDraft(draft, editingBill?.status ?? "ACTIVE");
-      shapeChanged = editingBill ? billOccurrenceShapeChanged(editingBill, formCore) : false;
+      shapeChanged = billOccurrenceShapeChanged(editingBill, coreFromDraft(draft, editingBill.status));
     } catch {
-      formCore = null;
+      shapeChanged = false;
     }
   }
 
@@ -418,18 +417,18 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
   }
 
   if (runtimeError) {
-    return <div className="app-shell" data-workspace={workspaceId}><main><div className="view"><section className={`panel ${styles.centerState}`}><CircleAlert size={30} /><h1>Bills are unavailable here</h1><p>{runtimeError}</p><a className="button button-ghost" href="/"><ArrowLeft size={15} /> Back to dashboard</a></section></div></main></div>;
+    return <div className="app-shell" data-workspace={workspaceId}><main><div className="view"><section className={`panel ${styles.centerState}`}><CircleAlert size={30} /><h1>Bills are unavailable here</h1><p>{runtimeError}</p><Link className="button button-ghost" href="/"><ArrowLeft size={15} /> Back to dashboard</Link></section></div></main></div>;
   }
 
   return <div className="app-shell" data-workspace={workspaceId}>
     <header className="topbar">
-      <a className="brand-lockup" href="/" aria-label="Back to Daily Command Center">
+      <Link className="brand-lockup" href="/" aria-label="Back to Daily Command Center">
         <span className="brand-mark"><Activity size={18} /></span>
         <span><b>DAILY COMMAND CENTER</b><small>BILLS & OBLIGATIONS</small></span>
-      </a>
+      </Link>
       <WorkspaceSwitcher value={workspaceId} onChange={selectWorkspace} options={authorizedOptions} showBillsLink={false} />
       <span aria-hidden="true" />
-      <a className="button button-ghost" href="/"><ArrowLeft size={14} /> Dashboard</a>
+      <Link className="button button-ghost" href="/"><ArrowLeft size={14} /> Dashboard</Link>
     </header>
 
     <main>
@@ -528,7 +527,7 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
           </div>
           {draft.recurrenceDayMode === "LAST_DAY" && (draft.recurrenceUnit === "MONTH" || draft.recurrenceUnit === "YEAR") && <p className={styles.formHint}>Last-day schedules require the anchor date itself to be the final calendar day of its month.</p>}
           {formError && <p className={styles.formError} role="alert">{formError}</p>}
-          <div className={styles.modalActions}><button className="button button-ghost" type="button" disabled={saving} onClick={() => setEditingBill(undefined)}>Cancel</button><button className="button button-primary" disabled={saving || !formCore}>{saving ? <RefreshCw className={styles.spin} size={14} /> : <WalletCards size={14} />} {editingBill ? "Save bill" : "Create bill"}</button></div>
+          <div className={styles.modalActions}><button className="button button-ghost" type="button" disabled={saving} onClick={() => setEditingBill(undefined)}>Cancel</button><button className="button button-primary" disabled={saving}>{saving ? <RefreshCw className={styles.spin} size={14} /> : <WalletCards size={14} />} {editingBill ? "Save bill" : "Create bill"}</button></div>
         </form>
       </section>
     </div>}
