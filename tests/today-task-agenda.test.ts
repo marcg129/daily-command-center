@@ -60,17 +60,19 @@ test("Today agenda keeps timed ordering and current-day overdue state", () => {
   assert.ok(entries.every((entry) => entry.task === source && entry.taskId === source.id));
 });
 
-test("Today UI opens canonical tasks and does not create a parallel record", async () => {
+test("Today UI opens canonical tasks and bills without creating parallel records", async () => {
   const [agenda, surface] = await Promise.all([
     readFile(new URL("../components/today-task-agenda.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/task-surface.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(agenda, /taskCalendarEntriesForToday\(tasks, workspaceId\)/);
+  assert.match(agenda, /useProjectedBills\(workspaceId\)/);
   assert.match(agenda, /visibleEntries = entries\.slice\(0, 6\)/);
-  assert.match(agenda, /aria-label="Today's task schedule"/);
+  assert.match(agenda, /aria-label="Today's task and bill schedule"/);
   assert.match(agenda, /onClick=\{\(\) => onOpenTask\(entry\.taskId\)\}/);
-  assert.match(agenda, /Due dates, reminders &amp; follow-ups/);
+  assert.match(agenda, /router\.push\(`\/bills\?workspaceId=/);
+  assert.match(agenda, /Tasks &amp; bill obligations/);
   assert.doesNotMatch(agenda, /createTask|cloneTask|duplicateTask|fetch\(/);
   assert.match(surface, /<TodayTaskAgenda tasks=\{tasks\} workspaceId=\{workspaceId\} onOpenTask=\{onOpenTask\} \/>/);
 });
