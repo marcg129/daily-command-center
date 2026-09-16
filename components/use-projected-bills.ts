@@ -20,6 +20,7 @@ type BillsResponse = Readonly<{
 }>;
 
 type ProjectedBillsState = Readonly<{
+  workspaceId: ProductWorkspaceId | null;
   occurrences: ProjectedBillOccurrence[];
   loading: boolean;
   error: string;
@@ -32,8 +33,8 @@ function responseError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export function useProjectedBills(workspaceId: ProductWorkspaceId): ProjectedBillsState {
-  const [state, setState] = useState<ProjectedBillsState>({ occurrences: [], loading: true, error: "" });
+export function useProjectedBills(workspaceId: ProductWorkspaceId): Omit<ProjectedBillsState, "workspaceId"> {
+  const [state, setState] = useState<ProjectedBillsState>({ workspaceId: null, occurrences: [], loading: true, error: "" });
 
   useEffect(() => {
     let cancelled = false;
@@ -41,11 +42,11 @@ export function useProjectedBills(workspaceId: ProductWorkspaceId): ProjectedBil
 
     const load = async () => {
       if (browserRuntimeMode(window.location.hostname) !== "hosted") {
-        if (!cancelled) setState({ occurrences: [], loading: false, error: "" });
+        if (!cancelled) setState({ workspaceId, occurrences: [], loading: false, error: "" });
         return;
       }
 
-      if (!cancelled) setState((current) => ({ ...current, loading: true, error: "" }));
+      if (!cancelled) setState({ workspaceId, occurrences: [], loading: true, error: "" });
       try {
         const session = await loadHostedApplicationSession(fetch);
         const authorizedWorkspaceIds = session.workspaces.map(({ workspaceId: id }) => id);
@@ -64,10 +65,11 @@ export function useProjectedBills(workspaceId: ProductWorkspaceId): ProjectedBil
             occurrences: Array.isArray(summary.occurrences) ? summary.occurrences : [],
           };
         }));
-        if (!cancelled) setState({ occurrences: projectOpenBillOccurrences(summaries), loading: false, error: "" });
+        if (!cancelled) setState({ workspaceId, occurrences: projectOpenBillOccurrences(summaries), loading: false, error: "" });
       } catch (caught) {
         if (cancelled || controller.signal.aborted) return;
         setState({
+          workspaceId,
           occurrences: [],
           loading: false,
           error: caught instanceof Error ? caught.message : "Bills could not be loaded.",
@@ -82,5 +84,8 @@ export function useProjectedBills(workspaceId: ProductWorkspaceId): ProjectedBil
     };
   }, [workspaceId]);
 
-  return state;
+  if (state.workspaceId !== workspaceId) {
+    return { occurrences: [], loading: true, error: "" };
+  }
+  return { occurrences: state.occurrences, loading: state.loading, error: state.error };
 }

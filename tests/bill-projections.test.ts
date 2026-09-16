@@ -121,3 +121,19 @@ test("Today and Calendar use canonical bill occurrences instead of synthetic tas
   assert.doesNotMatch(today, /createTaskItem/);
   assert.doesNotMatch(calendar, /createTaskItem/);
 });
+
+test("workspace switches never expose bill projections from the previous logical workspace", async () => {
+  const hook = await readFile(new URL("../components/use-projected-bills.ts", import.meta.url), "utf8");
+  assert.match(hook, /workspaceId: ProductWorkspaceId \| null/);
+  assert.match(hook, /setState\(\{ workspaceId, occurrences: \[\], loading: true, error: "" \}\)/);
+  assert.match(hook, /if \(state\.workspaceId !== workspaceId\)/);
+  assert.match(hook, /return \{ occurrences: \[\], loading: true, error: "" \}/);
+});
+
+test("calendar ordering preserves same-source order while placing bills before tasks on the same day", async () => {
+  const calendar = await readFile(new URL("../components/task-calendar.tsx", import.meta.url), "utf8");
+  assert.match(calendar, /function compareCalendarProjection/);
+  assert.match(calendar, /if \(left\.source === right\.source\) return 0/);
+  assert.match(calendar, /return left\.source === "BILL" \? -1 : 1/);
+  assert.match(calendar, /\.toSorted\(compareCalendarProjection\)/);
+});

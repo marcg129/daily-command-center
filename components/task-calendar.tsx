@@ -42,6 +42,13 @@ function entryTime(entry: TaskCalendarEntry) {
   return new Intl.DateTimeFormat("en-US", { timeZone: PRODUCT_TIME_ZONE, hour: "numeric", minute: "2-digit" }).format(new Date(entry.timestamp));
 }
 
+function compareCalendarProjection(left: CalendarProjection, right: CalendarProjection) {
+  const byDate = left.date.localeCompare(right.date);
+  if (byDate !== 0) return byDate;
+  if (left.source === right.source) return 0;
+  return left.source === "BILL" ? -1 : 1;
+}
+
 function CalendarItem({
   entry,
   onOpenTask,
@@ -98,7 +105,7 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
   const entries = useMemo<CalendarProjection[]>(() => [
     ...taskEntries.map((entry) => ({ source: "TASK" as const, id: `task:${entry.id}`, date: entry.date, taskEntry: entry })),
     ...projectedBills.occurrences.map((entry) => ({ source: "BILL" as const, id: `bill:${entry.workspaceId}:${entry.occurrence.occurrenceId}`, date: entry.occurrence.dueDate, billEntry: entry })),
-  ].toSorted((left, right) => left.date.localeCompare(right.date) || (left.source === "BILL" ? -1 : 1)), [projectedBills.occurrences, taskEntries]);
+  ].toSorted(compareCalendarProjection), [projectedBills.occurrences, taskEntries]);
   const days = useMemo(() => monthCalendarDays(month), [month]);
   const byDate = useMemo(() => Map.groupBy(entries, (entry) => entry.date), [entries]);
   const agenda = entries;
