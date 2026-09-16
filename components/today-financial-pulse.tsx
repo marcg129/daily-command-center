@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CircleAlert, RefreshCw, WalletCards } from "lucide-react";
 import { billProjectionToday } from "@/lib/bill-projections";
-import { loadHostedApplicationSession } from "@/lib/runtime/browser-runtime";
+import { browserRuntimeMode, loadHostedApplicationSession } from "@/lib/runtime/browser-runtime";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import type { HostedBill, HostedBillOccurrence } from "@/lib/runtime/hosted-bills";
 import type {
@@ -56,6 +56,7 @@ function formatDateOnly(value: string): string {
 
 export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorkspaceId }) {
   const today = billProjectionToday();
+  const [hosted, setHosted] = useState(false);
   const [income, setIncome] = useState<IncomeSummary>({ incomeSources: [], occurrences: [] });
   const [bills, setBills] = useState<BillsSummary>({ bills: [], occurrences: [] });
   const [baseline, setBaseline] = useState<HostedCashflowBaseline | null>(null);
@@ -65,6 +66,12 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    setHosted(browserRuntimeMode(window.location.hostname) === "hosted");
+  }, []);
+
+  useEffect(() => {
+    if (!hosted) return;
+
     const controller = new AbortController();
     const requestWorkspaceId = workspaceId;
 
@@ -122,7 +129,7 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
 
     void load();
     return () => controller.abort();
-  }, [nonce, workspaceId]);
+  }, [hosted, nonce, workspaceId]);
 
   const forecast = useMemo(() => {
     if (loadedWorkspaceId !== workspaceId) return null;
@@ -136,6 +143,8 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
       baseline,
     });
   }, [baseline, bills.bills, bills.occurrences, income.incomeSources, income.occurrences, loadedWorkspaceId, today, workspaceId]);
+
+  if (!hosted) return null;
 
   const next = forecast?.nextPayday ?? null;
   const showLoading = loading || loadedWorkspaceId !== workspaceId;
