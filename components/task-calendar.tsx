@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, CalendarDays, ChevronLeft, ChevronRight, Clock3, ListTodo, WalletCards } from "lucide-react";
 import { billAmountPresentation } from "@/lib/bill-ui";
 import {
@@ -41,7 +42,17 @@ function entryTime(entry: TaskCalendarEntry) {
   return new Intl.DateTimeFormat("en-US", { timeZone: PRODUCT_TIME_ZONE, hour: "numeric", minute: "2-digit" }).format(new Date(entry.timestamp));
 }
 
-function CalendarItem({ entry, onOpenTask, compact = false }: { entry: CalendarProjection; onOpenTask: (taskId: TaskItem["id"]) => void; compact?: boolean }) {
+function CalendarItem({
+  entry,
+  onOpenTask,
+  onOpenBill,
+  compact = false,
+}: {
+  entry: CalendarProjection;
+  onOpenTask: (taskId: TaskItem["id"]) => void;
+  onOpenBill: (workspaceId: ProductWorkspaceId) => void;
+  compact?: boolean;
+}) {
   if (entry.source === "BILL") {
     const projected = entry.billEntry;
     const amount = billAmountPresentation(projected.bill, projected.occurrence);
@@ -51,7 +62,7 @@ function CalendarItem({ entry, onOpenTask, compact = false }: { entry: CalendarP
       type="button"
       className={`calendar-item ${overdue ? "is-overdue" : ""}`}
       style={{ borderLeftColor: "var(--teal)" }}
-      onClick={() => window.location.assign(`/bills?workspaceId=${encodeURIComponent(projected.workspaceId)}`)}
+      onClick={() => onOpenBill(projected.workspaceId)}
       aria-label={`${projected.bill.name}, bill due ${projected.occurrence.dueDate}, ${amount.label}${overdue ? ", overdue" : ""}${workspaceLabel}`}
       title={`${projected.bill.name} · Bill · ${amount.label}`}
     >
@@ -77,6 +88,7 @@ function CalendarItem({ entry, onOpenTask, compact = false }: { entry: CalendarP
 }
 
 export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskItem[]; workspaceId: ProductWorkspaceId; onOpenTask: (taskId: TaskItem["id"]) => void }) {
+  const router = useRouter();
   const today = productToday();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [view, setView] = useState<"month" | "agenda">("month");
@@ -91,6 +103,7 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
   const byDate = useMemo(() => Map.groupBy(entries, (entry) => entry.date), [entries]);
   const agenda = entries;
   const selectedEntries = selectedDate ? byDate.get(selectedDate) || [] : [];
+  const openBill = (targetWorkspaceId: ProductWorkspaceId) => router.push(`/bills?workspaceId=${encodeURIComponent(targetWorkspaceId)}`);
   const moveMonth = (amount: number) => { setMonth((value) => shiftCalendarMonth(value, amount)); setSelectedDate(undefined); };
   const onMonthKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || (event.key !== "PageUp" && event.key !== "PageDown")) return;
@@ -106,10 +119,10 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
       <p id="calendar-keyboard-help" className="sr-only">Use Page Up and Page Down to move between months. Select a date to show all task and bill entries for that day.</p>
       <div className="calendar-toolbar"><button aria-label="Previous month" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button><h2 aria-live="polite">{monthLabel(month)}</h2><button aria-label="Next month" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button><button className="calendar-today" onClick={() => { setMonth(today.slice(0, 7)); setSelectedDate(today); }}>Today</button></div>
       <div className="calendar-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="calendar-grid">{days.map((date) => { const dayEntries = byDate.get(date) || []; return <section key={date} className={`calendar-day ${date.slice(0, 7) !== month ? "outside-month" : ""} ${date === today ? "is-today" : ""} ${date === selectedDate ? "is-selected" : ""}`} aria-label={dateLabel(date)}><button type="button" className="calendar-date" aria-pressed={date === selectedDate} aria-label={`Show ${dayEntries.length || "no"} calendar ${dayEntries.length === 1 ? "entry" : "entries"} for ${dateLabel(date)}`} onClick={() => setSelectedDate(date)}><time dateTime={date}>{Number(date.slice(-2))}</time></button><div>{dayEntries.slice(0, 3).map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} compact />)}{dayEntries.length > 3 && <button type="button" className="calendar-more" onClick={() => setSelectedDate(date)} aria-label={`Show ${dayEntries.length - 3} more entries for ${dateLabel(date)}`}>+{dayEntries.length - 3} more</button>}</div></section>; })}</div>
-      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} />) : <p>No task due dates, reminders, follow-ups, or bill obligations on this day.</p>}</div></div>}
+      <div className="calendar-grid">{days.map((date) => { const dayEntries = byDate.get(date) || []; return <section key={date} className={`calendar-day ${date.slice(0, 7) !== month ? "outside-month" : ""} ${date === today ? "is-today" : ""} ${date === selectedDate ? "is-selected" : ""}`} aria-label={dateLabel(date)}><button type="button" className="calendar-date" aria-pressed={date === selectedDate} aria-label={`Show ${dayEntries.length || "no"} calendar ${dayEntries.length === 1 ? "entry" : "entries"} for ${dateLabel(date)}`} onClick={() => setSelectedDate(date)}><time dateTime={date}>{Number(date.slice(-2))}</time></button><div>{dayEntries.slice(0, 3).map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} compact />)}{dayEntries.length > 3 && <button type="button" className="calendar-more" onClick={() => setSelectedDate(date)} aria-label={`Show ${dayEntries.length - 3} more entries for ${dateLabel(date)}`}>+{dayEntries.length - 3} more</button>}</div></section>; })}</div>
+      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} />) : <p>No task due dates, reminders, follow-ups, or bill obligations on this day.</p>}</div></div>}
     </section> : <section className="agenda-panel" aria-label="Task and bill calendar agenda">
-      {agenda.length ? Array.from(Map.groupBy(agenda, (entry) => entry.date)).map(([date, dateEntries]) => <div className="agenda-day" key={date}><div><time dateTime={date}>{dateLabel(date, "short")}</time><span>{date === today ? "Today" : ""}</span></div><div>{dateEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} />)}</div></div>) : <div className="calendar-empty"><CalendarDays size={28} /><h2>No scheduled task or bill dates</h2><p>Add a task date or an active bill occurrence and it will appear here.</p></div>}
+      {agenda.length ? Array.from(Map.groupBy(agenda, (entry) => entry.date)).map(([date, dateEntries]) => <div className="agenda-day" key={date}><div><time dateTime={date}>{dateLabel(date, "short")}</time><span>{date === today ? "Today" : ""}</span></div><div>{dateEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} />)}</div></div>) : <div className="calendar-empty"><CalendarDays size={28} /><h2>No scheduled task or bill dates</h2><p>Add a task date or an active bill occurrence and it will appear here.</p></div>}
     </section>}
     {projectedBills.error && <p className="calendar-source-note"><WalletCards size={14} /> Bills could not be included right now: {projectedBills.error}</p>}
     <p className="calendar-source-note"><CalendarDays size={14} /> Derived from canonical tasks and bill occurrences. Calendar items do not create separate records.</p>
