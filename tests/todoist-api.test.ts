@@ -23,12 +23,24 @@ test("lists only the configured project with stable cursor pagination and bearer
     calls.push({ url, init });
     if (calls.length === 1) {
       return jsonResponse({
-        results: [{ id: "task-a", content: "A", description: "workspace: personal", labels: ["capture"] }],
+        results: [{
+          id: "task-a",
+          content: "A",
+          description: "workspace: personal",
+          labels: ["capture"],
+          added_at: "2026-09-16T12:00:01.000Z",
+        }],
         next_cursor: "opaque cursor/+==",
       });
     }
     return jsonResponse({
-      results: [{ id: "task-b", content: "B", description: "workspace: indelitech", labels: [] }],
+      results: [{
+        id: "task-b",
+        content: "B",
+        description: "workspace: indelitech",
+        labels: [],
+        added_at: "2026-09-16T12:00:02.000Z",
+      }],
       next_cursor: null,
     });
   };
@@ -37,6 +49,10 @@ test("lists only the configured project with stable cursor pagination and bearer
   const tasks = await client.listRelayTasks();
 
   assert.deepEqual(tasks.map((task) => task.id), ["task-a", "task-b"]);
+  assert.deepEqual(tasks.map((task) => task.addedAt), [
+    "2026-09-16T12:00:01.000Z",
+    "2026-09-16T12:00:02.000Z",
+  ]);
   assert.equal(calls.length, 2);
   const first = new URL(calls[0].url);
   const second = new URL(calls[1].url);
@@ -49,6 +65,18 @@ test("lists only the configured project with stable cursor pagination and bearer
   assert.equal(second.searchParams.get("limit"), "200");
   assert.equal(second.searchParams.get("cursor"), "opaque cursor/+==");
   assert.equal(new Headers(calls[0].init?.headers).get("authorization"), `Bearer ${token}`);
+});
+
+test("rejects task listings without stable added-at metadata", async () => {
+  const client = createTodoistApiClient({
+    token,
+    projectId,
+    fetcher: async () => jsonResponse({
+      results: [{ id: "task-a", content: "A", description: "workspace: personal", labels: [] }],
+      next_cursor: null,
+    }),
+  });
+  await assert.rejects(client.listRelayTasks(), /invalid task payload/i);
 });
 
 test("closes a relay task with the Todoist v1 close endpoint", async () => {
