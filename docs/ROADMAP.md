@@ -1,6 +1,6 @@
 # Project roadmap
 
-Last updated: 2026-09-13
+Last updated: 2026-09-16
 
 This document is the canonical near-term delivery order. Completed milestone notes preserve implementation detail; this roadmap records the current boundary and what comes next.
 
@@ -10,121 +10,135 @@ This document is the canonical near-term delivery order. Completed milestone not
 | --- | --- | --- |
 | 1G-A | **Complete, merged, deployed, and verified** | Durable application users, principals, workspace memberships, and server authorization |
 | 1G-B | **Complete, merged, deployed, and verified** | Physical per-user workspace isolation, conversational ChatGPT task capture, and stronger overdue treatment |
-| 1G-C | **Active next milestone** | Move the user-facing web app to `command.coreyg.dev` while preserving Cloudflare Access protection and rollback safety |
+| 1G-C | **Complete, merged, deployed, and verified** | `command.coreyg.dev` Worker Custom Domain, Cloudflare Access protection, DNS/DNSSEC, rollback route |
+| 1G-D | **Complete, merged, deployed, and verified** | First-class Bills & Obligations model, authorized API, management UI, recurrence, resolution history |
+| 1G-E | **Complete, merged, deployed, and verified** | Canonical Bills projection into Today and Calendar without fake task rows |
+| 1G-F | **Active next milestone** | Payday schedules and workspace-scoped cash-flow forecasting without bank linking |
 
-Milestones 1G-A and 1G-B are closed. Do not reopen them unless a regression or security problem is discovered.
+Milestones 1G-A through 1G-E are closed. Do not reopen them unless a regression, security issue, or explicitly approved enhancement requires it.
 
-## Milestone 1G-A — User/workspace ownership foundation
+## Closed milestone references
 
-Completed and verified in production.
+### 1G-A — User/workspace ownership foundation
 
-Delivered:
+Delivered durable application users, cryptographically verified principals, role-bearing memberships, and fail-closed server authorization.
 
-- durable application users;
-- cryptographically verified authentication-principal mappings;
-- role-bearing workspace memberships;
-- membership-based server authorization; and
-- fail-closed cross-user/cross-workspace protection.
+See `docs/MILESTONE-1G-A-USER-WORKSPACE-OWNERSHIP.md`.
 
-See `docs/MILESTONE-1G-A-USER-WORKSPACE-OWNERSHIP.md` for implementation detail.
+### 1G-B — Multi-user identity + conversational task capture
 
-## Milestone 1G-B — Multi-user identity + conversational task capture
+Delivered per-user physical workspace instances, logical-to-physical workspace resolution, ChatGPT task capture, and stronger overdue visibility.
 
-Completed and verified in production on 2026-09-13.
+See:
 
-### 1G-B1 — Physical workspace instances
+- `docs/MILESTONE-1G-B1-WORKSPACE-INSTANCES.md`
+- `docs/MILESTONE-1G-B2-CONVERSATIONAL-CAPTURE.md`
+- `docs/MILESTONE-1G-B3-OVERDUE-VISIBILITY.md`
+- `docs/MILESTONE-1G-B-CLOSEOUT.md`
 
-Delivered:
+### 1G-C — `command.coreyg.dev`
 
-- separation of the logical user-facing workspace key (`personal` / `indelitech`) from the exact physical D1 workspace ID;
-- preservation of Marc's existing physical `personal` and `indelitech` rows without moving production data;
-- support for another user to map logical Personal to a different physical workspace;
-- physical-workspace isolation for tasks, visibility, collector snapshots, and workspace-domain data;
-- an explicit physical `workspace_rollups` policy preserving Marc's Indelitech-to-Personal roll-up; and
-- fail-closed handling for unmapped, disabled, ambiguous, unauthorized, or forged workspace access.
+Delivered the canonical Worker Custom Domain, preserved Cloudflare Access, kept the old `workers.dev` hostname as an Access-protected rollback route, and left the MCP Worker independent.
 
-See `docs/MILESTONE-1G-B1-WORKSPACE-INSTANCES.md`.
+See `docs/MILESTONE-1G-C-CUSTOM-DOMAIN.md`.
 
-### 1G-B2 — Conversational Daily Command Center capture
+### 1G-D — Bills & Obligations
 
-Delivered:
+Delivered a first-class financial-obligation domain rather than extending Tasks with money fields. Bills use physical workspace ownership, integer minor-unit money, explicit currency, deterministic date-only recurrence, concrete occurrence history, fixed/variable amount semantics, AutoPay as informational state only, and archive-not-delete product flow.
 
-- `SEND TO TASKS` as the canonical explicit capture command;
-- direct `create_task` for an unambiguous explicit user capture request without a mandatory preview/reconfirmation loop;
-- confirmation before persistence when a task is merely inferred from ordinary conversation;
-- reuse of clear conversation context without asking the user to restate known fields;
-- a future-ready `skills/daily-command-center-tasks/SKILL.md` artifact;
-- documented ChatGPT platform limitations around app/Skill availability, `@` invocation, and product-level action confirmation; and
-- capture tests proving the same per-user physical-workspace boundary used by hosted routes.
+Delivered slices:
 
-The backend remains authoritative for identity, workspace membership, authorization, idempotency, and persistence. ChatGPT invocation mechanics are intentionally replaceable.
+- 1G-D1: schema, validation, recurrence engine;
+- 1G-D2: authorized D1 repository and hosted API;
+- 1G-D3: Bills management UI.
 
-See `docs/MILESTONE-1G-B2-CONVERSATIONAL-CAPTURE.md`.
+See:
 
-### 1G-B3 — Stronger overdue visibility
+- `docs/MILESTONE-1G-D-BILLS-DESIGN.md`
+- `docs/MILESTONE-1G-D1-BILLS-CORE.md`
+- `docs/MILESTONE-1G-D2-BILLS-API.md`
+- `docs/MILESTONE-1G-D3-BILLS-UI.md`
 
-Delivered:
+### 1G-E — Bills in Today and Calendar
 
-- deterministic product-timezone overdue age labels such as `OVERDUE · 1 DAY`;
-- a prominent overdue count near “Needs action today”;
-- restrained danger-border/tint treatment for overdue Today cards and canonical task rows;
-- a visually distinct 45-day Overdue horizon row;
-- separate overdue and priority signals; and
-- explicit light/dark styling with no flashing or urgency animation.
+Delivered canonical open Bill occurrence projections into Today and Calendar. Personal rolls up authorized Personal + Indelitech obligations; Indelitech remains Indelitech-only. Projections never create Task rows and route back to the canonical Bills surface.
 
-The existing overdue-first attention ordering and stored priority semantics were preserved.
+Production acceptance verified create/projection/workspace isolation/canonical navigation/cancel/archive behavior.
 
-See `docs/MILESTONE-1G-B3-OVERDUE-VISIBILITY.md`.
+See `docs/MILESTONE-1G-E-BILL-PROJECTIONS.md`.
 
-## Milestone 1G-C — `command.coreyg.dev` custom domain
+## Milestone 1G-F — Payday & Cash-Flow Forecasting
 
 ### Goal
 
-Make `https://command.coreyg.dev` the canonical user-facing web address for Daily Command Center without weakening Cloudflare Access, changing application data, or coupling the web-domain transition to the separate task-capture MCP endpoint.
+Answer the next practical money question after Bills: **what obligations are due before my next income arrives, and what does the known cash picture look like?**
 
-The current web deployment is a Cloudflare Worker, so this milestone should use a **Worker Custom Domain**, not a Pages-domain migration. Cloudflare can attach a Custom Domain directly to a Worker, create the DNS record, and provision the certificate when the hostname belongs to an active Cloudflare zone.
+1G-F must remain useful without requiring bank credentials or transaction feeds. It introduces first-class expected-income/payday schedules and an optional manual cash baseline, then combines those records with canonical open Bill occurrences.
 
-### Preconditions
+### Product rules
 
-Before changing production routing, verify in Cloudflare that:
-
-- `coreyg.dev` is an active zone in the same Cloudflare account, or onboard it and complete the registrar nameserver change first;
-- `command.coreyg.dev` does not already have a conflicting CNAME or other incompatible DNS record; and
-- the existing Daily Command Center Access application can be extended to protect `command.coreyg.dev` while preserving its current policies and application audience.
-
-Do not guess these account-level facts from repository configuration.
+- Income/payday records are first-class financial records, not Tasks and not negative Bills.
+- Money remains integer minor units with explicit currency.
+- Expected income and actual received income are distinct states.
+- Variable or unknown income remains visibly uncertain; the app never invents an amount.
+- Open Bills remain the canonical outgoing obligations. Forecasting reads them; it does not duplicate or mutate them.
+- A manual cash baseline is optional. Without one, the product can still show bills due before payday and expected income, but must not fabricate a projected balance.
+- Forecast output must distinguish exact, estimated, and unknown amounts.
+- Do not label any forecast number “safe to spend.” It is a projection from known user-entered records, not a bank-verified balance.
+- Financial netting is workspace-scoped. Personal and Indelitech money are not silently combined merely because Personal Today/Calendar can visually roll up Indelitech work.
+- Bank/card linking, transaction import/matching, payment execution, credentials, and automated balance detection remain out of scope.
 
 ### Delivery order
 
-1. Record the current production Worker, Access application, audience, and rollback hostname before any routing change.
-2. Add `command.coreyg.dev` as the web Worker's Custom Domain using Wrangler configuration (`custom_domain: true`) only after the Cloudflare zone prerequisite is confirmed.
-3. Add/protect the new public hostname in the existing Cloudflare Access application when possible so the current policy and audience remain stable. Do not create a replacement Access application unless the existing one cannot safely cover the hostname.
-4. Update protected-deploy validation so the committed custom-domain posture is checked before deployment.
-5. Deploy through the existing owner-authorized current-main gate.
-6. Verify from the public Internet that unauthenticated access is intercepted by Access and authenticated access reaches the same hosted application/session/workspace boundary.
-7. Verify hosted APIs, Personal/Indelitech switching, task reads/writes, Intel, and existing identity isolation through the new hostname.
-8. Keep the current Access-protected `workers.dev` web hostname only as a short rollback path during cutover. After the custom domain is verified, decide in a separate hardening step whether to disable the web Worker's `workers.dev` route. Do not change the MCP Worker's hostname merely to match the web domain.
+#### 1G-F1 — Income + forecast core
 
-### 1G-C acceptance criteria
+Add the durable income/payday schema, concrete income occurrences, optional workspace cash baseline, runtime validation, deterministic pay-schedule generation, and pure forecast math. No UI or hosted mutation API in this slice.
 
-- `https://command.coreyg.dev` resolves to the production Daily Command Center Worker with a valid Cloudflare-managed certificate.
-- An unauthenticated request to the custom hostname cannot reach application content without passing Cloudflare Access.
-- The existing authorized user still resolves to the same application user and logical Personal/Indelitech memberships.
-- No task, workspace, D1, KV, Intel, or MCP data migration is required.
-- Cross-user and cross-workspace authorization remains unchanged.
-- The protected deployment workflow verifies the committed domain/security posture before deploying.
-- The old web hostname is either retained temporarily as an Access-protected rollback path or intentionally retired after verification; it is never left as an unprotected bypass.
-- The task-capture MCP endpoint remains independent unless a separate tested migration is intentionally approved.
+Required schedule support should cover:
 
-### Explicitly deferred beyond 1G-C
+- one-time income;
+- every-N-weeks schedules, including weekly/biweekly;
+- monthly/yearly anchor or last-day schedules; and
+- common semimonthly schedules such as the 1st/15th or 15th/last-day pattern without duplicate short-month dates.
 
-Do not bundle the following into the domain transition:
+#### 1G-F2 — Authorized hosted income API
 
-- Household product UI or invitations;
-- Bills, banking, or full budgeting;
-- PWA/native mobile packaging;
-- Home Screen or Lock Screen widgets;
-- location/Focus behavior; or
-- unrelated feature-level RBAC expansion.
+Add membership-authorized D1 repositories and hosted routes for income sources, occurrences, received/skipped/cancelled resolution, and the manual cash baseline. Reuse the same logical-to-physical workspace boundary as Tasks and Bills. Financial responses remain `Cache-Control: no-store`.
 
-Those belong to later productization milestones after the canonical web domain is stable.
+#### 1G-F3 — Cash-flow surface
+
+Add a focused hosted surface that shows, for the selected workspace:
+
+- next expected payday/date and known amount;
+- overdue/open Bills and Bills due before the next payday;
+- Bills due on payday separately;
+- exact/estimated/unknown obligation totals;
+- optional manually entered cash baseline; and
+- projected known balance before/after payday only when sufficient data exists.
+
+The UI must explain uncertainty instead of converting unknown values to zero.
+
+### Forecast window semantics
+
+For a next payday `P` and product date `T`:
+
+- overdue/open Bills with `dueDate < T` remain obligations and are included;
+- “due before payday” means open Bills with `dueDate < P`;
+- Bills with `dueDate === P` are shown separately because deposit/payment ordering on the same day is not assumed;
+- next-payday income aggregates expected income occurrences on the earliest expected income date at or after `T`;
+- known monetary totals are computed only within one currency; and
+- unknown amounts remain separate counts/labels.
+
+### Explicitly deferred beyond 1G-F
+
+- Plaid or other bank/account linking;
+- automatic transaction matching or bill detection;
+- bank-verified balances;
+- payment initiation;
+- credit-card payoff optimization;
+- envelope/category budgeting;
+- Household invitations/shared-family finance UI;
+- investment tracking; and
+- financial-advice scoring or “safe to spend” claims.
+
+The next milestone after 1G-F should be chosen from observed product use rather than precommitted now.
