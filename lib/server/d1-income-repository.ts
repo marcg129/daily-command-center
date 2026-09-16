@@ -66,6 +66,10 @@ function sourceFromRow(row: Row, workspaceKey: ProductWorkspaceId): HostedIncome
   };
 }
 
+function materializationStartDateFromRow(row: Row): string | null {
+  return typeof row.materialization_start_date === "string" ? row.materialization_start_date : null;
+}
+
 function occurrenceFromRow(row: Row): HostedIncomeOccurrence {
   return {
     occurrenceId: String(row.occurrence_id),
@@ -150,7 +154,7 @@ export class D1IncomeRepository {
   }
 
   private async getSourceRow(sourceId: string, physicalWorkspaceId: string): Promise<Row | null> {
-    return this.database.prepare(`SELECT ${sourceColumns} FROM income_sources
+    return this.database.prepare(`SELECT ${sourceColumns}, materialization_start_date FROM income_sources
       WHERE income_source_id=? AND primary_workspace_id=?`)
       .bind(sourceId, physicalWorkspaceId).first<Row>();
   }
@@ -181,9 +185,16 @@ export class D1IncomeRepository {
     return incomePayDatesInRange(core, { startDate: actualStart, endDate });
   }
 
-  private defaultMaterializationStart(core: IncomeDefinitionCore, today: string): string {
-    if (core.recurrenceUnit === "NONE") return core.scheduleStartDate;
-    return core.scheduleStartDate > today ? core.scheduleStartDate : today;
+  private defaultMaterializationStart(
+    core: IncomeDefinitionCore,
+    today: string,
+    materializationStartDate: string | null = null,
+  ): string {
+    let start = core.recurrenceUnit === "NONE"
+      ? core.scheduleStartDate
+      : core.scheduleStartDate > today ? core.scheduleStartDate : today;
+    if (materializationStartDate !== null && materializationStartDate > start) start = materializationStartDate;
+    return start;
   }
 
   async listSummary(includeArchived = false): Promise<Readonly<{
@@ -196,17 +207,24 @@ export class D1IncomeRepository {
     const today = dateInProductTimeZone(now);
     const horizon = addMonthsClamped(today, 12);
     const archiveClause = includeArchived ? "" : "AND status <> 'ARCHIVED'";
-    const sourceRows = (await this.database.prepare(`SELECT ${sourceColumns} FROM income_sources
+    const sourceRows = (await this.database.prepare(`SELECT ${sourceColumns}, materialization_start_date FROM income_sources
       WHERE primary_workspace_id=? ${archiveClause} ORDER BY name, income_source_id`)
       .bind(instance.workspaceId).all<Row>()).results ?? [];
     const incomeSources = sourceRows.map((row) => sourceFromRow(row, instance.workspaceKey));
 
-    const materialization = incomeSources.flatMap((source) => this.occurrenceInsertStatements(
-      source.incomeSourceId,
-      source,
-      this.materializationDates(source, this.defaultMaterializationStart(source, today), horizon),
-      timestamp,
-    ));
+    const materialization = sourceRows.flatMap((row) => {
+      const source = sourceFromRow(row, instance.workspaceKey);
+      return this.occurrenceInsertStatements(
+        source.incomeSourceId,
+        source,
+        this.materializationDates(
+          source,
+          this.defaultMaterializationStart(source, today, materializationStartDateFromRow(row)),
+          horizon,
+        ),
+        timestamp,
+      );
+    });
     if (materialization.length > 0) {
       const results = await this.database.batch(materialization);
       if (results.some((result) => !result.success)) throw new Error("Income occurrence materialization failed.");
@@ -309,6 +327,7 @@ export class D1IncomeRepository {
     const existingRow = await this.getSourceRow(sourceId, instance.workspaceId);
     if (!existingRow) throw new Error("Income source not found.");
     const existing = sourceFromRow(existingRow, instance.workspaceKey);
+    const existingMaterializationStartDate = materializationStartDateFromRow(existingRow);
     const shapeChanged = occurrenceShapeChanged(existing, core);
     const now = this.clock.now();
     const timestamp = now.toISOString();
@@ -322,18 +341,19 @@ export class D1IncomeRepository {
       throw new Error("Income edit effectiveDate is invalid.");
     }
 
+    const nextMaterializationStartDate = shapeChanged ? effectiveDate! : existingMaterializationStartDate;
     const statements: D1PreparedStatement[] = [this.database.prepare(`UPDATE income_sources SET
       name=?, payer=?, amount_mode=?, default_net_amount_minor=?, currency=?, schedule_start_date=?, recurrence_unit=?,
-      recurrence_interval=?, recurrence_day_mode=?, semimonth_day_one=?, semimonth_day_two=?, status=?, updated_at=?
+      recurrence_interval=?, recurrence_day_mode=?, semimonth_day_one=?, semimonth_day_two=?, status=?,
+      materialization_start_date=?, updated_at=?
       WHERE income_source_id=? AND primary_workspace_id=?`).bind(
       core.name, core.payer, core.amountMode, core.defaultNetAmountMinor, core.currency, core.scheduleStartDate,
       core.recurrenceUnit, core.recurrenceInterval, core.recurrenceDayMode, core.semimonthDayOne, core.semimonthDayTwo,
-      core.status, timestamp, sourceId, instance.workspaceId,
+      core.status, nextMaterializationStartDate, timestamp, sourceId, instance.workspaceId,
     )];
 
-    let generationStart = this.defaultMaterializationStart(core, today);
+    const generationStart = this.defaultMaterializationStart(core, today, nextMaterializationStartDate);
     if (shapeChanged) {
-      generationStart = effectiveDate! > core.scheduleStartDate ? effectiveDate! : core.scheduleStartDate;
       statements.push(this.database.prepare(`DELETE FROM income_occurrences
         WHERE income_source_id=? AND status='EXPECTED' AND pay_date>=?`).bind(sourceId, effectiveDate));
     }
@@ -380,7 +400,11 @@ export class D1IncomeRepository {
       input.action, receivedAmountMinor, receivedOn, instance.userId, timestamp, note, timestamp,
       occurrenceIdValue, instance.workspaceId,
     )];
-    const dates = this.materializationDates(source, this.defaultMaterializationStart(source, today), horizon);
+    const dates = this.materializationDates(
+      source,
+      this.defaultMaterializationStart(source, today, materializationStartDateFromRow(sourceRow)),
+      horizon,
+    );
     statements.push(...this.occurrenceInsertStatements(source.incomeSourceId, source, dates, timestamp));
     const results = await this.database.batch(statements);
     if (results.some((result) => !result.success)) throw new Error("Income occurrence resolution failed.");
