@@ -14,8 +14,9 @@ This document is the canonical near-term delivery order. Completed milestone not
 | 1G-D | **Complete, merged, deployed, and verified** | First-class Bills & Obligations model, authorized API, management UI, recurrence, resolution history |
 | 1G-E | **Complete, merged, deployed, and verified** | Canonical Bills projection into Today and Calendar without fake task rows |
 | 1G-F | **Complete, merged, deployed, and verified** | Payday schedules, authorized Income APIs, manual cash baseline, and workspace-scoped Cash Flow forecasting without bank linking |
+| 1G-G | **In progress** | Read-only hosted Today Financial Pulse using the canonical 1G-F forecast, with strict per-workspace financial isolation |
 
-Milestones 1G-A through 1G-F are closed. Do not reopen them unless a regression, security issue, or explicitly approved enhancement requires it.
+Milestones 1G-A through 1G-F are closed. 1G-G is the active product milestone. Do not reopen closed milestones unless a regression, security issue, or explicitly approved enhancement requires it.
 
 ## Closed milestone references
 
@@ -156,6 +157,38 @@ For a next payday `P` and product date `T`:
 - investment tracking; and
 - financial-advice scoring or “safe to spend” claims.
 
-## Next milestone
+## Active milestone 1G-G — Today Financial Pulse & Command Summary
 
-No 1G-G scope is committed yet. The next milestone should be selected from observed product use, friction, and highest-value workflow gaps now that 1G-A through 1G-F are live in production.
+Status: **In progress.**
+
+### Goal
+
+Make hosted Today reflect the live 1G-F money picture without turning Today into a second financial-management surface.
+
+The Financial Pulse is a read-only projection of existing canonical Income, Bills, and optional manual cash-baseline data. It reuses `buildPaydayForecast` and shows the selected workspace's next payday, expected income, Bills due before payday, projected known cash after payday when a baseline exists, and visible uncertainty.
+
+### Financial isolation boundary
+
+- Personal Financial Pulse reads Personal financial records only.
+- Indelitech Financial Pulse reads Indelitech financial records only.
+- Personal and Indelitech cash-flow totals are never rolled up or netted together.
+- Workspace switches fail closed so stale values cannot render under the newly selected workspace.
+- Local mode does not fetch or render hosted financial records.
+- Today performs no Bill, Income, baseline, transaction, bank, or payment mutation.
+
+See:
+
+- `docs/MILESTONE-1G-G-TODAY-FINANCIAL-PULSE.md`
+- `docs/superpowers/plans/2026-09-16-today-financial-pulse.md`
+
+## Parallel integration experiment — Todoist task ingress
+
+The Todoist relay is intentionally separate from 1G-G. The native ChatGPT Todoist integration has successfully created and read back a structured test task in a dedicated `Daily Command Center Inbox` project, preserving the metadata needed for deterministic import.
+
+The planned v0.1 bridge is:
+
+**ChatGPT → Todoist capture project → scheduled Cloudflare importer → canonical Daily Command Center task capture**
+
+Daily Command Center remains the system of record. The bridge should be idempotent, keep Personal/Indelitech task authorization intact, complete successful relay items, and leave failed items visible with a diagnostic marker/detail rather than silently dropping them.
+
+Implementation work remains isolated on the `integration/todoist-task-ingress` branch and does not change 1G-G acceptance criteria.
