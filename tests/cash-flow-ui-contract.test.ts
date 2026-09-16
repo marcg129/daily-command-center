@@ -27,3 +27,24 @@ test("workspace switcher exposes Cash Flow while preserving the active logical w
   assert.match(switcher, /\/cash-flow\?workspaceId=\$\{encodeURIComponent\(value\)\}/);
   assert.match(switcher, /showCashFlowLink/);
 });
+
+test("Cash Flow fails closed while a newly selected workspace loads", () => {
+  assert.match(cashFlow, /setLoadedWorkspaceId\(null\)/);
+  assert.match(cashFlow, /setIncome\(\{ incomeSources: \[\], occurrences: \[\] \}\)/);
+  assert.match(cashFlow, /setBills\(\{ bills: \[\], occurrences: \[\] \}\)/);
+  assert.match(cashFlow, /loadedWorkspaceId !== workspaceId/);
+  assert.match(cashFlow, /workspaceIdRef\.current === requestWorkspaceId/);
+});
+
+test("editing an income source preserves its existing currency", () => {
+  assert.match(cashFlow, /editingIncome\?\.currency \?\? "USD"/);
+  assert.match(cashFlow, /editing does not convert currencies/);
+});
+
+test("overdue expected income remains available for resolution", () => {
+  assert.match(cashFlow, /item\.status === "EXPECTED" && item\.payDate < today/);
+  assert.match(cashFlow, /Overdue expected income/);
+  assert.match(cashFlow, /openResolution\(occurrence, "RECEIVED"\)/);
+  assert.match(cashFlow, /openResolution\(occurrence, "SKIPPED"\)/);
+  assert.match(cashFlow, /openResolution\(occurrence, "CANCELLED"\)/);
+});

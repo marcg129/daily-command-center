@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   Archive,
@@ -185,7 +185,7 @@ function coreFromSource(source: HostedIncomeSource): IncomeDefinitionCore {
   };
 }
 
-function coreFromDraft(draft: IncomeDraft, status: HostedIncomeSource["status"]): IncomeDefinitionCore {
+function coreFromDraft(draft: IncomeDraft, status: HostedIncomeSource["status"], currency = "USD"): IncomeDefinitionCore {
   const amount = dollarsInputToMinor(draft.amount);
   if (draft.amountMode === "FIXED" && amount === null) throw new Error("Enter the normal net income amount.");
   const recurrenceInterval = draft.recurrenceUnit === "NONE" || draft.recurrenceUnit === "SEMIMONTH"
@@ -196,7 +196,7 @@ function coreFromDraft(draft: IncomeDraft, status: HostedIncomeSource["status"])
     payer: draft.payer.trim() || null,
     amountMode: draft.amountMode,
     defaultNetAmountMinor: amount,
-    currency: "USD",
+    currency,
     scheduleStartDate: draft.scheduleStartDate,
     recurrenceUnit: draft.recurrenceUnit,
     recurrenceInterval,
@@ -228,6 +228,7 @@ function summaryQualifier(summary: ForecastAmountSummary): string {
 export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: ProductWorkspaceId }) {
   const today = productToday();
   const [workspaceId, setWorkspaceId] = useState<ProductWorkspaceId>(initialWorkspaceId);
+  const workspaceIdRef = useRef(workspaceId);
   const [authorizedWorkspaceIds, setAuthorizedWorkspaceIds] = useState<ProductWorkspaceId[]>([]);
   const [initializing, setInitializing] = useState(true);
   const [runtimeError, setRuntimeError] = useState("");
@@ -235,6 +236,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
   const [bills, setBills] = useState<BillsSummary>({ bills: [], occurrences: [] });
   const [baseline, setBaseline] = useState<HostedCashflowBaseline | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadedWorkspaceId, setLoadedWorkspaceId] = useState<ProductWorkspaceId | null>(null);
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -267,6 +269,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
         if (cancelled) return;
         const selected = selectAuthorizedWorkspace(session.workspaces, initialWorkspaceId);
         setAuthorizedWorkspaceIds(session.workspaces.map(({ workspaceId: id }) => id));
+        workspaceIdRef.current = selected;
         setWorkspaceId(selected);
       } catch (caught) {
         if (!cancelled) setRuntimeError(caught instanceof Error ? caught.message : "Your Command Center identity could not be resolved.");
@@ -283,6 +286,13 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     const controller = new AbortController();
     const load = async () => {
       setLoading(true);
+      setLoadedWorkspaceId(null);
+      setIncome({ incomeSources: [], occurrences: [] });
+      setBills({ bills: [], occurrences: [] });
+      setBaseline(null);
+      setBaselineAmount("");
+      setBaselineDate(today);
+      setBaselineError("");
       setError("");
       try {
         const [incomeResponse, billsResponse, baselineResponse] = await Promise.all([
@@ -304,6 +314,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
           setBaselineAmount(loadedBaseline ? signedMinorToDollars(loadedBaseline.amountMinor) : "");
           setBaselineDate(loadedBaseline?.asOfDate ?? today);
           setBaselineError("");
+          setLoadedWorkspaceId(workspaceId);
         }
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Cash Flow could not be loaded.");
@@ -360,15 +371,31 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
 
   const payday = forecast.nextPayday?.date ?? null;
   const paydayIncome = useMemo(() => payday ? income.occurrences.filter((item) => item.status === "EXPECTED" && item.payDate === payday && item.currency === "USD") : [], [income.occurrences, payday]);
+  const overdueIncome = useMemo(() => income.occurrences.filter((item) => item.status === "EXPECTED" && item.payDate < today && item.currency === "USD"), [income.occurrences, today]);
   const billsBefore = useMemo(() => payday ? bills.occurrences.filter((item) => item.status === "OPEN" && item.dueDate < payday && item.currency === "USD") : [], [bills.occurrences, payday]);
   const billsOn = useMemo(() => payday ? bills.occurrences.filter((item) => item.status === "OPEN" && item.dueDate === payday && item.currency === "USD") : [], [bills.occurrences, payday]);
   const authorizedOptions = WORKSPACE_OPTIONS.filter(({ id }) => authorizedWorkspaceIds.includes(id));
 
   const selectWorkspace = (next: ProductWorkspaceId) => {
     if (!authorizedWorkspaceIds.includes(next)) return;
+    workspaceIdRef.current = next;
     setWorkspaceId(next);
+    setLoadedWorkspaceId(null);
+    setIncome({ incomeSources: [], occurrences: [] });
+    setBills({ bills: [], occurrences: [] });
+    setBaseline(null);
+    setBaselineAmount("");
+    setBaselineDate(today);
+    setBaselineError("");
+    setError("");
     setEditingIncome(undefined);
+    setFormError("");
+    setSaving(false);
+    setStatusPending("");
     setResolution(null);
+    setResolutionError("");
+    setResolving(false);
+    setBaselineSaving(false);
     const url = new URL(window.location.href);
     url.searchParams.set("workspaceId", next);
     window.history.replaceState({}, "", url);
@@ -391,7 +418,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
   let shapeChanged = false;
   if (editingIncome) {
     try {
-      shapeChanged = incomeOccurrenceShapeChanged(editingIncome, coreFromDraft(draft, editingIncome.status));
+      shapeChanged = incomeOccurrenceShapeChanged(editingIncome, coreFromDraft(draft, editingIncome.status, editingIncome.currency));
     } catch {
       shapeChanged = false;
     }
@@ -399,10 +426,11 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
 
   const saveIncome = async (event: FormEvent) => {
     event.preventDefault();
+    const requestWorkspaceId = workspaceId;
     setSaving(true);
     setFormError("");
     try {
-      const core = coreFromDraft(draft, editingIncome?.status ?? "ACTIVE");
+      const core = coreFromDraft(draft, editingIncome?.status ?? "ACTIVE", editingIncome?.currency ?? "USD");
       const changed = editingIncome ? incomeOccurrenceShapeChanged(editingIncome, core) : false;
       if (changed && !effectiveDate) throw new Error("Choose when schedule or amount changes should take effect.");
       const response = await fetch(`/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}`, {
@@ -414,17 +442,20 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Income source could not be saved."));
-      setEditingIncome(undefined);
-      setNonce((value) => value + 1);
+      if (workspaceIdRef.current === requestWorkspaceId) {
+        setEditingIncome(undefined);
+        setNonce((value) => value + 1);
+      }
     } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : "Income source could not be saved.");
+      if (workspaceIdRef.current === requestWorkspaceId) setFormError(caught instanceof Error ? caught.message : "Income source could not be saved.");
     } finally {
-      setSaving(false);
+      if (workspaceIdRef.current === requestWorkspaceId) setSaving(false);
     }
   };
 
   const changeIncomeStatus = async (source: HostedIncomeSource, status: HostedIncomeSource["status"]) => {
     if (status === "ARCHIVED" && !window.confirm(`Archive ${source.name}? Its occurrence history will be preserved.`)) return;
+    const requestWorkspaceId = workspaceId;
     setStatusPending(source.incomeSourceId);
     setError("");
     try {
@@ -435,11 +466,11 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Income source status could not be changed."));
-      setNonce((value) => value + 1);
+      if (workspaceIdRef.current === requestWorkspaceId) setNonce((value) => value + 1);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Income source status could not be changed.");
+      if (workspaceIdRef.current === requestWorkspaceId) setError(caught instanceof Error ? caught.message : "Income source status could not be changed.");
     } finally {
-      setStatusPending("");
+      if (workspaceIdRef.current === requestWorkspaceId) setStatusPending("");
     }
   };
 
@@ -457,6 +488,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
   const saveResolution = async (event: FormEvent) => {
     event.preventDefault();
     if (!resolution) return;
+    const requestWorkspaceId = workspaceId;
     setResolving(true);
     setResolutionError("");
     try {
@@ -473,17 +505,20 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Income occurrence could not be updated."));
-      setResolution(null);
-      setNonce((value) => value + 1);
+      if (workspaceIdRef.current === requestWorkspaceId) {
+        setResolution(null);
+        setNonce((value) => value + 1);
+      }
     } catch (caught) {
-      setResolutionError(caught instanceof Error ? caught.message : "Income occurrence could not be updated.");
+      if (workspaceIdRef.current === requestWorkspaceId) setResolutionError(caught instanceof Error ? caught.message : "Income occurrence could not be updated.");
     } finally {
-      setResolving(false);
+      if (workspaceIdRef.current === requestWorkspaceId) setResolving(false);
     }
   };
 
   const saveBaseline = async (event: FormEvent) => {
     event.preventDefault();
+    const requestWorkspaceId = workspaceId;
     setBaselineSaving(true);
     setBaselineError("");
     try {
@@ -496,31 +531,36 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Manual cash position could not be saved."));
       const saved = (payload as { baseline: HostedCashflowBaseline }).baseline;
-      setBaseline(saved);
-      setBaselineAmount(signedMinorToDollars(saved.amountMinor));
-      setBaselineDate(saved.asOfDate);
+      if (workspaceIdRef.current === requestWorkspaceId) {
+        setBaseline(saved);
+        setBaselineAmount(signedMinorToDollars(saved.amountMinor));
+        setBaselineDate(saved.asOfDate);
+      }
     } catch (caught) {
-      setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be saved.");
+      if (workspaceIdRef.current === requestWorkspaceId) setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be saved.");
     } finally {
-      setBaselineSaving(false);
+      if (workspaceIdRef.current === requestWorkspaceId) setBaselineSaving(false);
     }
   };
 
   const clearBaseline = async () => {
     if (!baseline || !window.confirm("Clear this manual cash position? Income and bill records will not be changed.")) return;
+    const requestWorkspaceId = workspaceId;
     setBaselineSaving(true);
     setBaselineError("");
     try {
       const response = await fetch(`/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Manual cash position could not be cleared."));
-      setBaseline(null);
-      setBaselineAmount("");
-      setBaselineDate(today);
+      if (workspaceIdRef.current === requestWorkspaceId) {
+        setBaseline(null);
+        setBaselineAmount("");
+        setBaselineDate(today);
+      }
     } catch (caught) {
-      setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be cleared.");
+      if (workspaceIdRef.current === requestWorkspaceId) setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be cleared.");
     } finally {
-      setBaselineSaving(false);
+      if (workspaceIdRef.current === requestWorkspaceId) setBaselineSaving(false);
     }
   };
 
@@ -530,6 +570,23 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
 
   if (runtimeError) {
     return <div className="app-shell" data-workspace={workspaceId}><main><div className="view"><section className={`panel ${styles.centerState}`}><CircleAlert size={30} /><h1>Cash Flow is unavailable here</h1><p>{runtimeError}</p><Link className="button button-ghost" href="/"><ArrowLeft size={15} /> Back to dashboard</Link></section></div></main></div>;
+  }
+
+  if (loadedWorkspaceId !== workspaceId) {
+    return <div className="app-shell" data-workspace={workspaceId}>
+      <header className="topbar">
+        <Link className="brand-lockup" href="/" aria-label="Back to Daily Command Center"><span className="brand-mark"><Activity size={18} /></span><span><b>DAILY COMMAND CENTER</b><small>PAYDAY & CASH FLOW</small></span></Link>
+        <WorkspaceSwitcher value={workspaceId} onChange={selectWorkspace} options={authorizedOptions} showCashFlowLink={false} />
+        <span aria-hidden="true" />
+        <Link className="button button-ghost" href="/"><ArrowLeft size={14} /> Dashboard</Link>
+      </header>
+      <main><div className="view"><section className={`panel ${styles.centerState}`}>
+        {loading ? <RefreshCw className={styles.spin} size={28} /> : <CircleAlert size={30} />}
+        <h1>{loading ? "Loading Cash Flow" : "Cash Flow could not be loaded"}</h1>
+        <p>{loading ? `Loading ${WORKSPACES[workspaceId].displayName} financial records…` : error}</p>
+        {!loading && <button className="button button-primary" type="button" onClick={() => setNonce((value) => value + 1)}>Retry</button>}
+      </section></div></main>
+    </div>;
   }
 
   const next = forecast.nextPayday;
@@ -569,6 +626,20 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
 
         <div className={styles.layoutGrid}>
           <div className={styles.stack}>
+            {overdueIncome.length > 0 && <section className={`panel ${styles.panelPad}`}>
+              <div className={styles.sectionHead}><div><p className="eyebrow">Needs resolution</p><h2>Overdue expected income</h2></div><span>{overdueIncome.length} overdue</span></div>
+              <div className={styles.forecastList}>{overdueIncome.map((occurrence) => {
+                const source = incomeById.get(occurrence.incomeSourceId);
+                if (!source) return null;
+                const amount = formatIncomeAmount(source, occurrence.expectedAmountMinor);
+                return <article className={`${styles.forecastRow} ${styles.overdue}`} key={occurrence.occurrenceId}>
+                  <div className={styles.dateBlock}><b>{formatDateOnly(occurrence.payDate)}</b><small>Overdue · still expected</small></div>
+                  <div className={styles.rowCopy}><h3>{source.name}</h3><p>{source.payer || incomeRecurrenceLabel(source)}</p></div>
+                  <div className={styles.amountBlock}><b>{amount.label}</b><small>{amount.qualifier}</small></div>
+                  <div className={styles.rowActions}><button className={styles.primaryAction} type="button" onClick={() => openResolution(occurrence, "RECEIVED")}><Check size={13} /> Received</button><button type="button" onClick={() => openResolution(occurrence, "SKIPPED")}><SkipForward size={13} /> Skip</button><button type="button" onClick={() => openResolution(occurrence, "CANCELLED")}><Ban size={13} /> Cancel</button></div>
+                </article>;
+              })}</div>
+            </section>}
             {!next ? <section className={`panel ${styles.emptyState}`}><CalendarDays size={28} /><h3>No upcoming payday yet</h3><p>Add an active income source with a future expected date. Cash Flow will then group open bills around that payday without changing the Bills ledger.</p><button className="button button-primary" onClick={openNewIncome}><Plus size={14} /> Add income source</button></section> : <>
               <section className={`panel ${styles.panelPad}`}>
                 <div className={styles.sectionHead}><div><p className="eyebrow">Expected deposits</p><h2>On {formatDateOnly(next.date)}</h2></div><span>{paydayIncome.length} expected</span></div>
@@ -649,7 +720,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
             <label><span>Name</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Paycheck" required /></label>
             <label><span>Payer</span><input value={draft.payer} onChange={(event) => setDraft({ ...draft, payer: event.target.value })} placeholder="Employer or client" /></label>
             <label><span>Amount type</span><select value={draft.amountMode} onChange={(event) => setDraft({ ...draft, amountMode: event.target.value as IncomeDraft["amountMode"] })}><option value="FIXED">Fixed / exact</option><option value="VARIABLE">Variable / estimated</option></select></label>
-            <label><span>Normal net amount</span><div className={styles.moneyInput}><i>$</i><input inputMode="decimal" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} placeholder={draft.amountMode === "VARIABLE" ? "Optional" : "1500.00"} /></div></label>
+            <label><span>Normal net amount</span><div className={styles.moneyInput}><i>{editingIncome?.currency ?? "$"}</i><input inputMode="decimal" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} placeholder={draft.amountMode === "VARIABLE" ? "Optional" : "1500.00"} /></div>{editingIncome && <small>Saved in {editingIncome.currency}; editing does not convert currencies.</small>}</label>
             <label><span>First expected pay date</span><input type="date" value={draft.scheduleStartDate} onChange={(event) => setDraft({ ...draft, scheduleStartDate: event.target.value })} required /></label>
             <label><span>Frequency</span><select value={draft.recurrenceUnit} onChange={(event) => setDraft({ ...draft, recurrenceUnit: event.target.value as IncomeRecurrenceUnit })}><option value="NONE">One-time</option><option value="WEEK">Weekly / every N weeks</option><option value="SEMIMONTH">Twice monthly</option><option value="MONTH">Monthly / every N months</option><option value="YEAR">Yearly / every N years</option></select></label>
             {draft.recurrenceUnit !== "NONE" && draft.recurrenceUnit !== "SEMIMONTH" && <label><span>Repeat every</span><input type="number" min="1" max="120" step="1" value={draft.recurrenceInterval} onChange={(event) => setDraft({ ...draft, recurrenceInterval: event.target.value })} required /></label>}
