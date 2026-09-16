@@ -13,9 +13,9 @@ This document is the canonical near-term delivery order. Completed milestone not
 | 1G-C | **Complete, merged, deployed, and verified** | `command.coreyg.dev` Worker Custom Domain, Cloudflare Access protection, DNS/DNSSEC, rollback route |
 | 1G-D | **Complete, merged, deployed, and verified** | First-class Bills & Obligations model, authorized API, management UI, recurrence, resolution history |
 | 1G-E | **Complete, merged, deployed, and verified** | Canonical Bills projection into Today and Calendar without fake task rows |
-| 1G-F | **Active next milestone** | Payday schedules and workspace-scoped cash-flow forecasting without bank linking |
+| 1G-F | **Complete, merged, deployed, and verified** | Payday schedules, authorized Income APIs, manual cash baseline, and workspace-scoped Cash Flow forecasting without bank linking |
 
-Milestones 1G-A through 1G-E are closed. Do not reopen them unless a regression, security issue, or explicitly approved enhancement requires it.
+Milestones 1G-A through 1G-F are closed. Do not reopen them unless a regression, security issue, or explicitly approved enhancement requires it.
 
 ## Closed milestone references
 
@@ -67,13 +67,28 @@ Production acceptance verified create/projection/workspace isolation/canonical n
 
 See `docs/MILESTONE-1G-E-BILL-PROJECTIONS.md`.
 
-## Milestone 1G-F — Payday & Cash-Flow Forecasting
+### 1G-F — Payday & Cash-Flow Forecasting
+
+Delivered first-class expected-income/payday schedules, authorized hosted Income and manual-baseline APIs, deterministic forecast math, and a hosted Cash Flow surface that combines canonical Income and Bill occurrences without bank linking or payment execution.
+
+Production acceptance verified next-payday display, due-before-payday and same-day Bill grouping, manual baseline projections, uncertainty treatment, Personal/Indelitech financial isolation, and cleanup of temporary acceptance records.
+
+See:
+
+- `docs/MILESTONE-1G-F-PAYDAY-CASHFLOW-DESIGN.md`
+- `docs/MILESTONE-1G-F2-INCOME-API.md`
+- `docs/MILESTONE-1G-F3-CASHFLOW-UI.md`
+- `docs/MILESTONE-1G-F-CLOSEOUT.md`
+
+## Closed milestone 1G-F — Payday & Cash-Flow Forecasting
+
+Status: **Complete, merged, deployed, and verified on 2026-09-16.**
 
 ### Goal
 
 Answer the next practical money question after Bills: **what obligations are due before my next income arrives, and what does the known cash picture look like?**
 
-1G-F must remain useful without requiring bank credentials or transaction feeds. It introduces first-class expected-income/payday schedules and an optional manual cash baseline, then combines those records with canonical open Bill occurrences.
+1G-F remains useful without requiring bank credentials or transaction feeds. It introduced first-class expected-income/payday schedules and an optional manual cash baseline, then combined those records with canonical open Bill occurrences.
 
 ### Product rules
 
@@ -83,18 +98,18 @@ Answer the next practical money question after Bills: **what obligations are due
 - Variable or unknown income remains visibly uncertain; the app never invents an amount.
 - Open Bills remain the canonical outgoing obligations. Forecasting reads them; it does not duplicate or mutate them.
 - A manual cash baseline is optional. Without one, the product can still show bills due before payday and expected income, but must not fabricate a projected balance.
-- Forecast output must distinguish exact, estimated, and unknown amounts.
-- Do not label any forecast number “safe to spend.” It is a projection from known user-entered records, not a bank-verified balance.
+- Forecast output distinguishes exact, estimated, and unknown amounts.
+- No forecast number is labeled “safe to spend.” It is a projection from known user-entered records, not a bank-verified balance.
 - Financial netting is workspace-scoped. Personal and Indelitech money are not silently combined merely because Personal Today/Calendar can visually roll up Indelitech work.
 - Bank/card linking, transaction import/matching, payment execution, credentials, and automated balance detection remain out of scope.
 
-### Delivery order
+### Delivered slices
 
 #### 1G-F1 — Income + forecast core
 
-Add the durable income/payday schema, concrete income occurrences, optional workspace cash baseline, runtime validation, deterministic pay-schedule generation, and pure forecast math. No UI or hosted mutation API in this slice.
+Added the durable income/payday schema, concrete income occurrences, optional workspace cash baseline, runtime validation, deterministic pay-schedule generation, and pure forecast math.
 
-Required schedule support should cover:
+Schedule support covers:
 
 - one-time income;
 - every-N-weeks schedules, including weekly/biweekly;
@@ -103,11 +118,11 @@ Required schedule support should cover:
 
 #### 1G-F2 — Authorized hosted income API
 
-Add membership-authorized D1 repositories and hosted routes for income sources, occurrences, received/skipped/cancelled resolution, and the manual cash baseline. Reuse the same logical-to-physical workspace boundary as Tasks and Bills. Financial responses remain `Cache-Control: no-store`.
+Added membership-authorized D1 repositories and hosted routes for income sources, occurrences, received/skipped/cancelled resolution, and the manual cash baseline. It reuses the same logical-to-physical workspace boundary as Tasks and Bills, and financial responses remain `Cache-Control: no-store`.
 
 #### 1G-F3 — Cash-flow surface
 
-Add a focused hosted surface that shows, for the selected workspace:
+Added a focused hosted surface that shows, for the selected workspace:
 
 - next expected payday/date and known amount;
 - overdue/open Bills and Bills due before the next payday;
@@ -116,7 +131,7 @@ Add a focused hosted surface that shows, for the selected workspace:
 - optional manually entered cash baseline; and
 - projected known balance before/after payday only when sufficient data exists.
 
-The UI must explain uncertainty instead of converting unknown values to zero.
+The UI explains uncertainty instead of converting unknown values to zero.
 
 ### Forecast window semantics
 
@@ -141,4 +156,6 @@ For a next payday `P` and product date `T`:
 - investment tracking; and
 - financial-advice scoring or “safe to spend” claims.
 
-The next milestone after 1G-F should be chosen from observed product use rather than precommitted now.
+## Next milestone
+
+No 1G-G scope is committed yet. The next milestone should be selected from observed product use, friction, and highest-value workflow gaps now that 1G-A through 1G-F are live in production.
