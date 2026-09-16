@@ -1,0 +1,45 @@
+name: Diagnose PR68 recovery patch
+
+on:
+  push:
+    branches:
+      - milestone/1g-f3-cashflow-ui
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: milestone/1g-f3-cashflow-ui
+          fetch-depth: 0
+      - name: Extract and check embedded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /cat > \/tmp\/pr68-review-fix\.patch/ { capture=1; next }
+            capture && /^[[:space:]]*PATCH[[:space:]]*$/ { exit }
+            capture { sub(/^          /, ""); print }
+          ' .github/workflows/pr68-apply-review-fix.yml > /tmp/pr68-review-fix.patch
+          set +e
+          git apply --check --verbose /tmp/pr68-review-fix.patch > /tmp/apply-check.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "git apply --check exit status: ${status}"
+            echo "head: $(git rev-parse HEAD)"
+            echo "cash-flow-view blob: $(git hash-object components/cash-flow-view.tsx)"
+            echo "cash-flow contract blob: $(git hash-object tests/cash-flow-ui-contract.test.ts)"
+            echo
+            cat /tmp/apply-check.log
+          } | tee /tmp/pr68-patch-diagnostic.txt
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr68-patch-diagnostic
+          path: /tmp/pr68-patch-diagnostic.txt
+          if-no-files-found: error
