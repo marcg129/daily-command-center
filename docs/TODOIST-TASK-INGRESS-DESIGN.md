@@ -125,12 +125,14 @@ Completion must happen after DCC commit, never before.
 
 ### Failed
 
-If parsing, authorization, validation, or DCC persistence fails:
+If parsing, authorization, or canonical validation fails permanently:
 
 - leave the Todoist task open;
 - apply a `dcc-failed` marker/label;
-- attach a concise human-readable diagnostic detail when the API capability is available; and
-- keep enough internal state to avoid appending the same failure repeatedly every minute.
+- attach a concise human-readable diagnostic detail; and
+- avoid appending the same failure repeatedly every minute.
+
+Transient provider, network, or D1 persistence failures remain pending for retry rather than being mislabeled as permanent.
 
 Examples:
 
@@ -157,13 +159,15 @@ Respect Todoist server-provided retry metadata when present.
 Expected non-secret configuration:
 
 - `TODOIST_PROJECT_ID`
-- `DCC_USER_ID`
 
-Expected secret:
+Expected runtime secret bindings:
 
 - `TODOIST_API_TOKEN`
+- `DCC_USER_ID`
 
-The Todoist API token must be stored as a Cloudflare Worker secret or equivalent deployment secret. It must never be committed, written to D1, returned to the browser, or logged.
+`TODOIST_API_TOKEN` is a credential. `DCC_USER_ID` is not itself an authentication credential, but v0.1 still keeps the durable internal user identifier out of repository content and ordinary Worker vars. Both are configured as Cloudflare Worker secrets after the Worker exists.
+
+Neither value may be committed, written to D1 as integration configuration, returned to the browser, or logged. Until both runtime bindings exist, the cron Worker must safely no-op instead of attempting Todoist or D1 work.
 
 ## Cloudflare runtime
 
@@ -175,8 +179,9 @@ The worker should:
 - use a `scheduled()` handler;
 - share the production D1 database binding;
 - poll once per minute;
-- remain independently deployable from the web Worker and Intel Worker; and
-- include an explicit manual GitHub workflow only if a safe operator-triggered test/run path materially helps deployment verification.
+- process a bounded batch per invocation;
+- remain independently deployable from the web Worker, Intel Worker, and MCP Worker; and
+- use a dedicated owner-authorized deployment workflow so missing Todoist runtime bindings cannot block unrelated DCC production deployments.
 
 ## Canonical DCC rules preserved
 
