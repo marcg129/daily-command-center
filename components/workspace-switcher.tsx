@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BriefcaseBusiness, Check, UserRound, WalletCards } from "lucide-react";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
@@ -45,7 +46,7 @@ export function WorkspaceSwitcher({
         );
       })}
       {showBillsLink && (
-        <a
+        <Link
           href={`/bills?workspaceId=${encodeURIComponent(value)}`}
           aria-label={`Open ${value === "personal" ? "Personal" : "Indelitech"} Bills`}
           style={{
@@ -65,7 +66,7 @@ export function WorkspaceSwitcher({
         >
           <WalletCards size={14} aria-hidden="true" />
           <span>Bills</span>
-        </a>
+        </Link>
       )}
     </div>
   );
