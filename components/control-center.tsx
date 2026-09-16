@@ -99,6 +99,7 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { WorkspacePageShell } from "@/components/workspace-page-shell";
 import { TaskCalendar } from "@/components/task-calendar";
 import { HostedIntelTodayPanel } from "@/components/hosted-intel-today";
+import { TodayFinancialPulse } from "@/components/today-financial-pulse";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   DEFAULT_WORKSPACE_ID,
@@ -677,6 +678,7 @@ function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: T
         <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
+      <TodayFinancialPulse workspaceId={workspaceId} />
       {!personal && <HostedIntelTodayPanel onOpenIntel={() => goTo("industry")} />}
     </div>
   );
