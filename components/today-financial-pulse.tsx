@@ -67,6 +67,7 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
   const [bills, setBills] = useState<BillsSummary>({ bills: [], occurrences: [] });
   const [baseline, setBaseline] = useState<HostedCashflowBaseline | null>(null);
   const [loadedWorkspaceId, setLoadedWorkspaceId] = useState<ProductWorkspaceId | null>(null);
+  const [errorWorkspaceId, setErrorWorkspaceId] = useState<ProductWorkspaceId | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
@@ -80,6 +81,7 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
     const load = async () => {
       setLoading(true);
       setError("");
+      setErrorWorkspaceId(null);
       setLoadedWorkspaceId(null);
       setIncome({ incomeSources: [], occurrences: [] });
       setBills({ bills: [], occurrences: [] });
@@ -124,6 +126,7 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
       } catch (caught) {
         if (controller.signal.aborted) return;
         setError(caught instanceof Error ? caught.message : "Financial Pulse could not be loaded.");
+        setErrorWorkspaceId(requestWorkspaceId);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -149,7 +152,8 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
   if (!hosted) return null;
 
   const next = forecast?.nextPayday ?? null;
-  const showLoading = loading || loadedWorkspaceId !== workspaceId;
+  const showError = errorWorkspaceId === workspaceId && Boolean(error);
+  const showLoading = !showError && (loading || loadedWorkspaceId !== workspaceId);
 
   return (
     <section className={styles.panel} aria-label={`${workspaceId === "personal" ? "Personal" : "Indelitech"} Financial Pulse`}>
@@ -163,7 +167,7 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
         </Link>
       </div>
 
-      {error && !showLoading ? (
+      {showError ? (
         <div className={styles.error} role="alert">
           <CircleAlert size={17} aria-hidden="true" />
           <span>{error}</span>
