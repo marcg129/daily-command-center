@@ -26,6 +26,10 @@ CREATE TABLE income_sources (
     CHECK (semimonth_day_two IS NULL OR semimonth_day_two BETWEEN 2 AND 31),
   status TEXT NOT NULL DEFAULT 'ACTIVE'
     CHECK (status IN ('ACTIVE','PAUSED','ARCHIVED')),
+  materialization_start_date TEXT CHECK (
+    materialization_start_date IS NULL OR
+    (length(materialization_start_date) = 10 AND materialization_start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+  ),
   created_by_user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
