@@ -7,9 +7,9 @@ import { D1UserWorkspaceResolver } from "../lib/server/d1-user-workspace-resolve
 
 type Env = Readonly<{
   DB: D1Database;
-  TODOIST_API_TOKEN: string;
+  TODOIST_API_TOKEN?: string;
   TODOIST_PROJECT_ID: string;
-  DCC_USER_ID: string;
+  DCC_USER_ID?: string;
 }>;
 
 type ScheduledController = Readonly<{
@@ -22,15 +22,22 @@ type ExecutionContext = Readonly<{
 }>;
 
 async function run(env: Env, scheduledTime: number) {
+  const token = env.TODOIST_API_TOKEN?.trim();
+  const userId = env.DCC_USER_ID?.trim();
+  if (!token || !userId) {
+    console.warn("Todoist task ingress inactive: required runtime bindings are missing.");
+    return;
+  }
+
   const now = Number.isFinite(scheduledTime) && scheduledTime > 0
     ? new Date(scheduledTime)
     : new Date();
   const api = createTodoistApiClient({
-    token: env.TODOIST_API_TOKEN,
+    token,
     projectId: env.TODOIST_PROJECT_ID,
   });
   const repository = new D1TaskRepository(env.DB);
-  const workspaceResolver = new D1UserWorkspaceResolver(env.DB, env.DCC_USER_ID);
+  const workspaceResolver = new D1UserWorkspaceResolver(env.DB, userId);
   const importTask = createTodoistTaskIngressService({
     repository,
     clock: { now: () => now },
