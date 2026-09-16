@@ -21,29 +21,52 @@ function income(overrides: Partial<IncomeDefinitionCore> = {}): IncomeDefinition
   };
 }
 
+function occurrenceShape(source: IncomeDefinitionCore) {
+  return {
+    amountMode: source.amountMode,
+    defaultNetAmountMinor: source.defaultNetAmountMinor,
+    currency: source.currency,
+    scheduleStartDate: source.scheduleStartDate,
+    recurrenceUnit: source.recurrenceUnit,
+    recurrenceInterval: source.recurrenceInterval,
+    recurrenceDayMode: source.recurrenceDayMode,
+    semimonthDayOne: source.semimonthDayOne,
+    semimonthDayTwo: source.semimonthDayTwo,
+  };
+}
+
+function recurrenceShape(source: IncomeDefinitionCore) {
+  return {
+    recurrenceUnit: source.recurrenceUnit,
+    recurrenceInterval: source.recurrenceInterval,
+    recurrenceDayMode: source.recurrenceDayMode,
+    semimonthDayOne: source.semimonthDayOne,
+    semimonthDayTwo: source.semimonthDayTwo,
+  };
+}
+
 test("Income UI detects only occurrence-shaping changes", () => {
   const original = income();
-  assert.equal(incomeOccurrenceShapeChanged(original, { ...original, name: "Salary" }), false);
-  assert.equal(incomeOccurrenceShapeChanged(original, { ...original, status: "PAUSED" }), false);
-  assert.equal(incomeOccurrenceShapeChanged(original, { ...original, defaultNetAmountMinor: 160_000 }), true);
-  assert.equal(incomeOccurrenceShapeChanged(original, { ...original, recurrenceInterval: 1 }), true);
-  assert.equal(incomeOccurrenceShapeChanged(original, {
-    ...original,
+  assert.equal(incomeOccurrenceShapeChanged(occurrenceShape(original), occurrenceShape(income({ name: "Salary" }))), false);
+  assert.equal(incomeOccurrenceShapeChanged(occurrenceShape(original), occurrenceShape(income({ status: "PAUSED" }))), false);
+  assert.equal(incomeOccurrenceShapeChanged(occurrenceShape(original), occurrenceShape(income({ defaultNetAmountMinor: 160_000 }))), true);
+  assert.equal(incomeOccurrenceShapeChanged(occurrenceShape(original), occurrenceShape(income({ recurrenceInterval: 1 }))), true);
+  assert.equal(incomeOccurrenceShapeChanged(occurrenceShape(original), occurrenceShape(income({
     recurrenceUnit: "SEMIMONTH",
     recurrenceInterval: 1,
     semimonthDayOne: 15,
     semimonthDayTwo: 31,
-  }), true);
+  }))), true);
 });
 
 test("Income recurrence labels remain readable for common schedules", () => {
-  assert.equal(incomeRecurrenceLabel(income() as never), "Every 2 weeks");
-  assert.equal(incomeRecurrenceLabel(income({ recurrenceInterval: 1 }) as never), "Weekly");
-  assert.equal(incomeRecurrenceLabel(income({ recurrenceUnit: "NONE", recurrenceInterval: 1 }) as never), "One-time");
-  assert.equal(incomeRecurrenceLabel(income({
+  assert.equal(incomeRecurrenceLabel(recurrenceShape(income())), "Every 2 weeks");
+  assert.equal(incomeRecurrenceLabel(recurrenceShape(income({ recurrenceInterval: 1 }))), "Weekly");
+  assert.equal(incomeRecurrenceLabel(recurrenceShape(income({ recurrenceUnit: "NONE", recurrenceInterval: 1 }))), "One-time");
+  assert.equal(incomeRecurrenceLabel(recurrenceShape(income({
     recurrenceUnit: "SEMIMONTH",
     recurrenceInterval: 1,
     semimonthDayOne: 15,
     semimonthDayTwo: 31,
-  }) as never), "Twice monthly · days 15 & 31");
+  }))), "Twice monthly · days 15 & 31");
 });
