@@ -24,10 +24,12 @@
     "build:vinext": "vinext build",
     "build:mcp": "wrangler deploy --dry-run --config wrangler.mcp.jsonc",
     "build:intel": "wrangler deploy --dry-run --config wrangler.intel.jsonc",
+    "build:todoist": "wrangler deploy --dry-run --config wrangler.todoist.jsonc",
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
     "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json",
     "deploy:mcp": "wrangler deploy --config wrangler.mcp.jsonc",
-    "deploy:intel": "wrangler deploy --config wrangler.intel.jsonc"
+    "deploy:intel": "wrangler deploy --config wrangler.intel.jsonc",
+    "deploy:todoist": "wrangler deploy --config wrangler.todoist.jsonc"
   },
   "packageManager": "npm@11.19.0",
   "repository": {

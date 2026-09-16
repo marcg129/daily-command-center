@@ -1,0 +1,144 @@
+name: Cloudflare deploy Todoist ingress
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  resolve-deploy-target:
+    name: resolve a validated current-main revision
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-todoist-current-main '))
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_sha: ${{ steps.target.outputs.deploy_sha }}
+    steps:
+      - name: Resolve trusted Todoist deployment target
+        id: target
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: repository } = await github.rest.repos.get({ owner, repo });
+            const { data: main } = await github.rest.repos.getBranch({
+              owner,
+              repo,
+              branch: repository.default_branch,
+            });
+
+            if (context.eventName === 'workflow_dispatch') {
+              core.setOutput('deploy_sha', main.commit.sha);
+              return;
+            }
+
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const command = comment.body.trim().match(/^\/deploy-todoist-current-main ([0-9a-f]{40}) ([0-9]+)$/);
+            if (
+              !issue.pull_request ||
+              comment.user.login !== owner ||
+              comment.author_association !== 'OWNER' ||
+              !command
+            ) return;
+
+            const requestedSha = command[1];
+            const checkRunId = Number(command[2]);
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: issue.number,
+            });
+            const { data: checkRun } = await github.rest.actions.getWorkflowRun({
+              owner,
+              repo,
+              run_id: checkRunId,
+            });
+
+            if (
+              pullRequest.merged_at &&
+              pullRequest.base.ref === repository.default_branch &&
+              pullRequest.head.sha === checkRun.head_sha &&
+              pullRequest.merge_commit_sha === requestedSha &&
+              main.commit.sha === requestedSha &&
+              checkRun.name === 'Check' &&
+              checkRun.event === 'pull_request' &&
+              checkRun.status === 'completed' &&
+              checkRun.conclusion === 'success'
+            ) {
+              core.setOutput('deploy_sha', requestedSha);
+            }
+
+  deploy:
+    name: deploy private Todoist ingress Worker
+    needs: resolve-deploy-target
+    if: needs.resolve-deploy-target.outputs.deploy_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-deploy-target.outputs.deploy_sha }}
+
+      - name: Set up Node.js 24.19.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Require Cloudflare CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'Missing CLOUDFLARE_API_TOKEN secret' >&2; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID secret' >&2; exit 1; }
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify Cloudflare authentication
+        run: npx wrangler whoami
+
+      - name: Verify private Todoist Worker config
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const raw = fs.readFileSync('wrangler.todoist.jsonc', 'utf8');
+          const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+          const d1 = (config.d1_databases ?? []).find((x) => x.binding === 'DB');
+          if (config.name !== 'daily-command-center-todoist-ingress') throw new Error('Unexpected Todoist Worker name');
+          if (config.main !== 'workers/todoist-task-ingress.ts') throw new Error('Unexpected Todoist Worker entry');
+          if (config.workers_dev !== false) throw new Error('Todoist Worker must not expose workers.dev');
+          if (config.preview_urls !== false) throw new Error('Todoist preview URLs must remain disabled');
+          if (d1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected Todoist D1 binding');
+          if (JSON.stringify(config.triggers?.crons ?? []) !== JSON.stringify(['* * * * *'])) throw new Error('Unexpected Todoist cron schedule');
+          if (config.vars?.TODOIST_PROJECT_ID !== '6XGgm6PHrGgMpCFX') throw new Error('Unexpected Todoist project binding');
+          if (config.vars?.TODOIST_API_TOKEN !== undefined || config.vars?.DCC_USER_ID !== undefined) throw new Error('Todoist runtime secrets must not be plaintext vars');
+          EOF
+
+      - name: Build private Todoist ingress Worker
+        run: npm run build:todoist
+
+      - name: Deploy private Todoist ingress Worker
+        run: npm run deploy:todoist
+
+      - name: Confirm deployment posture
+        run: |
+          echo 'Todoist ingress has no workers.dev or preview URL and runs only from its one-minute Cron Trigger.'
+          echo 'The Worker safely remains inactive until TODOIST_API_TOKEN and DCC_USER_ID are configured as Cloudflare Worker secrets.'
+          echo 'Todoist credentials and DCC durable identity are not sourced from GitHub secrets or repository vars.'

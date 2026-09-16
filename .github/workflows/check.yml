@@ -42,4 +42,5 @@ jobs:
           EOF
       - run: npm run build:mcp
       - run: npm run build:intel
+      - run: npm run build:todoist
       - run: npm run smoke
