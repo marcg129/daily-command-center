@@ -26,7 +26,6 @@ import {
   selectAuthorizedWorkspace,
 } from "@/lib/runtime/browser-runtime";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
-import type { BillDefinitionCore } from "@/lib/runtime/bills";
 import type { HostedBill, HostedBillOccurrence } from "@/lib/runtime/hosted-bills";
 import type {
   IncomeDefinitionCore,
@@ -298,9 +297,13 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
         if (!billsResponse.ok) throw new Error(responseError(billsPayload, "Bills could not be loaded."));
         if (!baselineResponse.ok) throw new Error(responseError(baselinePayload, "Cash baseline could not be loaded."));
         if (!controller.signal.aborted) {
+          const loadedBaseline = (baselinePayload as { baseline: HostedCashflowBaseline | null }).baseline;
           setIncome(incomePayload as IncomeSummary);
           setBills(billsPayload as BillsSummary);
-          setBaseline((baselinePayload as { baseline: HostedCashflowBaseline | null }).baseline);
+          setBaseline(loadedBaseline);
+          setBaselineAmount(loadedBaseline ? signedMinorToDollars(loadedBaseline.amountMinor) : "");
+          setBaselineDate(loadedBaseline?.asOfDate ?? today);
+          setBaselineError("");
         }
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Cash Flow could not be loaded.");
@@ -310,13 +313,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     };
     void load();
     return () => controller.abort();
-  }, [authorizedWorkspaceIds, includeArchived, initializing, nonce, runtimeError, workspaceId]);
-
-  useEffect(() => {
-    setBaselineAmount(baseline ? signedMinorToDollars(baseline.amountMinor) : "");
-    setBaselineDate(baseline?.asOfDate ?? today);
-    setBaselineError("");
-  }, [baseline, today]);
+  }, [authorizedWorkspaceIds, includeArchived, initializing, nonce, runtimeError, today, workspaceId]);
 
   const incomeById = useMemo(() => new Map(income.incomeSources.map((source) => [source.incomeSourceId, source] as const)), [income.incomeSources]);
   const billById = useMemo(() => new Map(bills.bills.map((bill) => [bill.billId, bill] as const)), [bills.bills]);
@@ -498,7 +495,10 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Manual cash position could not be saved."));
-      setBaseline((payload as { baseline: HostedCashflowBaseline }).baseline);
+      const saved = (payload as { baseline: HostedCashflowBaseline }).baseline;
+      setBaseline(saved);
+      setBaselineAmount(signedMinorToDollars(saved.amountMinor));
+      setBaselineDate(saved.asOfDate);
     } catch (caught) {
       setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be saved.");
     } finally {
@@ -515,6 +515,8 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Manual cash position could not be cleared."));
       setBaseline(null);
+      setBaselineAmount("");
+      setBaselineDate(today);
     } catch (caught) {
       setBaselineError(caught instanceof Error ? caught.message : "Manual cash position could not be cleared.");
     } finally {
