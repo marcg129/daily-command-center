@@ -75,7 +75,7 @@ Production acceptance verified next-payday display, due-before-payday and same-d
 
 See:
 
-- `docs/MILESTONE-1G-F1-INCOME-FORECAST-CORE.md`
+- `docs/MILESTONE-1G-F-PAYDAY-CASHFLOW-DESIGN.md`
 - `docs/MILESTONE-1G-F2-INCOME-API.md`
 - `docs/MILESTONE-1G-F3-CASHFLOW-UI.md`
 - `docs/MILESTONE-1G-F-CLOSEOUT.md`
