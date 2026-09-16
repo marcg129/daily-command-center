@@ -9,6 +9,7 @@ import { parseTodoistRelayTask, type TodoistRelayTask } from "@/lib/runtime/todo
 import {
   createTodoistTaskIngressService,
   TodoistRelayTransportError,
+  TodoistWorkspaceAuthorizationError,
   type TodoistRelayActions,
   type TodoistUserWorkspaceResolver,
 } from "@/lib/runtime/todoist-task-ingress-service";
@@ -61,7 +62,7 @@ class MemoryHostedTaskRepository implements HostedTaskRepository {
 function resolver(overrides: Partial<TodoistUserWorkspaceResolver> = {}): TodoistUserWorkspaceResolver {
   return {
     async resolve(workspaceId: string) {
-      if (workspaceId !== "personal") throw new Error("Workspace access denied.");
+      if (workspaceId !== "personal") throw new TodoistWorkspaceAuthorizationError("Workspace access denied.");
       return personalContext;
     },
     ...overrides,
@@ -135,7 +136,7 @@ test("authorization denial is permanent, sanitized, and never reaches DCC create
   const repository = new MemoryHostedTaskRepository();
   const relay = relayActions();
   const workspaceResolver = resolver({
-    async resolve() { throw new Error("Workspace access denied: physical workspace personal:secret-row"); },
+    async resolve() { throw new TodoistWorkspaceAuthorizationError("Workspace access denied: physical workspace personal:secret-row"); },
   });
   const service = createTodoistTaskIngressService({ repository, clock, workspaceResolver, relay });
 
@@ -146,6 +147,23 @@ test("authorization denial is permanent, sanitized, and never reaches DCC create
   assert.doesNotMatch(relay.failures[0] ?? "", /secret-row/);
   assert.equal(repository.tasks.size, 0);
   assert.equal(relay.closed.length, 0);
+});
+
+test("workspace lookup infrastructure failure is transient and never marks the relay failed", async () => {
+  const repository = new MemoryHostedTaskRepository();
+  const relay = relayActions();
+  const workspaceResolver = resolver({
+    async resolve() { throw new Error("D1 temporarily unavailable: internal detail"); },
+  });
+  const service = createTodoistTaskIngressService({ repository, clock, workspaceResolver, relay });
+
+  const outcome = await service(relayTask());
+
+  assert.equal(outcome.status, "transient-failure");
+  assert.equal(outcome.requestId, "todoist:6hWfF8h2gHrG9GH5");
+  assert.equal(relay.failures.length, 0);
+  assert.equal(relay.closed.length, 0);
+  assert.doesNotMatch(JSON.stringify(outcome), /internal detail/);
 });
 
 test("canonical capture conflict is permanent and does not overwrite or close", async () => {
