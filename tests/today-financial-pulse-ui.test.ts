@@ -22,6 +22,8 @@ test("Financial Pulse remains workspace-scoped and read-only", () => {
   assert.match(component, /buildTodayFinancialPulseForecast/);
   assert.match(component, /setLoadedWorkspaceId\(null\)/);
   assert.match(component, /loadedWorkspaceId !== workspaceId/);
+  assert.match(component, /errorWorkspaceId === workspaceId/);
+  assert.match(component, /showLoading = !showError && \(loading \|\| loadedWorkspaceId !== workspaceId\)/);
   assert.match(component, /\/cash-flow\?workspaceId=\$\{encodeURIComponent\(workspaceId\)\}/);
   assert.doesNotMatch(component, /safe to spend/i);
 });
