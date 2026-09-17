@@ -36,6 +36,7 @@ CREATE TABLE intake_items (
   currency TEXT CHECK (currency IS NULL OR currency GLOB '[A-Z][A-Z][A-Z]'),
   target_payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(target_payload_json)),
   semantic_key TEXT NOT NULL CHECK (length(trim(semantic_key)) BETWEEN 1 AND 2200),
+  scan_run_id TEXT NOT NULL CHECK (length(trim(scan_run_id)) BETWEEN 1 AND 200),
   user_edited_at TEXT,
   defer_until TEXT,
   approved_target_kind TEXT CHECK (approved_target_kind IS NULL OR approved_target_kind IN ('TASK','BILL')),
