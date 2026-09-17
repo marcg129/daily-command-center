@@ -100,6 +100,7 @@ import { WorkspacePageShell } from "@/components/workspace-page-shell";
 import { TaskCalendar } from "@/components/task-calendar";
 import { HostedIntelTodayPanel } from "@/components/hosted-intel-today";
 import { TodayFinancialPulse } from "@/components/today-financial-pulse";
+import { IntakeView } from "@/components/intake-view";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
   DEFAULT_WORKSPACE_ID,
@@ -121,6 +122,7 @@ type Tab =
   | "audience"
   | "newsletters"
   | "tasks"
+  | "intake"
   | "settings";
 type SettingsSection =
   | "general"
@@ -172,6 +174,7 @@ const emptySettings: PublicSettings = {
 const navigationIcons = {
   today: LayoutDashboard,
   tasks: ListTodo,
+  intake: Inbox,
   calendar: CalendarDays,
   news: Newspaper,
   intel: Radio,
@@ -272,7 +275,6 @@ function formatTaskDue(value: string) {
       date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
   }).format(date);
 }
-
 
 function readLegacyList<T>(key: string): T[] {
   try {
@@ -1178,7 +1180,7 @@ function MentionsView({
         <SetupEmpty
           icon={<AtSign />}
           title="Tell the radar what to watch"
-          description="Add exact aliases plus identity anchors that distinguish you from namesakes."
+          description="Add exact aliases plus identity anchors that distinguish namesakes."
           onSetup={openSettings}
         />
       ) : (
@@ -3254,8 +3256,6 @@ export function ControlCenter() {
         let nextWorkspace: WorkspaceState = saved.initialized
           ? { reminders: saved.reminders, tasks: saved.tasks }
           : legacy;
-        // Recovery may initialize an empty store, but must never replace a newer
-        // initialized server snapshot after a failed optimistic mutation.
         const canRecover = !saved.initialized && saved.legacyBrowserImportAllowed;
         if (recovery && canRecover) nextWorkspace = recovery.workspace;
         if (runtimeMode === "local" && (!saved.initialized || (recovery && canRecover))) {
@@ -3297,7 +3297,6 @@ export function ControlCenter() {
       cancelled = true;
     };
   }, [activeWorkspaceId, bootstrapAttempt, identityReady, runtimeMode, workspaceRequestId]);
-  // Keep the emergency browser copy current independently of normal persistence.
   useEffect(() => {
     if (!workspaceReady || runtimeMode !== "local") return;
     const workspace = { reminders, tasks } satisfies WorkspaceState;
@@ -3649,6 +3648,9 @@ export function ControlCenter() {
         )}{" "}
         {activeTab === "calendar" && (
           <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={openTask} />
+        )}{" "}
+        {activeTab === "intake" && (
+          <IntakeView workspaceId={activeWorkspaceId} authorizedWorkspaceIds={authorizedWorkspaceIds} enabled={runtimeMode === "hosted"} />
         )}{" "}
         {activeTab === "news" && activeWorkspaceId === "personal" && (
           <WorkspacePageShell

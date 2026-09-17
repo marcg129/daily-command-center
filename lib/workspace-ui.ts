@@ -11,6 +11,7 @@ export const DEFAULT_WORKSPACE_ID = PERSONAL_WORKSPACE_ID;
 export type WorkspacePageId =
   | "today"
   | "tasks"
+  | "intake"
   | "calendar"
   | "news"
   | "industry"
@@ -20,7 +21,7 @@ export type WorkspacePageId =
 export type WorkspaceNavigationItem = Readonly<{
   id: WorkspacePageId;
   label: string;
-  icon: "today" | "tasks" | "calendar" | "news" | "intel" | "mentions" | "settings";
+  icon: "today" | "tasks" | "intake" | "calendar" | "news" | "intel" | "mentions" | "settings";
 }>;
 
 export type WorkspacePresentation = Readonly<{
@@ -42,6 +43,7 @@ export const WORKSPACES: Readonly<Record<ProductWorkspaceId, WorkspacePresentati
     navigation: [
       { id: "today", label: "Today", icon: "today" },
       { id: "tasks", label: "Tasks", icon: "tasks" },
+      { id: "intake", label: "Intake", icon: "intake" },
       { id: "calendar", label: "Calendar", icon: "calendar" },
       { id: "news", label: "News", icon: "news" },
       { id: "settings", label: "Settings", icon: "settings" },
@@ -56,6 +58,7 @@ export const WORKSPACES: Readonly<Record<ProductWorkspaceId, WorkspacePresentati
     navigation: [
       { id: "today", label: "Today", icon: "today" },
       { id: "tasks", label: "Tasks", icon: "tasks" },
+      { id: "intake", label: "Intake", icon: "intake" },
       { id: "calendar", label: "Calendar", icon: "calendar" },
       { id: "industry", label: "Intel", icon: "intel" },
       { id: "mentions", label: "Mentions", icon: "mentions" },
