@@ -51,7 +51,7 @@ function seed(database: TestD1) {
   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`);
   insertEvent.run("projection-personal","user:marc","primary_calendar","event-personal","series-personal","occ-personal","Dentist","2026-09-20T14:00:00-04:00","2026-09-20T15:00:00-04:00",0,"Office","https://calendar.google.com/calendar/event?eid=event-personal","personal","scan-1",now,now);
   insertEvent.run("projection-work","user:marc","primary_calendar","event-work","series-work","occ-work","Indelitech client call","2026-09-21T14:00:00-04:00","2026-09-21T15:00:00-04:00",0,"Meet","https://calendar.google.com/calendar/event?eid=event-work","indelitech","scan-1",now,now);
-  insertEvent.run("projection-other","user:other","primary_calendar","event-other","series-other","occ-other","Other user private event","2026-09-22T14:00:00-04:00","2026-09-22T15:00:00-04:00",0,NULL,NULL,"personal","scan-1",now,now);
+  insertEvent.run("projection-other","user:other","primary_calendar","event-other","series-other","occ-other","Other user private event","2026-09-22T14:00:00-04:00","2026-09-22T15:00:00-04:00",0,null,null,"personal","scan-1",now,now);
 
   database.sqlite.prepare(`INSERT INTO intake_items (
     intake_id,user_id,workspace_id,workspace_key,intake_type,status,source_type,source_key,source_event_id,source_series_id,
