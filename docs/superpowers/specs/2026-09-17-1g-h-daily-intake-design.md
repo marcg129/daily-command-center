@@ -52,6 +52,7 @@ Use a hybrid architecture:
 3. **DCC Intake** stores pending proposals and awareness items durably for review.
 4. **Canonical DCC Tasks and Bills** are created only after explicit approval inside DCC.
 5. **Calendar projections** are synchronized into a dedicated DCC event model and remain separate from Tasks.
+6. **Scan-status envelopes** let DCC track source freshness without requiring ChatGPT Automation to read DCC state.
 
 This design avoids adding Google OAuth refresh-token storage and a separate model API to DCC in v1 while reusing the production-proven Todoist relay.
 
@@ -64,6 +65,7 @@ This design avoids adding Google OAuth refresh-token storage and a separate mode
 - **Minimal source storage.** DCC stores only the metadata and evidence needed to explain and review an item; complete email bodies and attachments are not copied into DCC by default.
 - **Manual classification wins.** If the user corrects an event or proposal workspace, future automatic classification must not silently overwrite that correction.
 - **Personal and Indelitech financial data remain isolated.** Approval of Bill proposals must use the existing workspace-specific Bills model.
+- **Scheduled scans do not depend on reading DCC cursor state.** Gmail scans use a deliberate overlapping lookback; DCC semantic deduplication absorbs repeat observations.
 
 ## DCC Intake model
 
@@ -99,13 +101,16 @@ Each Intake record stores at least:
 - logical source account/calendar key
 - source message/thread/event identity
 - source timestamp
+- source proposal ordinal/slot within that source item
 - proposed title/action
 - short source summary/evidence
 - classification reason
 - source-supported due/follow-up date when present
 - source-supported amount/currency when present
-- proposed priority only when intentionally supplied; otherwise unset/default behavior remains with the canonical target
-- semantic dedupe key/fingerprint
+- source-supported recurrence when present
+- proposed priority only when explicitly justified or intentionally supplied; otherwise unset/default behavior remains with the canonical target
+- semantic dedupe key
+- originating scan-run ID
 - created/updated timestamps
 - defer-until timestamp when deferred
 - approved target kind and canonical target ID after approval
@@ -126,6 +131,7 @@ The user may edit:
 - follow-up date
 - priority
 - amount/currency
+- recurrence when supported by the target type
 - other target-specific fields supported by the canonical subsystem
 
 ### Approve
@@ -164,30 +170,32 @@ The existing Todoist task ID remains authoritative for one relay delivery. Re-de
 
 DCC must also prevent duplicates across different transport tasks carrying the same finding.
 
-For Gmail-derived Intake, compute a semantic key from stable source identity plus the proposal semantics, including at minimum:
+For Gmail-derived Intake, ChatGPT assigns each finding within one source message a deterministic **proposal ordinal** beginning at `1` in source order. DCC derives the semantic slot key from:
 
 - logical Gmail source account key
 - Gmail message ID
-- Gmail thread ID when available
-- intake type
-- normalized proposed action/title
-- source-supported date/amount when they materially distinguish the proposal
+- proposal ordinal
 
-A later message in the same thread may create a new proposal if it introduces a genuinely new action.
+The same slot delivered again must update/reuse the existing unresolved Intake item rather than create another one. Once that slot is approved, dismissed, or archived, later scans must not resurrect it.
 
-Approved, dismissed, deferred, and archived items remain part of duplicate history.
+The message ID boundary allows a later reply in the same Gmail thread to create a genuinely new proposal because the new reply has a different message ID. Gmail thread ID is still retained for context and diagnostics.
+
+For non-Gmail sources, use an equivalent stable source identity plus kind-specific slot identity.
 
 ## Gmail scan behavior
 
-### Bootstrap and incremental behavior
+### Bootstrap and recurring overlap
 
-The recurring scanner must not backfill the entire mailbox.
+The recurring scanner must not backfill the entire mailbox and must not depend on ChatGPT being able to read DCC cursor state.
 
-- Initial recurring-scan bootstrap lookback: **7 days**
-- After bootstrap: process only new or materially changed messages/threads since the last successful source scan
-- Store source scan state/high-water information so each account advances independently
+- Before enabling recurring Automations, run one controlled **7-day bootstrap** across the three approved Gmail accounts.
+- After bootstrap, each scheduled scan reads a rolling **48-hour overlap window** from each approved Gmail account.
+- Repeated observations are expected; DCC semantic deduplication prevents duplicate Intake items.
+- A source-success timestamp is reported to DCC through `scan_status`; it is for freshness/diagnostics, not for constructing the next Gmail query.
 
-Historical email cleanup is a separate one-time ChatGPT workflow and is explicitly out of scope for the recurring 1G-H scan.
+This overlap intentionally tolerates missed/late automation runs without requiring stateful cursor reads from DCC.
+
+Historical email cleanup beyond the bootstrap window is a separate one-time ChatGPT workflow and is explicitly out of scope for the recurring 1G-H scan.
 
 ### Noise filtering
 
@@ -207,12 +215,14 @@ Every meaningful finding must be classified into exactly one of:
 - Awareness
 - Ignore
 
-### Date/amount rules
+### Date/amount/priority rules
 
 - Exact dates may populate proposed dates.
 - Explicit amounts may populate Bill proposals.
+- Explicit recurrence may populate a Bill proposal when the existing Bills model supports it.
 - Vague phrases such as “soon,” “when you can,” or “ASAP” remain source context and do not become fabricated dates.
-- If a required field cannot be supported by the source, leave it unset.
+- Priority must not be invented merely because an item feels important; use only source-supported urgency or leave it unset.
+- If a field cannot be supported by the source, leave it unset.
 
 ### Workspace routing
 
@@ -280,7 +290,7 @@ Precedence:
 A calendar sync run records:
 
 - source calendar key
-- sync run ID
+- scan/sync run ID
 - window start/end
 - expected batch count
 - received batch identities
@@ -305,6 +315,28 @@ Those proposals remain confirmation-gated like all other inferred work.
 
 DCC should show the relationship in both directions when a proposal/canonical Task is tied to a projected event.
 
+## Scan-run identity and freshness
+
+Every scheduled execution creates one stable `scanRunId` that is reused across all envelopes emitted by that run.
+
+At the end of the run, ChatGPT sends a `scan_status` envelope containing one status entry for each approved source:
+
+- Personal Gmail
+- Professional Gmail
+- Indelitech Gmail
+- Primary Calendar
+- Family Calendar
+
+Each source status contains:
+
+- source key
+- `SUCCESS` or `FAILED`
+- attempted-at timestamp
+- completed-at timestamp when successful
+- concise diagnostic when failed
+
+DCC uses the newest successfully persisted `scan_status` data to show freshness/staleness. Missing status for a source is treated as unknown/stale, never as success.
+
 ## Todoist relay envelope contract
 
 The existing legacy task-capture format must remain backward-compatible.
@@ -325,6 +357,7 @@ Supported v1 kinds:
 
 - `intake_proposal`
 - `calendar_sync`
+- `scan_status`
 
 The legacy task-capture parser remains the fallback when `dccEnvelopeVersion` is absent.
 
@@ -339,6 +372,7 @@ The relay must:
 - reject unknown logical workspaces
 - reject physical workspace IDs supplied by transport
 - validate all kind-specific fields before touching canonical DCC state
+- require `scanRunId` on all 1G-H envelopes
 
 Calendar batches must be sized conservatively so each transport item remains comfortably below Todoist description limits; implementation should batch by serialized payload size rather than assuming a fixed event count.
 
@@ -347,6 +381,8 @@ Calendar batches must be sized conservatively so each transport item remains com
 Todoist is untrusted transport. It cannot authorize access by itself.
 
 Every envelope resolves the configured DCC user to an active logical workspace membership before persistence. Physical workspace IDs remain server-side.
+
+DCC persistence always occurs before the Todoist transport item is closed. A failed acknowledgement may cause redelivery, but redelivery must be safe.
 
 ## Privacy and source retention
 
@@ -376,6 +412,8 @@ Where feasible, DCC may expose an “Open source” action that returns the user
 
 Each Automation run produces a concise ChatGPT briefing after processing available sources.
 
+Because the v1 Automation path does not require ChatGPT to read DCC state, the briefing reports **new proposals/findings generated in that run**, not the authoritative total number of pending Intake items. DCC itself remains authoritative for pending totals.
+
 ### 7:00 AM
 
 Emphasize:
@@ -383,7 +421,7 @@ Emphasize:
 - today’s agenda
 - overnight/new important email
 - upcoming deadlines
-- pending Intake proposals
+- new proposals generated in this run
 - near-term events
 
 ### 12:30 PM
@@ -392,7 +430,7 @@ Emphasize deltas since morning:
 
 - newly important/actionable email
 - schedule changes
-- new proposals
+- new proposals generated in this run
 - newly urgent items
 
 ### 5:30 PM
@@ -400,7 +438,7 @@ Emphasize deltas since morning:
 Emphasize:
 
 - late-day changes
-- unresolved items that still matter
+- unresolved source findings that still matter in the current run context
 - tomorrow’s calendar
 - near-term events/deadlines requiring advance attention
 
@@ -408,17 +446,19 @@ Briefings are ephemeral summaries; DCC Intake is the durable review system.
 
 ## Partial failure and stale-source behavior
 
-Each source advances independently.
+Each source is attempted independently.
 
 If one Gmail account or Calendar source fails:
 
 - preserve successful results from other sources
 - do not roll back successful persisted Intake/events
-- mark the failed source stale/incomplete for that run
-- explicitly disclose the stale source in the ChatGPT briefing
+- record the failed source in `scan_status`
+- explicitly disclose the stale/failed source in the ChatGPT briefing
 - do not present the overall scan as fully complete
 
 For Calendar specifically, incomplete batch delivery may upsert positively received events but must not perform deletion reconciliation.
+
+If Todoist itself is unavailable, ChatGPT must report that DCC delivery was incomplete even if source reads succeeded.
 
 ## DCC UI
 
@@ -509,12 +549,13 @@ To avoid breaking the production Todoist relay:
 
 1. Add schema/repositories/services and tests.
 2. Add typed envelope parsing/dispatch while preserving legacy task-capture behavior.
-3. Add Intake and Calendar hosted APIs/UI.
+3. Add Intake, Calendar, and scan-freshness hosted APIs/UI.
 4. Deploy the DCC/relay changes first.
-5. Run manual production acceptance with one `intake_proposal` envelope and one small `calendar_sync` envelope.
+5. Run manual production acceptance with one `intake_proposal`, one small `calendar_sync`, and one `scan_status` envelope.
 6. Confirm legacy ChatGPT → Todoist → DCC task capture still works.
-7. Only then enable the three scheduled ChatGPT Automations.
-8. Verify all three scheduled runs and source-staleness reporting in production.
+7. Run the controlled 7-day Gmail bootstrap.
+8. Only then enable the three scheduled ChatGPT Automations using the 48-hour recurring Gmail overlap.
+9. Verify all three scheduled runs and source-staleness reporting in production.
 
 ## Testing requirements
 
@@ -525,11 +566,12 @@ At minimum, automated coverage must prove:
 - physical workspace IDs cannot be selected by transport
 - unauthorized logical workspace access fails closed
 - Todoist redelivery is idempotent
-- duplicate semantic proposals do not create duplicate Intake items
-- a later genuinely new action in the same Gmail thread can create a new Intake item
+- repeated Gmail observations for the same message/proposal ordinal do not create duplicate Intake items
+- multiple distinct proposal ordinals from one Gmail message can coexist
+- a later genuinely new action in the same Gmail thread can create a new Intake item through its later message ID
 - approval creates exactly one canonical target
 - approval replay does not duplicate the canonical target
-- dismissed/approved proposals are not rediscovered as new duplicates
+- dismissed/approved/archived source slots are not resurrected
 - deferred items return when their defer-until time is reached
 - Awareness items cannot create canonical Tasks/Bills
 - Bill proposals require individual approval
@@ -539,7 +581,8 @@ At minimum, automated coverage must prove:
 - series override beats automatic classification
 - Primary/Family source defaults work when no stronger classification exists
 - events never inherit Task completion/overdue semantics
-- source failures are represented as stale/incomplete rather than silently treated as success
+- `scan_status` updates source freshness correctly
+- missing/failed scan status is never interpreted as source success
 - no full Gmail body/attachment is persisted by the Intake repository contract
 
 ## Production acceptance criteria
@@ -549,7 +592,7 @@ At minimum, automated coverage must prove:
 3. An important non-actionable email appears as Awareness only.
 4. A source-supported Bill email produces a Bill proposal with no invented fields.
 5. Approving a proposal creates one canonical target and links it back to Intake.
-6. Dismissing a proposal prevents repeated recreation from the same source.
+6. Dismissing a proposal prevents repeated recreation from the same source slot.
 7. Primary + Family events appear in the 45-day Upcoming Events view.
 8. A clearly Indelitech Primary-calendar event can auto-classify to Indelitech and remains manually editable.
 9. A recurring-event workspace correction applies to the series by default, with an occurrence-only option.
@@ -557,11 +600,13 @@ At minimum, automated coverage must prove:
 11. Today shows Today’s Events, a 7-day preview, and Intake review state without becoming a 45-day dashboard.
 12. A deliberately failed source is reported as stale/incomplete in both DCC diagnostics and the ChatGPT briefing.
 13. Existing explicit ChatGPT → Todoist → DCC task capture continues to work after deployment.
-14. The 7:00 AM, 12:30 PM, and 5:30 PM ET scheduled briefings run successfully with the approved source scope.
+14. The controlled 7-day bootstrap completes without requiring recurring scans to process older mail.
+15. The 7:00 AM, 12:30 PM, and 5:30 PM ET scheduled briefings run successfully with the approved source scope.
+16. The ChatGPT briefing reports new findings for the run while DCC remains authoritative for the total pending Intake count.
 
 ## Explicitly deferred / out of scope
 
-- historical full-mailbox email backfill; this will be handled as a separate one-time ChatGPT task-generation workflow
+- historical full-mailbox email backfill beyond the controlled 7-day bootstrap; this will be handled as a separate one-time ChatGPT task-generation workflow
 - Harvest Fire Gmail
 - HF IT Gmail
 - HFWC Praise Team/AV calendar
