@@ -35,9 +35,9 @@ class FailingBulkD1 implements D1Database {
       intake_id,user_id,workspace_id,workspace_key,intake_type,status,source_type,source_key,
       source_message_id,proposal_ordinal,source_timestamp,source_summary,classification_reason,title,
       target_payload_json,semantic_key,scan_run_id,created_at,updated_at
-    ) VALUES ('bulk-secret','user:marc','personal','personal','TASK','PENDING','gmail','personal_gmail',
-      'msg-bulk-secret',1,'2026-09-17T16:00:00Z','Evidence','Reason','Proposal','{}',
-      'personal_gmail:message:msg-bulk-secret:1','scan-1','2026-09-17T16:00:00Z','2026-09-17T16:00:00Z')`).run();
+    ) VALUES ('bulk-failure','user:marc','personal','personal','TASK','PENDING','gmail','personal_gmail',
+      'msg-bulk-failure',1,'2026-09-17T16:00:00Z','Evidence','Reason','Proposal','{}',
+      'personal_gmail:message:msg-bulk-failure:1','scan-1','2026-09-17T16:00:00Z','2026-09-17T16:00:00Z')`).run();
   }
   prepare(sql: string): D1PreparedStatement {
     if (sql.includes("UPDATE intake_items SET status='DISMISSED'")) {
@@ -82,7 +82,7 @@ test("bulk Intake failures never expose repository diagnostics", async () => {
         "content-type": "application/json",
         "cf-access-jwt-assertion": "marc-token",
       },
-      body: JSON.stringify({ action: "DISMISS_BULK", intakeIds: ["bulk-secret"] }),
+      body: JSON.stringify({ action: "DISMISS_BULK", intakeIds: ["bulk-failure"] }),
     },
   ));
 
