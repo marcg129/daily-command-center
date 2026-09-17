@@ -35,6 +35,12 @@ function fail(message: string): never {
   throw new TodoistTaskIngressValidationError(message);
 }
 
+export function validateTodoistRelayTaskId(value: string): string {
+  const id = value.trim();
+  if (!TODOIST_TASK_ID.test(id)) fail("Todoist task id is invalid.");
+  return id;
+}
+
 function relayMetadata(description: string): Map<string, string> {
   const result = new Map<string, string>();
   for (const rawLine of description.split(/\r?\n/)) {
@@ -63,8 +69,7 @@ function relayMetadata(description: string): Map<string, string> {
  * or overwrite the DCC requestId.
  */
 export function parseTodoistRelayTask(task: TodoistRelayTask): StructuredTaskCapture {
-  const id = task.id.trim();
-  if (!TODOIST_TASK_ID.test(id)) fail("Todoist task id is invalid.");
+  const id = validateTodoistRelayTaskId(task.id);
 
   const title = task.content.trim();
   if (!title) fail("title is required.");
