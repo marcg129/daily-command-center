@@ -90,6 +90,13 @@ test("v1 parses the three supported envelope kinds through their canonical valid
   });
 });
 
+test("versioned envelopes enforce the same safe Todoist task identity boundary as legacy capture", () => {
+  assert.throws(() => parseTodoistIngressEnvelope({
+    ...task("intake_proposal", intakePayload),
+    id: "unsafe/task/id",
+  }), /task id|Todoist/i);
+});
+
 test("envelopes require exactly three metadata lines, version 1, supported kind, and single-line JSON", () => {
   assert.throws(() => parseTodoistIngressEnvelope(task("intake_proposal", intakePayload, "2")), /version/i);
   assert.throws(() => parseTodoistIngressEnvelope(task("unknown_kind", intakePayload)), /kind/i);
@@ -105,7 +112,8 @@ test("envelopes require exactly three metadata lines, version 1, supported kind,
 });
 
 test("envelope payloads fail closed on missing scanRunId, unknown fields, and physical workspace selectors", () => {
-  const { scanRunId: _scanRunId, ...withoutScan } = intakePayload;
+  const withoutScan = { ...intakePayload } as Partial<typeof intakePayload>;
+  delete withoutScan.scanRunId;
   assert.throws(() => parseTodoistIngressEnvelope(task("intake_proposal", withoutScan)), /scan run|scanRunId/i);
   assert.throws(() => parseTodoistIngressEnvelope(task("intake_proposal", {
     ...intakePayload,
