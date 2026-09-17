@@ -169,7 +169,7 @@ export function createTodoistApiClient(options: ClientOptions) {
       response = await fetcher(apiUrl(pathname, search), {
         ...init,
         headers,
-        redirect: "error",
+        redirect: "manual",
       });
     } catch (error) {
       const diagnostic = safeTransportDiagnostic(error, token);
