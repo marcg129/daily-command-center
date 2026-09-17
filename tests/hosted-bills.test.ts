@@ -28,7 +28,8 @@ class TestD1 implements D1Database {
     for (const name of [
       "0001_workspaces.sql", "0002_tasks.sql", "0003_collector_snapshots.sql", "0004_secrets_and_workspace_domains.sql",
       "0005_task_capture_metadata.sql", "0006_principal_workspace_grants.sql", "0007_user_workspace_ownership.sql",
-      "0008_workspace_instances.sql", "0009_bills_and_obligations.sql",
+      "0008_workspace_instances.sql", "0009_bills_and_obligations.sql", "0010_income_and_cashflow.sql",
+      "0011_todoist_ingress_control.sql", "0012_daily_intake_events.sql",
     ]) this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
 
     this.sqlite.prepare("INSERT INTO users (user_id, status, created_at, updated_at) VALUES (?, 'ACTIVE', ?, ?)")
@@ -86,6 +87,27 @@ function monthlyBill(overrides: Partial<BillDefinitionCore> = {}): BillDefinitio
     status: "ACTIVE",
     ...overrides,
   };
+}
+
+function addBillIntake(d1: TestD1, intakeId: string, userId = "user:marc", workspaceId = "personal") {
+  d1.sqlite.prepare(`INSERT INTO intake_items (
+    intake_id, user_id, workspace_id, workspace_key, intake_type, status, source_type, source_key,
+    source_message_id, proposal_ordinal, source_timestamp, source_summary, classification_reason, title,
+    amount_minor, currency, target_payload_json, semantic_key, scan_run_id, created_at, updated_at
+  ) VALUES (?, ?, ?, 'personal', 'BILL', 'PENDING', 'gmail', 'personal_gmail', ?, 1, ?, ?, ?, ?, 10000, 'USD', '{}', ?, 'scan-1', ?, ?)`)
+    .run(
+      intakeId,
+      userId,
+      workspaceId,
+      `msg-${intakeId}`,
+      "2026-09-15T15:00:00Z",
+      "A payment is due.",
+      "The source states a payment obligation.",
+      "Pay bill",
+      `personal_gmail:message:msg-${intakeId}:1`,
+      "2026-09-15T15:00:00Z",
+      "2026-09-15T15:00:00Z",
+    );
 }
 
 test("D1 Bills bind every read and write to the authenticated physical workspace and materialize idempotently", async () => {
@@ -178,6 +200,26 @@ test("one-time bills can be created already overdue without manufacturing recurr
   }));
   assert.ok(recurring.occurrences.every((item) => item.dueDate >= "2026-09-15"));
   assert.equal(recurring.occurrences[0]?.dueDate, "2026-09-30");
+  d1.sqlite.close();
+});
+
+test("Intake-origin Bill creation replays the same canonical Bill and never crosses workspaces", async () => {
+  const d1 = new TestD1();
+  addBillIntake(d1, "intake-bill-1");
+  const repository = new D1BillRepository(d1, marcContext, clock, ids("bill-from-intake", "should-not-be-used"));
+  const first = await repository.create(monthlyBill({ name: "Intake Bill" }), { sourceIntakeId: "intake-bill-1" });
+  const replay = await repository.create(monthlyBill({ name: "Intake Bill" }), { sourceIntakeId: "intake-bill-1" });
+  assert.equal(first.bill.billId, "bill-from-intake");
+  assert.equal(replay.bill.billId, "bill-from-intake");
+  assert.equal((d1.sqlite.prepare("SELECT count(*) count FROM bills WHERE source_intake_id='intake-bill-1'").get() as { count: number }).count, 1);
+
+  addBillIntake(d1, "intake-other", "user:other", "personal:other");
+  const other = new D1BillRepository(d1, otherContext, clock, ids("other-intake-bill"));
+  await other.create(monthlyBill({ name: "Other Intake Bill" }), { sourceIntakeId: "intake-other" });
+  await assert.rejects(
+    repository.create(monthlyBill({ name: "Wrong workspace" }), { sourceIntakeId: "intake-other" }),
+  );
+  assert.equal((await repository.listSummary()).bills.some((bill) => bill.name === "Other Intake Bill"), false);
   d1.sqlite.close();
 });
 
