@@ -5,6 +5,7 @@ const TODOIST_API_ORIGIN = "https://api.todoist.com";
 const PAGE_LIMIT = 200;
 const MAX_PAGES = 20;
 const FAILURE_LABEL = "dcc-failed";
+const MAX_TRANSPORT_DIAGNOSTIC_LENGTH = 240;
 
 export type TodoistApiFetch = (
   input: RequestInfo | URL,
@@ -59,6 +60,17 @@ function required(value: string, message: string): string {
   const normalized = value.trim();
   if (!normalized) throw new Error(message);
   return normalized;
+}
+
+function safeTransportDiagnostic(error: unknown, token: string): string {
+  const name = error instanceof Error && error.name.trim() ? error.name.trim() : "Error";
+  const detail = error instanceof Error ? error.message : "";
+  let diagnostic = `${name}${detail ? `: ${detail}` : ""}`.replace(/\s+/g, " ").trim();
+  if (token) diagnostic = diagnostic.split(token).join("[redacted]");
+  diagnostic = diagnostic
+    .replace(/authorization\s*:\s*bearer\s+\S+/gi, "[credential redacted]")
+    .replace(/\bbearer\s+\S+/gi, "[credential redacted]");
+  return diagnostic.slice(0, MAX_TRANSPORT_DIAGNOSTIC_LENGTH) || "Error";
 }
 
 function boundedRetryAfter(value: unknown): number | null {
@@ -159,10 +171,12 @@ export function createTodoistApiClient(options: ClientOptions) {
         headers,
         redirect: "error",
       });
-    } catch {
-      throw new TodoistApiError("Todoist request failed before a response was received.", {
-        transient: true,
-      });
+    } catch (error) {
+      const diagnostic = safeTransportDiagnostic(error, token);
+      throw new TodoistApiError(
+        `Todoist request failed before a response was received (${diagnostic}).`,
+        { transient: true },
+      );
     }
 
     if (!response.ok) {

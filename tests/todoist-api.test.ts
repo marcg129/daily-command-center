@@ -191,7 +191,7 @@ test("429 and server retry metadata become transient errors with bounded retryAf
   });
 });
 
-test("5xx and network failures are transient and never surface authorization material", async () => {
+test("5xx and network failures are transient, diagnostically useful, and never surface authorization material", async () => {
   const serverClient = createTodoistApiClient({
     token,
     projectId,
@@ -208,12 +208,15 @@ test("5xx and network failures are transient and never surface authorization mat
   const networkClient = createTodoistApiClient({
     token,
     projectId,
-    fetcher: async () => { throw new Error(`socket failed with Authorization: Bearer ${token}`); },
+    fetcher: async () => {
+      throw new TypeError(`fetch failed while sending Authorization: Bearer ${token}`);
+    },
   });
   await assert.rejects(networkClient.listRelayTasks(), (error: unknown) => {
     assert.ok(error instanceof TodoistApiError);
     assert.equal(error.transient, true);
     assert.equal(error.status, null);
+    assert.match(error.message, /TypeError: fetch failed/i);
     assert.doesNotMatch(error.message, /secret-token|authorization/i);
     return true;
   });
