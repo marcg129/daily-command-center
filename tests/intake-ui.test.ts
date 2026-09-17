@@ -52,3 +52,13 @@ test("Intake controls remain keyboard-native and cards retain visible workspace 
   assert.match(css, /@media \(max-width:/);
   assert.doesNotMatch(css, /outline:\s*none/);
 });
+
+test("Intake badges and evidence cards use theme-aware surfaces with explicit readable foregrounds", () => {
+  const css = source("components/intake-view.module.css");
+  assert.doesNotMatch(css, /--paper-strong|--accent/);
+  assert.match(css, /\.typeChip\{[^}]*background:var\(--coral-soft[^}]*color:var\(--coral-dark/);
+  assert.match(css, /\.workspaceChip,.statusChip\{[^}]*background:var\(--surface-strong[^}]*color:var\(--ink/);
+  assert.match(css, /\.evidenceGrid div\{[^}]*background:var\(--surface-strong/);
+  assert.match(css, /\.evidenceGrid span\{[^}]*color:var\(--muted/);
+  assert.match(css, /\.evidenceGrid b\{[^}]*color:var\(--ink/);
+});
