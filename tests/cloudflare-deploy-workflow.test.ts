@@ -7,6 +7,7 @@ const readCheck = () => readFile(new URL("../.github/workflows/check.yml", impor
 const readBootstrap = () => readFile(new URL("../.github/workflows/cloudflare-bootstrap-grants.yml", import.meta.url), "utf8");
 const readWebWrangler = () => readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
 const readMcpWrangler = () => readFile(new URL("../wrangler.mcp.jsonc", import.meta.url), "utf8");
+const readSmoke = () => readFile(new URL("../scripts/smoke.mjs", import.meta.url), "utf8");
 
 test("protected Cloudflare deployment accepts only the current merged PR revision", async () => {
   const deploy = await readDeploy();
@@ -56,6 +57,15 @@ test("pull request CI proves the generated vinext artifact keeps the custom doma
   assert.match(check, /command\.coreyg\.dev/);
   assert.match(check, /Generated Custom Domain mismatch/);
   assert.match(check, /matrix\.os == 'ubuntu-latest'/);
+});
+
+test("launcher smoke exercises hosted Intake and Events route posture without Cloudflare bindings", async () => {
+  const smoke = await readSmoke();
+  assert.match(smoke, /\/api\/hosted\/intake\?workspaceId=personal&view=PENDING/);
+  assert.match(smoke, /\/api\/hosted\/events\?workspaceId=personal&from=/);
+  assert.match(smoke, /status !== 500/);
+  assert.match(smoke, /headers\.get\("cache-control"\) !== "no-store"/);
+  assert.match(smoke, /Hosted runtime is unavailable\./);
 });
 
 test("web Worker declares only the canonical custom domain while keeping a temporary rollback hostname", async () => {
