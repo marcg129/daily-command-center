@@ -7,6 +7,7 @@ export type TodoistRelayTask = Readonly<{
   id: string;
   content: string;
   description?: string | null;
+  addedAt?: string;
 }>;
 
 const TODOIST_TASK_ID = /^[A-Za-z0-9_-]{1,96}$/;
