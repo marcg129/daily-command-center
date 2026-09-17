@@ -22,6 +22,13 @@ export interface TodoistRelayActions {
   markFailure(taskId: string, diagnostic: string): Promise<void>;
 }
 
+export class TodoistWorkspaceAuthorizationError extends Error {
+  constructor(message = "Workspace access denied.") {
+    super(message);
+    this.name = "TodoistWorkspaceAuthorizationError";
+  }
+}
+
 export class TodoistRelayTransportError extends Error {
   readonly transient: boolean;
   readonly retryAfterSeconds: number | null;
@@ -122,13 +129,20 @@ export function createTodoistTaskIngressService({
     let context: RequestContext;
     try {
       context = await workspaceResolver.resolve(input.workspaceId);
-    } catch {
-      return markPermanentFailure(
-        relay,
-        task.id,
-        `DCC import failed: configured DCC user is not authorized for ${input.workspaceId}.`,
-        input.requestId,
-      );
+    } catch (error) {
+      if (error instanceof TodoistWorkspaceAuthorizationError) {
+        return markPermanentFailure(
+          relay,
+          task.id,
+          `DCC import failed: configured DCC user is not authorized for ${input.workspaceId}.`,
+          input.requestId,
+        );
+      }
+      return {
+        status: "transient-failure",
+        todoistTaskId: task.id,
+        requestId: input.requestId,
+      };
     }
 
     let result;

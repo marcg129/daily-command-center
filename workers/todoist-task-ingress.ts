@@ -3,6 +3,7 @@ import { createTodoistApiClient } from "../lib/runtime/todoist-api";
 import { runTodoistIngressBatch } from "../lib/runtime/todoist-ingress-runner";
 import { createTodoistTaskIngressService } from "../lib/runtime/todoist-task-ingress-service";
 import { D1TaskRepository } from "../lib/server/d1-task-repository";
+import { D1TodoistIngressControlStore } from "../lib/server/d1-todoist-ingress-control-store";
 import { D1UserWorkspaceResolver } from "../lib/server/d1-user-workspace-resolver";
 
 type Env = Readonly<{
@@ -29,23 +30,28 @@ async function run(env: Env, scheduledTime: number) {
     return;
   }
 
-  const now = Number.isFinite(scheduledTime) && scheduledTime > 0
-    ? new Date(scheduledTime)
-    : new Date();
+  const captureNowMs = Number.isFinite(scheduledTime) && scheduledTime > 0
+    ? scheduledTime
+    : Date.now();
+  const captureNow = new Date(captureNowMs);
   const api = createTodoistApiClient({
     token,
     projectId: env.TODOIST_PROJECT_ID,
   });
   const repository = new D1TaskRepository(env.DB);
   const workspaceResolver = new D1UserWorkspaceResolver(env.DB, userId);
+  const control = new D1TodoistIngressControlStore(env.DB);
   const importTask = createTodoistTaskIngressService({
     repository,
-    clock: { now: () => now },
+    clock: { now: () => captureNow },
     workspaceResolver,
     relay: api,
   });
 
-  const summary = await runTodoistIngressBatch(api, importTask);
+  const summary = await runTodoistIngressBatch(api, importTask, {
+    control,
+    clock: () => Date.now(),
+  });
   console.log("Todoist task ingress run", summary);
 }
 

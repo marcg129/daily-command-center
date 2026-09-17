@@ -22,6 +22,7 @@ type TodoistTaskPayload = Readonly<{
   content?: string;
   description?: string | null;
   labels?: unknown;
+  added_at?: unknown;
 }>;
 
 type TodoistCommentPayload = Readonly<{
@@ -94,13 +95,19 @@ function taskFromPayload(value: unknown): TodoistRelayTask {
     throw new TodoistApiError("Todoist returned an invalid task payload.", { transient: true });
   }
   const task = value as TodoistTaskPayload;
-  if (typeof task.id !== "string" || typeof task.content !== "string") {
+  if (
+    typeof task.id !== "string" ||
+    typeof task.content !== "string" ||
+    typeof task.added_at !== "string" ||
+    !Number.isFinite(Date.parse(task.added_at))
+  ) {
     throw new TodoistApiError("Todoist returned an invalid task payload.", { transient: true });
   }
   return {
     id: task.id,
     content: task.content,
     description: typeof task.description === "string" ? task.description : "",
+    addedAt: task.added_at,
   };
 }
 
