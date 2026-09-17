@@ -47,13 +47,13 @@ test("Today Intake discloses failed or unknown source freshness without hiding t
   assert.match(view, /items\.length/);
 });
 
-test("Today mounts focused event and Intake components without moving provider logic into control-center", () => {
+test("Today mounts focused event and Intake components beside Financial Pulse without provider logic in control-center", () => {
   const control = source("components/control-center.tsx");
-  assert.match(control, /import \{ TodayEvents \} from "@\/components\/today-events"/);
-  assert.match(control, /import \{ TodayIntakeSummary \} from "@\/components\/today-intake-summary"/);
-  assert.match(control, /<TodayEvents[^>]*workspaceId=\{workspaceId\}/);
-  assert.match(control, /<TodayIntakeSummary[^>]*workspaceId=\{workspaceId\}/);
-  assert.match(control, /onOpenIntake=\{\(\) => goTo\("intake"\)\}/);
+  const pulse = source("components/today-financial-pulse.tsx");
+  assert.match(pulse, /import \{ TodayEvents \} from "\.\/today-events"/);
+  assert.match(pulse, /import \{ TodayIntakeSummary \} from "\.\/today-intake-summary"/);
+  assert.match(pulse, /<TodayEvents[^>]*workspaceId=\{workspaceId\}/);
+  assert.match(pulse, /<TodayIntakeSummary[^>]*workspaceId=\{workspaceId\}/);
   assert.doesNotMatch(control, /fetch\("\/api\/hosted\/events/);
   assert.doesNotMatch(control, /fetch\("\/api\/hosted\/intake/);
 });
