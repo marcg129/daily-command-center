@@ -138,7 +138,7 @@ test("ingest derives semantic identity and reads only from the exact authorized 
   const row = database.sqlite.prepare(
     "SELECT user_id, workspace_id, workspace_key, semantic_key FROM intake_items WHERE intake_id='intake-1'",
   ).get() as Record<string, unknown>;
-  assert.deepEqual(row, {
+  assert.deepEqual({ ...row }, {
     user_id: "user:marc",
     workspace_id: "personal:marc",
     workspace_key: "personal",
@@ -243,7 +243,7 @@ test("manual workspace and proposal corrections survive later source replay whil
 
   const row = database.sqlite.prepare("SELECT workspace_id, workspace_key FROM intake_items WHERE intake_id=?")
     .get(created.item.intakeId) as Record<string, unknown>;
-  assert.deepEqual(row, { workspace_id: "indelitech:marc", workspace_key: "indelitech" });
+  assert.deepEqual({ ...row }, { workspace_id: "indelitech:marc", workspace_key: "indelitech" });
   database.sqlite.close();
 });
 
