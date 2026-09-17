@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTodoistIngressDispatcher } from "@/lib/runtime/todoist-ingress-dispatcher";
-import type { TodoistRelayTask } from "@/lib/runtime/todoist-task-ingress";
-import type { TodoistTaskIngressOutcome, TodoistRelayActions } from "@/lib/runtime/todoist-task-ingress-service";
-import type { ParsedDccEnvelope } from "@/lib/runtime/todoist-ingress-envelope";
+import { createTodoistIngressDispatcher } from "../lib/runtime/todoist-ingress-dispatcher";
+import type { TodoistRelayTask } from "../lib/runtime/todoist-task-ingress";
+import type { TodoistTaskIngressOutcome, TodoistRelayActions } from "../lib/runtime/todoist-task-ingress-service";
+import type { ParsedDccEnvelope } from "../lib/runtime/todoist-ingress-envelope";
 
 const legacyTask: TodoistRelayTask = {
   id: "legacy-1",
