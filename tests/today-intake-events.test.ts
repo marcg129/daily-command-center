@@ -9,7 +9,7 @@ function source(path: string) {
 test("Today Events stays lightweight with today's events and a compact seven-day preview", () => {
   const view = source("components/today-events.tsx");
   assert.match(view, /useProjectedEvents\("all"\)/);
-  assert.match(view, /Today['’]s Events/);
+  assert.match(view, /Today(?:['’]|&apos;)s Events/);
   assert.match(view, /Next 7 days/);
   assert.match(view, /projectedCalendarEventDate/);
   assert.match(view, /addCalendarDays\(today, 7\)/);
