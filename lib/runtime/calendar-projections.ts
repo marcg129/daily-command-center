@@ -4,11 +4,9 @@ import { isExactInstant, isGoogleSourceUrl } from "./daily-intake";
 
 export const CALENDAR_SOURCE_KEYS = ["primary_calendar", "family_calendar"] as const;
 export const CALENDAR_OVERRIDE_SCOPES = ["SERIES", "OCCURRENCE"] as const;
-export const CALENDAR_PROJECTION_STATUSES = ["ACTIVE", "REMOVED", "CANCELLED"] as const;
 
 export type CalendarSourceKey = (typeof CALENDAR_SOURCE_KEYS)[number];
 export type CalendarOverrideScope = (typeof CALENDAR_OVERRIDE_SCOPES)[number];
-export type CalendarProjectionStatus = (typeof CALENDAR_PROJECTION_STATUSES)[number];
 
 export type CalendarEventInput = Readonly<{
   eventId: string;
@@ -32,6 +30,13 @@ export type CalendarSyncInput = Readonly<{
   batchIndex: number;
   batchCount: number;
   events: readonly CalendarEventInput[];
+}>;
+
+export type CalendarWorkspaceOverrideInput = Readonly<{
+  sourceKey: CalendarSourceKey;
+  scope: CalendarOverrideScope;
+  identityKey: string;
+  workspaceId: ProductWorkspaceId;
 }>;
 
 function includes(values: readonly string[], value: unknown): boolean {
@@ -110,5 +115,15 @@ export function validateCalendarSyncInput(value: CalendarSyncInput): void {
     if (event.automaticWorkspaceId !== undefined && !isProductWorkspaceId(event.automaticWorkspaceId)) {
       throw new Error("Calendar automatic workspace must be personal or indelitech");
     }
+  }
+}
+
+export function validateCalendarWorkspaceOverrideInput(value: CalendarWorkspaceOverrideInput): void {
+  if (!value || typeof value !== "object") throw new Error("Calendar workspace override is required");
+  if (!includes(CALENDAR_SOURCE_KEYS, value.sourceKey)) throw new Error("Calendar override source is not supported");
+  if (!includes(CALENDAR_OVERRIDE_SCOPES, value.scope)) throw new Error("Calendar override scope must be SERIES or OCCURRENCE");
+  assertText(value.identityKey, "Calendar override identity", 1024, true);
+  if (!isProductWorkspaceId(value.workspaceId)) {
+    throw new Error("Calendar override workspace must be personal or indelitech");
   }
 }
