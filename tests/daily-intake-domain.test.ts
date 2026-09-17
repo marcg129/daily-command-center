@@ -4,13 +4,18 @@ import {
   DAILY_INTAKE_SOURCE_KEYS,
   INTAKE_STATUSES,
   INTAKE_TYPES,
+  SCAN_STATUS_STATES,
   validateIntakeProposalInput,
+  validateScanStatusInput,
   type IntakeProposalInput,
+  type ScanStatusInput,
 } from "@/lib/runtime/daily-intake";
 import {
   CALENDAR_OVERRIDE_SCOPES,
   validateCalendarSyncInput,
+  validateCalendarWorkspaceOverrideInput,
   type CalendarSyncInput,
+  type CalendarWorkspaceOverrideInput,
 } from "@/lib/runtime/calendar-projections";
 
 const validIntake: IntakeProposalInput = {
@@ -62,6 +67,17 @@ const validCalendarSync: CalendarSyncInput = {
   }],
 };
 
+const validScanStatus: ScanStatusInput = {
+  scanRunId: "scan-2026-09-17-morning",
+  sources: [
+    { sourceKey: "personal_gmail", state: "SUCCESS", attemptedAt: "2026-09-17T11:00:00-04:00", completedAt: "2026-09-17T11:00:05-04:00" },
+    { sourceKey: "professional_gmail", state: "SUCCESS", attemptedAt: "2026-09-17T11:00:05-04:00", completedAt: "2026-09-17T11:00:10-04:00" },
+    { sourceKey: "indelitech_gmail", state: "FAILED", attemptedAt: "2026-09-17T11:00:10-04:00", diagnostic: "Mailbox read failed." },
+    { sourceKey: "primary_calendar", state: "SUCCESS", attemptedAt: "2026-09-17T11:00:15-04:00", completedAt: "2026-09-17T11:00:20-04:00" },
+    { sourceKey: "family_calendar", state: "SUCCESS", attemptedAt: "2026-09-17T11:00:20-04:00", completedAt: "2026-09-17T11:00:25-04:00" },
+  ],
+};
+
 test("1G-H domain constants expose only the approved v1 values", () => {
   assert.deepEqual(INTAKE_TYPES, ["TASK", "FOLLOW_UP", "BILL", "AWARENESS"]);
   assert.deepEqual(INTAKE_STATUSES, ["PENDING", "DEFERRED", "APPROVED", "DISMISSED", "ARCHIVED"]);
@@ -72,6 +88,7 @@ test("1G-H domain constants expose only the approved v1 values", () => {
     "primary_calendar",
     "family_calendar",
   ]);
+  assert.deepEqual(SCAN_STATUS_STATES, ["SUCCESS", "FAILED"]);
   assert.deepEqual(CALENDAR_OVERRIDE_SCOPES, ["SERIES", "OCCURRENCE"]);
 });
 
@@ -188,4 +205,53 @@ test("calendar event time validation distinguishes all-day dates from timed inst
       cancelled: false,
     }],
   }), /timed|timestamp/i);
+});
+
+test("scan status requires one result for every approved source and exact success/failure timing", () => {
+  assert.doesNotThrow(() => validateScanStatusInput(validScanStatus));
+
+  assert.throws(() => validateScanStatusInput({
+    ...validScanStatus,
+    sources: validScanStatus.sources.slice(0, 4),
+  }), /every approved source|five|5/i);
+
+  assert.throws(() => validateScanStatusInput({
+    ...validScanStatus,
+    sources: [...validScanStatus.sources.slice(0, 4), validScanStatus.sources[0]],
+  }), /duplicate|source/i);
+
+  assert.throws(() => validateScanStatusInput({
+    ...validScanStatus,
+    sources: validScanStatus.sources.map((source) => source.sourceKey === "personal_gmail"
+      ? { ...source, completedAt: undefined }
+      : source),
+  } as ScanStatusInput), /completed/i);
+
+  assert.throws(() => validateScanStatusInput({
+    ...validScanStatus,
+    sources: validScanStatus.sources.map((source) => source.sourceKey === "indelitech_gmail"
+      ? { ...source, diagnostic: undefined }
+      : source),
+  } as ScanStatusInput), /diagnostic/i);
+
+  assert.throws(() => validateScanStatusInput({
+    ...validScanStatus,
+    sources: validScanStatus.sources.map((source) => source.sourceKey === "primary_calendar"
+      ? { ...source, attemptedAt: "2026-09-17" }
+      : source),
+  } as ScanStatusInput), /timestamp/i);
+});
+
+test("calendar workspace override contract permits only logical workspaces and series/occurrence identity", () => {
+  const valid: CalendarWorkspaceOverrideInput = {
+    sourceKey: "primary_calendar",
+    scope: "SERIES",
+    identityKey: "series-9",
+    workspaceId: "indelitech",
+  };
+  assert.doesNotThrow(() => validateCalendarWorkspaceOverrideInput(valid));
+  assert.doesNotThrow(() => validateCalendarWorkspaceOverrideInput({ ...valid, scope: "OCCURRENCE", identityKey: "evt-123@2026-09-20" }));
+  assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, scope: "EVENT" as "SERIES" }), /scope/i);
+  assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, workspaceId: "personal:marc" as "personal" }), /workspace/i);
+  assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, identityKey: "   " }), /identity/i);
 });
