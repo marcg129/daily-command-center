@@ -116,7 +116,7 @@ test("Today and Calendar use canonical bill occurrences instead of synthetic tas
   assert.match(today, /router\.push\(`\/bills\?workspaceId=/);
   assert.match(today, /WalletCards/);
   assert.match(calendar, /useProjectedBills\(workspaceId\)/);
-  assert.match(calendar, /Derived from canonical tasks and bill occurrences/);
+  assert.match(calendar, /Derived from canonical tasks, bill occurrences, and read-only Google event projections/);
   assert.match(calendar, /router\.push\(`\/bills\?workspaceId=/);
   assert.doesNotMatch(today, /createTaskItem/);
   assert.doesNotMatch(calendar, /createTaskItem/);
@@ -130,10 +130,10 @@ test("workspace switches never expose bill projections from the previous logical
   assert.match(hook, /return \{ occurrences: \[\], loading: true, error: "" \}/);
 });
 
-test("calendar ordering preserves same-source order while placing bills before tasks on the same day", async () => {
+test("calendar ordering preserves same-source order while placing bills before events and tasks on the same day", async () => {
   const calendar = await readFile(new URL("../components/task-calendar.tsx", import.meta.url), "utf8");
   assert.match(calendar, /function compareCalendarProjection/);
-  assert.match(calendar, /if \(left\.source === right\.source\) return 0/);
-  assert.match(calendar, /return left\.source === "BILL" \? -1 : 1/);
+  assert.match(calendar, /const rank = \{ BILL: 0, EVENT: 1, TASK: 2 \} as const/);
+  assert.match(calendar, /return rank\[left\.source\] - rank\[right\.source\]/);
   assert.match(calendar, /\.toSorted\(compareCalendarProjection\)/);
 });
