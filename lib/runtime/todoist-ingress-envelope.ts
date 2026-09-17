@@ -10,6 +10,7 @@ import {
 } from "./calendar-projections";
 import {
   TodoistTaskIngressValidationError,
+  validateTodoistRelayTaskId,
   type TodoistRelayTask,
 } from "./todoist-task-ingress";
 
@@ -89,6 +90,7 @@ export function isVersionedDccEnvelope(task: TodoistRelayTask): boolean {
 }
 
 export function parseTodoistIngressEnvelope(task: TodoistRelayTask): ParsedDccEnvelope {
+  validateTodoistRelayTaskId(task.id);
   const description = task.description ?? "";
   const lines = description.split(/\r?\n/);
   if (lines.length !== 3) fail("DCC envelope must contain exactly three metadata lines.");
