@@ -107,24 +107,11 @@ export function useIntake({ scope, viewMode, authorizedWorkspaceIds, enabled }: 
   const [nonce, setNonce] = useState(0);
 
   const workspaceIds = useMemo(() => authorizedScope(scope, authorizedWorkspaceIds), [authorizedWorkspaceIds, scope]);
+  const active = enabled && workspaceIds.length > 0;
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 
   useEffect(() => {
-    if (!enabled) {
-      setItems([]);
-      setSources([]);
-      setLoading(false);
-      setLoadError("");
-      setFreshnessError("");
-      return;
-    }
-    if (!workspaceIds.length) {
-      setItems([]);
-      setSources([]);
-      setLoading(false);
-      setLoadError("This workspace is not authorized for the current session.");
-      return;
-    }
+    if (!enabled || !workspaceIds.length) return;
 
     const controller = new AbortController();
     const load = async () => {
@@ -218,5 +205,21 @@ export function useIntake({ scope, viewMode, authorizedWorkspaceIds, enabled }: 
     }
   }), [runMutation]);
 
-  return { items, sources, loading, error: mutationError || loadError, freshnessError, actionPending, actionMessage, refresh, approve, editAndApprove, defer, dismiss, archive, bulkApprove, bulkDismiss };
+  return {
+    items: active ? items : [],
+    sources: active ? sources : [],
+    loading: active ? loading : false,
+    error: !enabled ? "" : workspaceIds.length ? mutationError || loadError : "This workspace is not authorized for the current session.",
+    freshnessError: active ? freshnessError : "",
+    actionPending,
+    actionMessage,
+    refresh,
+    approve,
+    editAndApprove,
+    defer,
+    dismiss,
+    archive,
+    bulkApprove,
+    bulkDismiss,
+  };
 }

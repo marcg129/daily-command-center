@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   Archive,
   Check,
@@ -149,7 +149,8 @@ export function IntakeView({
   enabled: boolean;
 }) {
   const [viewMode, setViewMode] = useState<IntakeViewMode>("PENDING");
-  const [scope, setScope] = useState<IntakeScope>(workspaceId);
+  const [scopeChoice, setScopeChoice] = useState<IntakeScope | "workspace">("workspace");
+  const scope: IntakeScope = scopeChoice === "workspace" ? workspaceId : scopeChoice;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState<EditDraft | null>(null);
   const [editError, setEditError] = useState("");
@@ -157,22 +158,30 @@ export function IntakeView({
   const [deferUntil, setDeferUntil] = useState("");
   const [deferError, setDeferError] = useState("");
 
-  useEffect(() => {
-    setScope(workspaceId);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    setSelectedIds(new Set());
-    setEditing(null);
-    setDeferItem(null);
-  }, [scope, viewMode]);
-
   const intake = useIntake({ scope, viewMode, authorizedWorkspaceIds, enabled });
   const canShowAll = authorizedWorkspaceIds.includes("personal") && authorizedWorkspaceIds.includes("indelitech");
   const selectedItems = useMemo(
     () => intake.items.filter((item) => selectedIds.has(item.intakeId)),
     [intake.items, selectedIds],
   );
+  const editingVisible = editing && (scope === "all" || editing.item.workspaceKey === scope) ? editing : null;
+  const deferVisible = deferItem && (scope === "all" || deferItem.workspaceKey === scope) ? deferItem : null;
+
+  const resetReviewState = () => {
+    setSelectedIds(new Set());
+    setEditing(null);
+    setDeferItem(null);
+  };
+
+  const changeViewMode = (next: IntakeViewMode) => {
+    resetReviewState();
+    setViewMode(next);
+  };
+
+  const changeScope = (next: IntakeScope) => {
+    resetReviewState();
+    setScopeChoice(next);
+  };
 
   const toggleSelected = (item: HostedIntakeItem, checked: boolean) => {
     setSelectedIds((current) => {
@@ -185,33 +194,33 @@ export function IntakeView({
 
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!editing) return;
+    if (!editingVisible) return;
     setEditError("");
     try {
-      const title = editing.title.trim();
+      const title = editingVisible.title.trim();
       if (!title) throw new Error("Title is required.");
       const patch: IntakeEditablePatch = {
-        workspaceId: editing.workspaceId,
+        workspaceId: editingVisible.workspaceId,
         title,
       };
-      if (editing.item.intakeType === "TASK" || editing.item.intakeType === "FOLLOW_UP") {
+      if (editingVisible.item.intakeType === "TASK" || editingVisible.item.intakeType === "FOLLOW_UP") {
         Object.assign(patch, {
-          dueDate: editing.dueDate || null,
-          followUpAt: exactInstant(editing.followUpAt),
-          priority: editing.priority || null,
+          dueDate: editingVisible.dueDate || null,
+          followUpAt: exactInstant(editingVisible.followUpAt),
+          priority: editingVisible.priority || null,
         });
       }
-      if (editing.item.intakeType === "BILL") {
-        const amountMinor = amountToMinor(editing.amount);
-        const currency = editing.currency.trim().toUpperCase();
+      if (editingVisible.item.intakeType === "BILL") {
+        const amountMinor = amountToMinor(editingVisible.amount);
+        const currency = editingVisible.currency.trim().toUpperCase();
         if ((amountMinor === null) !== (currency === "")) throw new Error("Bill amount and currency must both be filled in or both be blank.");
         Object.assign(patch, {
-          dueDate: editing.dueDate || null,
+          dueDate: editingVisible.dueDate || null,
           amountMinor,
           currency: currency || null,
         });
       }
-      const ok = await intake.editAndApprove(editing.item, patch);
+      const ok = await intake.editAndApprove(editingVisible.item, patch);
       if (ok) setEditing(null);
     } catch (caught) {
       setEditError(caught instanceof Error ? caught.message : "Changes could not be prepared safely.");
@@ -220,12 +229,12 @@ export function IntakeView({
 
   const submitDefer = async (event: FormEvent) => {
     event.preventDefault();
-    if (!deferItem) return;
+    if (!deferVisible) return;
     setDeferError("");
     try {
       const until = exactInstant(deferUntil);
       if (!until) throw new Error("Choose when this item should return to Pending.");
-      const ok = await intake.defer(deferItem, until);
+      const ok = await intake.defer(deferVisible, until);
       if (ok) {
         setDeferItem(null);
         setDeferUntil("");
@@ -269,20 +278,20 @@ export function IntakeView({
 
       <div className={styles.toolbar}>
         <div className={styles.modeTabs} aria-label="Intake review state">
-          <button type="button" className={viewMode === "PENDING" ? styles.active : undefined} onClick={() => setViewMode("PENDING")}>Pending</button>
-          <button type="button" className={viewMode === "DEFERRED" ? styles.active : undefined} onClick={() => setViewMode("DEFERRED")}>Deferred</button>
-          <button type="button" className={viewMode === "AWARENESS" ? styles.active : undefined} onClick={() => setViewMode("AWARENESS")}>Awareness</button>
-          <button type="button" className={viewMode === "HISTORY" ? styles.active : undefined} onClick={() => setViewMode("HISTORY")}>History</button>
+          <button type="button" className={viewMode === "PENDING" ? styles.active : undefined} onClick={() => changeViewMode("PENDING")}>Pending</button>
+          <button type="button" className={viewMode === "DEFERRED" ? styles.active : undefined} onClick={() => changeViewMode("DEFERRED")}>Deferred</button>
+          <button type="button" className={viewMode === "AWARENESS" ? styles.active : undefined} onClick={() => changeViewMode("AWARENESS")}>Awareness</button>
+          <button type="button" className={viewMode === "HISTORY" ? styles.active : undefined} onClick={() => changeViewMode("HISTORY")}>History</button>
         </div>
         <div className={styles.scopeTabs} aria-label="Intake workspace">
           {authorizedWorkspaceIds.includes("personal") && (
-            <button type="button" className={scope === "personal" ? styles.active : undefined} onClick={() => setScope("personal")}>Personal</button>
+            <button type="button" className={scope === "personal" ? styles.active : undefined} onClick={() => changeScope("personal")}>Personal</button>
           )}
           {authorizedWorkspaceIds.includes("indelitech") && (
-            <button type="button" className={scope === "indelitech" ? styles.active : undefined} onClick={() => setScope("indelitech")}>Indelitech</button>
+            <button type="button" className={scope === "indelitech" ? styles.active : undefined} onClick={() => changeScope("indelitech")}>Indelitech</button>
           )}
           {canShowAll && (
-            <button type="button" className={scope === "all" ? styles.active : undefined} onClick={() => setScope("all")}>All</button>
+            <button type="button" className={scope === "all" ? styles.active : undefined} onClick={() => changeScope("all")}>All</button>
           )}
         </div>
       </div>
@@ -388,7 +397,7 @@ export function IntakeView({
         </section>
       )}
 
-      {editing && (
+      {editingVisible && (
         <div className={styles.modalBackdrop}>
           <form className={styles.modal} onSubmit={(event) => void submitEdit(event)}>
             <div className={styles.modalHeader}>
@@ -397,33 +406,33 @@ export function IntakeView({
             </div>
             <label>
               Title
-              <input value={editing.title} onChange={(event) => setEditing((current) => current ? { ...current, title: event.target.value } : current)} required maxLength={300} />
+              <input value={editingVisible.title} onChange={(event) => setEditing((current) => current ? { ...current, title: event.target.value } : current)} required maxLength={300} />
             </label>
             <label>
               Workspace
-              <select value={editing.workspaceId} onChange={(event) => setEditing((current) => current ? { ...current, workspaceId: event.target.value as ProductWorkspaceId } : current)}>
+              <select value={editingVisible.workspaceId} onChange={(event) => setEditing((current) => current ? { ...current, workspaceId: event.target.value as ProductWorkspaceId } : current)}>
                 {authorizedWorkspaceIds.includes("personal") && <option value="personal">Personal</option>}
                 {authorizedWorkspaceIds.includes("indelitech") && <option value="indelitech">Indelitech</option>}
               </select>
             </label>
-            {(editing.item.intakeType === "TASK" || editing.item.intakeType === "FOLLOW_UP") && (
+            {(editingVisible.item.intakeType === "TASK" || editingVisible.item.intakeType === "FOLLOW_UP") && (
               <div className={styles.formGrid}>
-                <label>Due date<input type="date" value={editing.dueDate} onChange={(event) => setEditing((current) => current ? { ...current, dueDate: event.target.value } : current)} /></label>
-                <label>Follow-up time<input type="datetime-local" value={editing.followUpAt} onChange={(event) => setEditing((current) => current ? { ...current, followUpAt: event.target.value } : current)} /></label>
-                <label>Priority<select value={editing.priority} onChange={(event) => setEditing((current) => current ? { ...current, priority: event.target.value as EditDraft["priority"] } : current)}><option value="">Unspecified</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select></label>
+                <label>Due date<input type="date" value={editingVisible.dueDate} onChange={(event) => setEditing((current) => current ? { ...current, dueDate: event.target.value } : current)} /></label>
+                <label>Follow-up time<input type="datetime-local" value={editingVisible.followUpAt} onChange={(event) => setEditing((current) => current ? { ...current, followUpAt: event.target.value } : current)} /></label>
+                <label>Priority<select value={editingVisible.priority} onChange={(event) => setEditing((current) => current ? { ...current, priority: event.target.value as EditDraft["priority"] } : current)}><option value="">Unspecified</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select></label>
               </div>
             )}
-            {editing.item.intakeType === "BILL" && (
+            {editingVisible.item.intakeType === "BILL" && (
               <div className={styles.formGrid}>
-                <label>Due date<input type="date" value={editing.dueDate} onChange={(event) => setEditing((current) => current ? { ...current, dueDate: event.target.value } : current)} /></label>
-                <label>Amount<input inputMode="decimal" value={editing.amount} onChange={(event) => setEditing((current) => current ? { ...current, amount: event.target.value } : current)} placeholder="0.00" /></label>
-                <label>Currency<input value={editing.currency} onChange={(event) => setEditing((current) => current ? { ...current, currency: event.target.value.toUpperCase() } : current)} maxLength={3} placeholder="USD" /></label>
+                <label>Due date<input type="date" value={editingVisible.dueDate} onChange={(event) => setEditing((current) => current ? { ...current, dueDate: event.target.value } : current)} /></label>
+                <label>Amount<input inputMode="decimal" value={editingVisible.amount} onChange={(event) => setEditing((current) => current ? { ...current, amount: event.target.value } : current)} placeholder="0.00" /></label>
+                <label>Currency<input value={editingVisible.currency} onChange={(event) => setEditing((current) => current ? { ...current, currency: event.target.value.toUpperCase() } : current)} maxLength={3} placeholder="USD" /></label>
               </div>
             )}
             <div className={styles.formEvidence}>
               <b>Source evidence remains visible</b>
-              <p>{editing.item.sourceSummary}</p>
-              <small>{editing.item.classificationReason}</small>
+              <p>{editingVisible.item.sourceSummary}</p>
+              <small>{editingVisible.item.classificationReason}</small>
             </div>
             {editError && <p className={styles.formError} role="alert">{editError}</p>}
             <div className={styles.modalActions}>
@@ -434,14 +443,14 @@ export function IntakeView({
         </div>
       )}
 
-      {deferItem && (
+      {deferVisible && (
         <div className={styles.modalBackdrop}>
           <form className={styles.modal} onSubmit={(event) => void submitDefer(event)}>
             <div className={styles.modalHeader}>
               <div><p className={styles.eyebrow}>Return it later</p><h2>Defer</h2></div>
               <button type="button" className={styles.iconButton} aria-label="Close defer form" onClick={() => setDeferItem(null)}><X size={18} /></button>
             </div>
-            <p>{deferItem.title}</p>
+            <p>{deferVisible.title}</p>
             <label>
               Return to Pending at
               <input type="datetime-local" value={deferUntil} onChange={(event) => setDeferUntil(event.target.value)} required />
