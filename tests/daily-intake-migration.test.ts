@@ -73,6 +73,7 @@ function insertIntake(sqlite: DatabaseSync, overrides: Partial<Record<string, Sq
     currency: null,
     target_payload_json: "{}",
     semantic_key: "personal_gmail:message:msg-1:1",
+    scan_run_id: "scan-1",
     user_edited_at: null,
     defer_until: null,
     approved_target_kind: null,
