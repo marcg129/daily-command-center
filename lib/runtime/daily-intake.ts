@@ -14,6 +14,7 @@ export const DAILY_INTAKE_SOURCE_KEYS = [
 export const GMAIL_INTAKE_SOURCE_KEYS = ["personal_gmail", "professional_gmail", "indelitech_gmail"] as const;
 export const CALENDAR_INTAKE_SOURCE_KEYS = ["primary_calendar", "family_calendar"] as const;
 export const INTAKE_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
+export const SCAN_STATUS_STATES = ["SUCCESS", "FAILED"] as const;
 
 export type IntakeType = (typeof INTAKE_TYPES)[number];
 export type IntakeStatus = (typeof INTAKE_STATUSES)[number];
@@ -22,6 +23,7 @@ export type GmailIntakeSourceKey = (typeof GMAIL_INTAKE_SOURCE_KEYS)[number];
 export type CalendarIntakeSourceKey = (typeof CALENDAR_INTAKE_SOURCE_KEYS)[number];
 export type IntakePriority = (typeof INTAKE_PRIORITIES)[number];
 export type IntakeSourceType = "gmail" | "calendar";
+export type ScanStatusState = (typeof SCAN_STATUS_STATES)[number];
 export type BillProposalRecurrence = BillSchedule;
 
 export type IntakeProposalInput = Readonly<{
@@ -59,6 +61,19 @@ export type IntakeEditablePatch = Readonly<{
   amountMinor?: number | null;
   currency?: string | null;
   recurrence?: BillProposalRecurrence | null;
+}>;
+
+export type ScanSourceStatusInput = Readonly<{
+  sourceKey: DailyIntakeSourceKey;
+  state: ScanStatusState;
+  attemptedAt: string;
+  completedAt?: string;
+  diagnostic?: string;
+}>;
+
+export type ScanStatusInput = Readonly<{
+  scanRunId: string;
+  sources: readonly ScanSourceStatusInput[];
 }>;
 
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -166,5 +181,38 @@ export function validateIntakeProposalInput(value: IntakeProposalInput): void {
   if (value.recurrence !== undefined) validateBillSchedule(value.recurrence);
   if ((hasAmount || hasCurrency || value.recurrence !== undefined) && value.intakeType !== "BILL") {
     throw new Error("Only Bill proposals may include amount, currency, or recurrence");
+  }
+}
+
+export function validateScanStatusInput(value: ScanStatusInput): void {
+  if (!value || typeof value !== "object") throw new Error("Scan status input is required");
+  assertBoundedText(value.scanRunId, "Scan run ID", 200, true);
+  if (!Array.isArray(value.sources) || value.sources.length !== DAILY_INTAKE_SOURCE_KEYS.length) {
+    throw new Error("Scan status must contain every approved source exactly once");
+  }
+
+  const seen = new Set<string>();
+  for (const source of value.sources) {
+    if (!source || typeof source !== "object") throw new Error("Scan source status must be an object");
+    if (!includes(DAILY_INTAKE_SOURCE_KEYS, source.sourceKey)) throw new Error("Scan status source is not supported");
+    if (seen.has(source.sourceKey)) throw new Error("Scan status contains a duplicate source");
+    seen.add(source.sourceKey);
+    if (!includes(SCAN_STATUS_STATES, source.state)) throw new Error("Scan source state must be SUCCESS or FAILED");
+    assertExactInstant(source.attemptedAt, "Scan attempted-at");
+
+    if (source.state === "SUCCESS") {
+      assertExactInstant(source.completedAt, "Scan completed-at");
+      if (Date.parse(source.completedAt) < Date.parse(source.attemptedAt)) {
+        throw new Error("Scan completed-at timestamp cannot precede attempted-at");
+      }
+      if (source.diagnostic !== undefined) throw new Error("Successful scan status cannot contain a failure diagnostic");
+    } else {
+      assertBoundedText(source.diagnostic, "Scan failure diagnostic", 1000, true);
+      if (source.completedAt !== undefined) throw new Error("Failed scan status cannot contain a successful completed-at timestamp");
+    }
+  }
+
+  if (seen.size !== DAILY_INTAKE_SOURCE_KEYS.length || DAILY_INTAKE_SOURCE_KEYS.some((sourceKey) => !seen.has(sourceKey))) {
+    throw new Error("Scan status must contain every approved source exactly once");
   }
 }
