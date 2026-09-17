@@ -43,7 +43,7 @@ function addUser(sqlite: DatabaseSync, userId: string) {
 }
 
 function insertIntake(sqlite: DatabaseSync, overrides: Partial<Record<string, unknown>> = {}) {
-  const row = {
+  const row: Record<string, unknown> = {
     intake_id: "intake-1",
     user_id: "user:marc",
     workspace_id: "personal",
