@@ -8,6 +8,8 @@ type MembershipRow = Readonly<{
   workspace_key: string;
 }>;
 
+type UserRow = Readonly<{ user_id: string }>;
+
 export class D1UserWorkspaceResolver {
   private readonly userId: string;
 
@@ -18,6 +20,16 @@ export class D1UserWorkspaceResolver {
     const normalized = userId.trim();
     if (!normalized) throw new Error("DCC user ID is required.");
     this.userId = normalized;
+  }
+
+  async resolveUser(): Promise<{ userId: string }> {
+    const row = await this.database.prepare(
+      "SELECT user_id FROM users WHERE user_id = ? AND status = 'ACTIVE'",
+    ).bind(this.userId).first<UserRow>();
+    if (!row || row.user_id !== this.userId) {
+      throw new TodoistWorkspaceAuthorizationError("Workspace access denied.");
+    }
+    return { userId: row.user_id };
   }
 
   async resolve(requestedWorkspaceId: string): Promise<RequestContext> {
