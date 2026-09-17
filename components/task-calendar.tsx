@@ -148,7 +148,7 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
   const upcomingEvents = projectedEvents.events.filter((event) => upcomingScope === "all" || event.resolvedWorkspaceId === upcomingScope);
   const upcomingByDate = Map.groupBy(upcomingEvents, (event) => projectedCalendarEventDate(event));
   const openBill = (targetWorkspaceId: ProductWorkspaceId) => router.push(`/bills?workspaceId=${encodeURIComponent(targetWorkspaceId)}`);
-  const openIntake = () => window.location.assign("/?tab=intake");
+  const openIntake = () => router.push("/?tab=intake");
   const moveMonth = (amount: number) => { setMonth((value) => shiftCalendarMonth(value, amount)); setSelectedDate(undefined); };
   const onMonthKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || (event.key !== "PageUp" && event.key !== "PageDown")) return;
