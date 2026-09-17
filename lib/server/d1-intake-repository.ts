@@ -22,7 +22,7 @@ const TERMINAL_STATUSES = new Set(["APPROVED", "DISMISSED", "ARCHIVED"]);
 const rowColumns = `intake_id, user_id, workspace_id, workspace_key, intake_type, status, source_type, source_key,
   source_message_id, source_thread_id, source_event_id, source_series_id, proposal_ordinal, source_timestamp,
   source_sender, source_subject, source_url, source_summary, classification_reason, title, due_date, follow_up_at,
-  priority, amount_minor, currency, target_payload_json, semantic_key, user_edited_at, defer_until,
+  priority, amount_minor, currency, target_payload_json, semantic_key, scan_run_id, user_edited_at, defer_until,
   approved_target_kind, approved_target_id, created_at, updated_at`;
 
 type Row = Record<string, unknown>;
@@ -91,7 +91,7 @@ function itemFromRow(row: Row): HostedIntakeItem {
     currency: row.currency as string | null,
     recurrence: payload.recurrence ?? null,
     semanticKey: String(row.semantic_key),
-    scanRunId: "",
+    scanRunId: String(row.scan_run_id),
     userEditedAt: row.user_edited_at as string | null,
     deferUntil: row.defer_until as string | null,
     approvedTargetKind: row.approved_target_kind as "TASK" | "BILL" | null,
@@ -215,6 +215,7 @@ export class D1IntakeRepository implements IntakeRepository {
       input.currency ?? null,
       payloadForProposal(input),
       key,
+      input.scanRunId,
       null,
       null,
       null,
@@ -228,7 +229,7 @@ export class D1IntakeRepository implements IntakeRepository {
         intake_id, user_id, workspace_id, workspace_key, intake_type, status, source_type, source_key,
         source_message_id, source_thread_id, source_event_id, source_series_id, proposal_ordinal, source_timestamp,
         source_sender, source_subject, source_url, source_summary, classification_reason, title, due_date, follow_up_at,
-        priority, amount_minor, currency, target_payload_json, semantic_key, user_edited_at, defer_until,
+        priority, amount_minor, currency, target_payload_json, semantic_key, scan_run_id, user_edited_at, defer_until,
         approved_target_kind, approved_target_id, created_at, updated_at
       ) VALUES (${values.map(() => "?").join(", ")})`).bind(...values).run();
       if (!result.success) throw new Error("Intake persistence failed.");
@@ -259,7 +260,7 @@ export class D1IntakeRepository implements IntakeRepository {
       const result = await this.database.prepare(`UPDATE intake_items SET
         workspace_id=?, workspace_key=?, intake_type=?, source_timestamp=?, source_sender=?, source_subject=?, source_url=?,
         source_summary=?, classification_reason=?, title=?, due_date=?, follow_up_at=?, priority=?, amount_minor=?, currency=?,
-        target_payload_json=?, updated_at=?
+        target_payload_json=?, scan_run_id=?, updated_at=?
         WHERE intake_id=? AND user_id=? AND semantic_key=? AND status IN ('PENDING','DEFERRED')`)
         .bind(
           instance.workspaceId,
@@ -278,6 +279,7 @@ export class D1IntakeRepository implements IntakeRepository {
           input.amountMinor ?? null,
           input.currency ?? null,
           payloadForProposal(input),
+          input.scanRunId,
           timestamp,
           intakeId,
           instance.userId,
@@ -286,7 +288,7 @@ export class D1IntakeRepository implements IntakeRepository {
       if (!result.success) throw new Error("Intake persistence failed.");
     } else {
       const result = await this.database.prepare(`UPDATE intake_items SET
-        source_timestamp=?, source_sender=?, source_subject=?, source_url=?, source_summary=?, classification_reason=?, updated_at=?
+        source_timestamp=?, source_sender=?, source_subject=?, source_url=?, source_summary=?, classification_reason=?, scan_run_id=?, updated_at=?
         WHERE intake_id=? AND user_id=? AND semantic_key=? AND status IN ('PENDING','DEFERRED')`)
         .bind(
           input.sourceTimestamp,
@@ -295,6 +297,7 @@ export class D1IntakeRepository implements IntakeRepository {
           input.sourceUrl ?? null,
           input.summary,
           input.classificationReason,
+          input.scanRunId,
           timestamp,
           intakeId,
           instance.userId,
