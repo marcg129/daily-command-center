@@ -8,6 +8,7 @@ function text(path: string) {
 
 const worker = text("../workers/todoist-task-ingress.ts");
 const deploymentUrl = new URL("../.github/workflows/cloudflare-todoist-deploy.yml", import.meta.url);
+const intakeMigrationUrl = new URL("../migrations/0012_daily_intake_events.sql", import.meta.url);
 
 test("Todoist Worker stays safely inactive until both runtime secrets exist", () => {
   assert.match(worker, /TODOIST_API_TOKEN/);
@@ -43,6 +44,17 @@ test("Todoist deployment validates private cron posture before deploy", () => {
   assert.match(deployment, /Unexpected Todoist D1 binding/);
   assert.match(deployment, /Unexpected Todoist cron schedule/);
   assert.match(deployment, /Unexpected Todoist project binding/);
+});
+
+test("Todoist deployment proves the 1G-H migration is present before applying production migrations", () => {
+  const deployment = text("../.github/workflows/cloudflare-todoist-deploy.yml");
+  assert.equal(existsSync(intakeMigrationUrl), true, "1G-H production migration must exist");
+  assert.match(deployment, /Verify 1G-H Daily Intake migration/);
+  assert.match(deployment, /test -s migrations\/0012_daily_intake_events\.sql/);
+  assert.match(deployment, /TODOIST_PROJECT_ID !== '6hWfF7hXXMj9XpV5'/);
+  const verifyIndex = deployment.indexOf("Verify 1G-H Daily Intake migration");
+  const applyIndex = deployment.indexOf("Apply production migrations for Todoist ingress state");
+  assert.ok(verifyIndex >= 0 && applyIndex > verifyIndex, "migration preflight must run before the remote apply");
 });
 
 test("deployment never sources Todoist credentials or DCC identity from GitHub secrets", () => {
