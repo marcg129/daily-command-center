@@ -9,18 +9,28 @@ import {
   billProjectionToday,
   type ProjectedBillOccurrence,
 } from "@/lib/bill-projections";
+import type { ProjectedCalendarEvent } from "@/lib/runtime/calendar-projection-repository";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import { PRODUCT_TIME_ZONE } from "@/lib/product-time";
-import { monthCalendarDays, shiftCalendarMonth, taskCalendarEntries, type TaskCalendarEntry } from "@/lib/task-calendar";
+import {
+  monthCalendarDays,
+  projectedCalendarEventDate,
+  shiftCalendarMonth,
+  taskCalendarEntries,
+  type TaskCalendarEntry,
+} from "@/lib/task-calendar";
 import type { TaskItem } from "@/lib/types";
+import { CalendarEventItem } from "@/components/calendar-event-item";
 import { useProjectedBills } from "@/components/use-projected-bills";
+import { useProjectedEvents, type ProjectedEventScope } from "@/components/use-projected-events";
 
 const KIND_LABEL = { DUE: "Due", REMINDER: "Reminder", FOLLOW_UP: "Follow-up" } as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type CalendarProjection =
   | Readonly<{ source: "TASK"; id: string; date: string; taskEntry: TaskCalendarEntry }>
-  | Readonly<{ source: "BILL"; id: string; date: string; billEntry: ProjectedBillOccurrence }>;
+  | Readonly<{ source: "BILL"; id: string; date: string; billEntry: ProjectedBillOccurrence }>
+  | Readonly<{ source: "EVENT"; id: string; date: string; eventEntry: ProjectedCalendarEvent }>;
 
 function productToday() {
   return billProjectionToday();
@@ -45,21 +55,41 @@ function entryTime(entry: TaskCalendarEntry) {
 function compareCalendarProjection(left: CalendarProjection, right: CalendarProjection) {
   const byDate = left.date.localeCompare(right.date);
   if (byDate !== 0) return byDate;
-  if (left.source === right.source) return 0;
-  return left.source === "BILL" ? -1 : 1;
+  const rank = { BILL: 0, EVENT: 1, TASK: 2 } as const;
+  return rank[left.source] - rank[right.source];
 }
 
 function CalendarItem({
   entry,
   onOpenTask,
   onOpenBill,
+  onOpenIntake,
+  authorizedWorkspaceIds,
+  updatingEventId,
+  onOverride,
   compact = false,
 }: {
   entry: CalendarProjection;
   onOpenTask: (taskId: TaskItem["id"]) => void;
   onOpenBill: (workspaceId: ProductWorkspaceId) => void;
+  onOpenIntake: () => void;
+  authorizedWorkspaceIds: readonly ProductWorkspaceId[];
+  updatingEventId: string | null;
+  onOverride: ReturnType<typeof useProjectedEvents>["updateWorkspace"];
   compact?: boolean;
 }) {
+  if (entry.source === "EVENT") {
+    return <CalendarEventItem
+      event={entry.eventEntry}
+      authorizedWorkspaceIds={authorizedWorkspaceIds}
+      compact={compact}
+      updating={updatingEventId === entry.eventEntry.eventProjectionId}
+      onOpenTask={onOpenTask}
+      onOpenIntake={onOpenIntake}
+      onOverride={onOverride}
+    />;
+  }
+
   if (entry.source === "BILL") {
     const projected = entry.billEntry;
     const amount = billAmountPresentation(projected.bill, projected.occurrence);
@@ -98,40 +128,69 @@ export function TaskCalendar({ tasks, workspaceId, onOpenTask }: { tasks: TaskIt
   const router = useRouter();
   const today = productToday();
   const [month, setMonth] = useState(today.slice(0, 7));
-  const [view, setView] = useState<"month" | "agenda">("month");
+  const [view, setView] = useState<"month" | "agenda" | "upcoming">("month");
   const [selectedDate, setSelectedDate] = useState<string>();
+  const [upcomingScopeChoice, setUpcomingScopeChoice] = useState<ProjectedEventScope | "workspace">("workspace");
   const projectedBills = useProjectedBills(workspaceId);
+  const projectedEvents = useProjectedEvents("all");
+  const upcomingScope: ProjectedEventScope = upcomingScopeChoice === "workspace" ? workspaceId : upcomingScopeChoice;
   const taskEntries = useMemo(() => taskCalendarEntries(tasks, workspaceId), [tasks, workspaceId]);
+  const calendarEvents = useMemo(() => projectedEvents.events.filter((event) => workspaceId === "personal" || event.resolvedWorkspaceId === "indelitech"), [projectedEvents.events, workspaceId]);
   const entries = useMemo<CalendarProjection[]>(() => [
     ...taskEntries.map((entry) => ({ source: "TASK" as const, id: `task:${entry.id}`, date: entry.date, taskEntry: entry })),
     ...projectedBills.occurrences.map((entry) => ({ source: "BILL" as const, id: `bill:${entry.workspaceId}:${entry.occurrence.occurrenceId}`, date: entry.occurrence.dueDate, billEntry: entry })),
-  ].toSorted(compareCalendarProjection), [projectedBills.occurrences, taskEntries]);
+    ...calendarEvents.map((event) => ({ source: "EVENT" as const, id: `event:${event.eventProjectionId}`, date: projectedCalendarEventDate(event), eventEntry: event })),
+  ].toSorted(compareCalendarProjection), [calendarEvents, projectedBills.occurrences, taskEntries]);
   const days = useMemo(() => monthCalendarDays(month), [month]);
   const byDate = useMemo(() => Map.groupBy(entries, (entry) => entry.date), [entries]);
   const agenda = entries;
   const selectedEntries = selectedDate ? byDate.get(selectedDate) || [] : [];
+  const upcomingEvents = projectedEvents.events.filter((event) => upcomingScope === "all" || event.resolvedWorkspaceId === upcomingScope);
+  const upcomingByDate = Map.groupBy(upcomingEvents, (event) => projectedCalendarEventDate(event));
   const openBill = (targetWorkspaceId: ProductWorkspaceId) => router.push(`/bills?workspaceId=${encodeURIComponent(targetWorkspaceId)}`);
+  const openIntake = () => window.location.assign("/?tab=intake");
   const moveMonth = (amount: number) => { setMonth((value) => shiftCalendarMonth(value, amount)); setSelectedDate(undefined); };
   const onMonthKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || (event.key !== "PageUp" && event.key !== "PageDown")) return;
     event.preventDefault();
     moveMonth(event.key === "PageUp" ? -1 : 1);
   };
+  const itemProps = {
+    onOpenTask,
+    onOpenBill: openBill,
+    onOpenIntake: openIntake,
+    authorizedWorkspaceIds: projectedEvents.authorizedWorkspaceIds,
+    updatingEventId: projectedEvents.updatingEventId,
+    onOverride: projectedEvents.updateWorkspace,
+  };
+
   return <div className="view calendar-view">
     <div className="page-heading">
-      <div><p className="eyebrow">{workspaceId === "personal" ? "Personal + Indelitech" : "Indelitech"} · Task &amp; bill calendar</p><h1>Calendar</h1><p>{workspaceId === "personal" ? "One view of your personal and visible Indelitech task commitments and open bill obligations." : "Indelitech task deadlines, reminders, follow-ups, and open bill obligations only."}</p></div>
-      <div className="segmented" role="group" aria-label="Calendar view"><button className={view === "month" ? "active" : ""} aria-pressed={view === "month"} onClick={() => setView("month")}>Month</button><button className={view === "agenda" ? "active" : ""} aria-pressed={view === "agenda"} onClick={() => setView("agenda")}>Agenda</button></div>
+      <div><p className="eyebrow">{workspaceId === "personal" ? "Personal + Indelitech" : "Indelitech"} · Task, bill &amp; event calendar</p><h1>Calendar</h1><p>{workspaceId === "personal" ? "One view of your visible task commitments, open bill obligations, and projected Google Calendar events." : "Indelitech task deadlines, bill obligations, and projected Google Calendar events only."}</p></div>
+      <div className="segmented" role="group" aria-label="Calendar view"><button className={view === "month" ? "active" : ""} aria-pressed={view === "month"} onClick={() => setView("month")}>Month</button><button className={view === "agenda" ? "active" : ""} aria-pressed={view === "agenda"} onClick={() => setView("agenda")}>Agenda</button><button className={view === "upcoming" ? "active" : ""} aria-pressed={view === "upcoming"} onClick={() => setView("upcoming")}>Upcoming</button></div>
     </div>
+
     {view === "month" ? <section className="calendar-panel" aria-label={monthLabel(month)} aria-describedby="calendar-keyboard-help" tabIndex={0} onKeyDown={onMonthKeyDown}>
-      <p id="calendar-keyboard-help" className="sr-only">Use Page Up and Page Down to move between months. Select a date to show all task and bill entries for that day.</p>
+      <p id="calendar-keyboard-help" className="sr-only">Use Page Up and Page Down to move between months. Select a date to show all task, bill, and event entries for that day.</p>
       <div className="calendar-toolbar"><button aria-label="Previous month" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button><h2 aria-live="polite">{monthLabel(month)}</h2><button aria-label="Next month" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button><button className="calendar-today" onClick={() => { setMonth(today.slice(0, 7)); setSelectedDate(today); }}>Today</button></div>
       <div className="calendar-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="calendar-grid">{days.map((date) => { const dayEntries = byDate.get(date) || []; return <section key={date} className={`calendar-day ${date.slice(0, 7) !== month ? "outside-month" : ""} ${date === today ? "is-today" : ""} ${date === selectedDate ? "is-selected" : ""}`} aria-label={dateLabel(date)}><button type="button" className="calendar-date" aria-pressed={date === selectedDate} aria-label={`Show ${dayEntries.length || "no"} calendar ${dayEntries.length === 1 ? "entry" : "entries"} for ${dateLabel(date)}`} onClick={() => setSelectedDate(date)}><time dateTime={date}>{Number(date.slice(-2))}</time></button><div>{dayEntries.slice(0, 3).map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} compact />)}{dayEntries.length > 3 && <button type="button" className="calendar-more" onClick={() => setSelectedDate(date)} aria-label={`Show ${dayEntries.length - 3} more entries for ${dateLabel(date)}`}>+{dayEntries.length - 3} more</button>}</div></section>; })}</div>
-      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} />) : <p>No task due dates, reminders, follow-ups, or bill obligations on this day.</p>}</div></div>}
-    </section> : <section className="agenda-panel" aria-label="Task and bill calendar agenda">
-      {agenda.length ? Array.from(Map.groupBy(agenda, (entry) => entry.date)).map(([date, dateEntries]) => <div className="agenda-day" key={date}><div><time dateTime={date}>{dateLabel(date, "short")}</time><span>{date === today ? "Today" : ""}</span></div><div>{dateEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} onOpenTask={onOpenTask} onOpenBill={openBill} />)}</div></div>) : <div className="calendar-empty"><CalendarDays size={28} /><h2>No scheduled task or bill dates</h2><p>Add a task date or an active bill occurrence and it will appear here.</p></div>}
+      <div className="calendar-grid">{days.map((date) => { const dayEntries = byDate.get(date) || []; return <section key={date} className={`calendar-day ${date.slice(0, 7) !== month ? "outside-month" : ""} ${date === today ? "is-today" : ""} ${date === selectedDate ? "is-selected" : ""}`} aria-label={dateLabel(date)}><button type="button" className="calendar-date" aria-pressed={date === selectedDate} aria-label={`Show ${dayEntries.length || "no"} calendar ${dayEntries.length === 1 ? "entry" : "entries"} for ${dateLabel(date)}`} onClick={() => setSelectedDate(date)}><time dateTime={date}>{Number(date.slice(-2))}</time></button><div>{dayEntries.slice(0, 3).map((entry) => <CalendarItem key={entry.id} entry={entry} {...itemProps} compact />)}{dayEntries.length > 3 && <button type="button" className="calendar-more" onClick={() => setSelectedDate(date)} aria-label={`Show ${dayEntries.length - 3} more entries for ${dateLabel(date)}`}>+{dayEntries.length - 3} more</button>}</div></section>; })}</div>
+      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} {...itemProps} />) : <p>No task due dates, reminders, follow-ups, bill obligations, or Google events on this day.</p>}</div></div>}
+    </section> : view === "agenda" ? <section className="agenda-panel" aria-label="Task, bill, and event calendar agenda">
+      {agenda.length ? Array.from(Map.groupBy(agenda, (entry) => entry.date)).map(([date, dateEntries]) => <div className="agenda-day" key={date}><div><time dateTime={date}>{dateLabel(date, "short")}</time><span>{date === today ? "Today" : ""}</span></div><div>{dateEntries.map((entry) => <CalendarItem key={entry.id} entry={entry} {...itemProps} />)}</div></div>) : <div className="calendar-empty"><CalendarDays size={28} /><h2>No scheduled calendar dates</h2><p>Add a task date, active bill occurrence, or synced Google event and it will appear here.</p></div>}
+    </section> : <section className="agenda-panel" aria-label="Upcoming Google Calendar events">
+      <div className="segmented" role="group" aria-label="Upcoming event workspace" style={{ marginBottom: 16 }}>
+        {projectedEvents.authorizedWorkspaceIds.includes("personal") && <button className={upcomingScope === "personal" ? "active" : ""} aria-pressed={upcomingScope === "personal"} onClick={() => setUpcomingScopeChoice("personal")}>Personal</button>}
+        {projectedEvents.authorizedWorkspaceIds.includes("indelitech") && <button className={upcomingScope === "indelitech" ? "active" : ""} aria-pressed={upcomingScope === "indelitech"} onClick={() => setUpcomingScopeChoice("indelitech")}>Indelitech</button>}
+        <button className={upcomingScope === "all" ? "active" : ""} aria-pressed={upcomingScope === "all"} onClick={() => setUpcomingScopeChoice("all")}>All</button>
+      </div>
+      {projectedEvents.loading ? <div className="calendar-empty"><CalendarDays size={28} /><h2>Loading Upcoming Events</h2><p>Reading the authorized 45-day Google Calendar projection.</p></div>
+        : upcomingEvents.length ? Array.from(upcomingByDate).map(([date, dateEvents]) => <div className="agenda-day" key={date}><div><time dateTime={date}>{dateLabel(date, "short")}</time><span>{date === today ? "Today" : ""}</span></div><div>{dateEvents.map((event) => <CalendarEventItem key={event.eventProjectionId} event={event} authorizedWorkspaceIds={projectedEvents.authorizedWorkspaceIds} updating={projectedEvents.updatingEventId === event.eventProjectionId} onOpenTask={onOpenTask} onOpenIntake={openIntake} onOverride={projectedEvents.updateWorkspace} />)}</div></div>)
+          : <div className="calendar-empty"><CalendarDays size={28} /><h2>No projected events</h2><p>No Google Calendar events are currently projected for this workspace filter in the next 45 days.</p></div>}
     </section>}
+
     {projectedBills.error && <p className="calendar-source-note"><WalletCards size={14} /> Bills could not be included right now: {projectedBills.error}</p>}
-    <p className="calendar-source-note"><CalendarDays size={14} /> Derived from canonical tasks and bill occurrences. Calendar items do not create separate records.</p>
+    {projectedEvents.error && <p className="calendar-source-note"><CalendarDays size={14} /> Google Calendar events could not be included right now: {projectedEvents.error}</p>}
+    <p className="calendar-source-note"><CalendarDays size={14} /> Derived from canonical tasks, bill occurrences, and read-only Google event projections. Calendar items do not create separate records.</p>
   </div>;
 }
