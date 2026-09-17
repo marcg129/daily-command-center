@@ -41,6 +41,9 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/hosted/income?workspaceId=personal",
     "/api/hosted/income/occurrences?workspaceId=personal",
     "/api/hosted/cashflow/baseline?workspaceId=personal",
+    "/api/hosted/intake?workspaceId=personal&view=PENDING",
+    "/api/hosted/intake/status?workspaceId=personal",
+    "/api/hosted/events?workspaceId=personal&fromDate=2026-09-17&throughDate=2026-10-31",
   ]) assert.equal(proxy(hostedRequest(path)).status, 200);
   for (const path of [
     "/api/settings",
@@ -54,6 +57,9 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/hosted/income/extra",
     "/api/hosted/income/occurrences/extra",
     "/api/hosted/cashflow/baseline/extra",
+    "/api/hosted/intake/extra",
+    "/api/hosted/intake/status/extra",
+    "/api/hosted/events/extra",
   ]) assert.equal(proxy(hostedRequest(path)).status, 403);
 });
 
@@ -66,6 +72,9 @@ test("hosted proxy rejects cross-origin browser calls but permits no-Origin serv
     "/api/hosted/income?workspaceId=personal",
     "/api/hosted/income/occurrences?workspaceId=personal",
     "/api/hosted/cashflow/baseline?workspaceId=personal",
+    "/api/hosted/intake?workspaceId=personal&view=PENDING",
+    "/api/hosted/intake/status?workspaceId=personal",
+    "/api/hosted/events?workspaceId=personal&fromDate=2026-09-17&throughDate=2026-10-31",
   ]) {
     assert.equal(proxy(hostedRequest(path, "https://command.example.com")).status, 200);
     assert.equal(proxy(hostedRequest(path, "https://evil.example.com")).status, 403);
