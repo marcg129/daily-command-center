@@ -30,10 +30,10 @@ async function run(env: Env, scheduledTime: number) {
     return;
   }
 
-  const nowMs = Number.isFinite(scheduledTime) && scheduledTime > 0
+  const captureNowMs = Number.isFinite(scheduledTime) && scheduledTime > 0
     ? scheduledTime
     : Date.now();
-  const now = new Date(nowMs);
+  const captureNow = new Date(captureNowMs);
   const api = createTodoistApiClient({
     token,
     projectId: env.TODOIST_PROJECT_ID,
@@ -43,12 +43,15 @@ async function run(env: Env, scheduledTime: number) {
   const control = new D1TodoistIngressControlStore(env.DB);
   const importTask = createTodoistTaskIngressService({
     repository,
-    clock: { now: () => now },
+    clock: { now: () => captureNow },
     workspaceResolver,
     relay: api,
   });
 
-  const summary = await runTodoistIngressBatch(api, importTask, { control, nowMs });
+  const summary = await runTodoistIngressBatch(api, importTask, {
+    control,
+    clock: () => Date.now(),
+  });
   console.log("Todoist task ingress run", summary);
 }
 
