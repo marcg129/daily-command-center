@@ -27,6 +27,10 @@ type OccurrenceFilter = Readonly<{
   throughDate?: string | null;
 }>;
 
+export type BillCreateOptions = Readonly<{
+  sourceIntakeId?: string;
+}>;
+
 const billColumns = `bill_id, primary_workspace_id, name, payee, category, amount_mode, default_amount_minor, currency,
   autopay, payment_url, notes, schedule_start_date, recurrence_unit, recurrence_interval, recurrence_day_mode,
   reminder_days_before, status, created_by_user_id, created_at, updated_at`;
@@ -152,6 +156,45 @@ export class D1BillRepository {
       .bind(billId, physicalWorkspaceId).first<Row>();
   }
 
+  private async getBillBySourceIntakeRow(sourceIntakeId: string, physicalWorkspaceId: string): Promise<Row | null> {
+    return this.database.prepare(`SELECT ${billColumns} FROM bills WHERE source_intake_id=? AND primary_workspace_id=?`)
+      .bind(sourceIntakeId, physicalWorkspaceId).first<Row>();
+  }
+
+  private async getOccurrenceRowsForBill(billId: string, physicalWorkspaceId: string): Promise<Row[]> {
+    const result = await this.database.prepare(`SELECT ${selectedOccurrenceColumns} FROM bill_occurrences o
+      JOIN bills b ON b.bill_id=o.bill_id
+      WHERE o.bill_id=? AND b.primary_workspace_id=?
+      ORDER BY o.due_date, o.occurrence_id`)
+      .bind(billId, physicalWorkspaceId).all<Row>();
+    if (!result.success) throw new Error("Bill occurrence lookup failed.");
+    return result.results ?? [];
+  }
+
+  private async existingSourceIntakeResult(
+    sourceIntakeId: string,
+    physicalWorkspaceId: string,
+    workspaceKey: ProductWorkspaceId,
+  ): Promise<Readonly<{ bill: HostedBill; occurrences: HostedBillOccurrence[] }> | null> {
+    const row = await this.getBillBySourceIntakeRow(sourceIntakeId, physicalWorkspaceId);
+    if (!row) return null;
+    const bill = billFromRow(row, workspaceKey);
+    const occurrences = (await this.getOccurrenceRowsForBill(bill.billId, physicalWorkspaceId)).map(occurrenceFromRow);
+    return { bill, occurrences };
+  }
+
+  private async requireSourceIntakeOwnership(
+    sourceIntakeId: string,
+    userId: string,
+    physicalWorkspaceId: string,
+    workspaceKey: ProductWorkspaceId,
+  ): Promise<void> {
+    const row = await this.database.prepare(`SELECT intake_id FROM intake_items
+      WHERE intake_id=? AND user_id=? AND workspace_id=? AND workspace_key=? AND intake_type='BILL'`)
+      .bind(sourceIntakeId, userId, physicalWorkspaceId, workspaceKey).first<{ intake_id: string }>();
+    if (!row) throw new Error("Bill source Intake is not authorized for this workspace.");
+  }
+
   private async getOccurrenceRow(occurrenceIdValue: string, physicalWorkspaceId: string): Promise<Row | null> {
     return this.database.prepare(`SELECT ${selectedOccurrenceColumns} FROM bill_occurrences o
       JOIN bills b ON b.bill_id=o.bill_id
@@ -243,9 +286,22 @@ export class D1BillRepository {
     return rows.map(occurrenceFromRow);
   }
 
-  async create(core: BillDefinitionCore): Promise<Readonly<{ bill: HostedBill; occurrences: HostedBillOccurrence[] }>> {
+  async create(
+    core: BillDefinitionCore,
+    options: BillCreateOptions = {},
+  ): Promise<Readonly<{ bill: HostedBill; occurrences: HostedBillOccurrence[] }>> {
     validateHostedBillDefinition(core);
     const instance = await this.authorize();
+    const sourceIntakeId = options.sourceIntakeId?.trim();
+    if (options.sourceIntakeId !== undefined && (!sourceIntakeId || sourceIntakeId.length > 256)) {
+      throw new Error("Bill source Intake ID is invalid.");
+    }
+    if (sourceIntakeId) {
+      await this.requireSourceIntakeOwnership(sourceIntakeId, instance.userId, instance.workspaceId, instance.workspaceKey);
+      const existing = await this.existingSourceIntakeResult(sourceIntakeId, instance.workspaceId, instance.workspaceKey);
+      if (existing) return existing;
+    }
+
     const billId = this.ids.generate();
     if (typeof billId !== "string" || billId.trim().length === 0) throw new Error("Bill ID generation failed.");
     const now = this.clock.now();
@@ -253,14 +309,31 @@ export class D1BillRepository {
     const today = dateInProductTimeZone(now);
     const horizon = addMonthsClamped(today, 12);
     const dates = this.materializationDates(core, this.defaultMaterializationStart(core, today), horizon);
-    const values = billInsertValues(billId, instance.workspaceId, core, instance.userId, timestamp);
+    const baseValues = billInsertValues(billId, instance.workspaceId, core, instance.userId, timestamp);
+    const columns = sourceIntakeId ? `${billColumns}, source_intake_id` : billColumns;
+    const values = sourceIntakeId ? [...baseValues, sourceIntakeId] : baseValues;
     const placeholders = values.map(() => "?").join(", ");
     const statements: D1PreparedStatement[] = [
-      this.database.prepare(`INSERT INTO bills (${billColumns}) VALUES (${placeholders})`).bind(...values),
+      this.database.prepare(`INSERT INTO bills (${columns}) VALUES (${placeholders})`).bind(...values),
       ...this.occurrenceInsertStatements(billId, core, dates, timestamp),
     ];
-    const results = await this.database.batch(statements);
-    if (results.some((result) => !result.success)) throw new Error("Bill creation failed.");
+
+    try {
+      const results = await this.database.batch(statements);
+      if (results.some((result) => !result.success)) {
+        if (sourceIntakeId) {
+          const raced = await this.existingSourceIntakeResult(sourceIntakeId, instance.workspaceId, instance.workspaceKey);
+          if (raced) return raced;
+        }
+        throw new Error("Bill creation failed.");
+      }
+    } catch (error) {
+      if (sourceIntakeId) {
+        const raced = await this.existingSourceIntakeResult(sourceIntakeId, instance.workspaceId, instance.workspaceKey);
+        if (raced) return raced;
+      }
+      throw error;
+    }
 
     const bill: HostedBill = {
       billId,
