@@ -6,7 +6,7 @@ import {
   type IntakeStatus,
   type IntakeType,
 } from "@/lib/runtime/daily-intake";
-import { isProductWorkspaceId, type ProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
+import { isProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import {
   IntakeApprovalConflictError,
@@ -138,7 +138,7 @@ export function createAuthorizedHostedIntakeHandler(
     return authorize(request, sessionProvider, workspaceResolver, clock);
   }
 
-  function services(context: RequestContext) {
+  function services() {
     const intakeRepository = new D1IntakeRepository(database, clock, ids);
     const approve = createIntakeApprovalService({
       intakeRepository,
@@ -150,7 +150,7 @@ export function createAuthorizedHostedIntakeHandler(
   }
 
   async function approveOne(context: RequestContext, intakeId: string) {
-    const { approve } = services(context);
+    const { approve } = services();
     const item = await approve(context, intakeId);
     return {
       intakeId,
@@ -180,11 +180,11 @@ export function createAuthorizedHostedIntakeHandler(
           if (sourceKeyValue !== null && !includes(DAILY_INTAKE_SOURCE_KEYS, sourceKeyValue)) {
             return errorResponse("sourceKey is invalid.", 400);
           }
-          const { intakeRepository } = services(authorization.context);
+          const { intakeRepository } = services();
           const items = await intakeRepository.list(authorization.context, {
-            status: statusValue as IntakeStatus | undefined,
-            type: typeValue as IntakeType | undefined,
-            sourceKey: sourceKeyValue as (typeof DAILY_INTAKE_SOURCE_KEYS)[number] | undefined,
+            status: (statusValue ?? undefined) as IntakeStatus | undefined,
+            type: (typeValue ?? undefined) as IntakeType | undefined,
+            sourceKey: (sourceKeyValue ?? undefined) as (typeof DAILY_INTAKE_SOURCE_KEYS)[number] | undefined,
           });
           return json({ items });
         } catch (error) {
@@ -200,7 +200,7 @@ export function createAuthorizedHostedIntakeHandler(
           if (!body || typeof body.intakeId !== "string" || typeof body.action !== "string") {
             return errorResponse("intakeId and action are required.", 400);
           }
-          const { intakeRepository } = services(authorization.context);
+          const { intakeRepository } = services();
 
           if (body.action === "EDIT") {
             const patch = parseEditPatch(body.patch);
@@ -246,7 +246,7 @@ export function createAuthorizedHostedIntakeHandler(
             return errorResponse("A valid action and intakeIds list are required.", 400);
           }
           const intakeIds = body.intakeIds;
-          const { intakeRepository } = services(authorization.context);
+          const { intakeRepository } = services();
 
           if (body.action === "APPROVE") {
             if (intakeIds.length !== 1) return errorResponse("APPROVE requires exactly one Intake item.", 400);
