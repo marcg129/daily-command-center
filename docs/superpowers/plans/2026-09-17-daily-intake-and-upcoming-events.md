@@ -46,13 +46,13 @@
 
 Cover:
 - migration creates `intake_items`, `projected_calendar_events`, `calendar_workspace_overrides`, `calendar_sync_runs`, `calendar_sync_batches`, and `daily_intake_source_status`;
-- `intake_items` has a unique `(user_id, semantic_key)` boundary;
+- `intake_items` has a unique `(user_id, semantic_key)` boundary plus a durable `user_edited_at` marker;
 - Intake type/status/source/workspace checks fail closed;
 - event rows are user-owned and source/event identity is unique;
 - override scope is only `SERIES` or `OCCURRENCE`;
 - sync batch identity is unique per user/source/run/batch;
 - Bills gain nullable `source_intake_id` plus a unique partial index for idempotent Intake-origin creation;
-- complete email bodies/attachments have no schema columns.
+- complete email bodies/attachments and complete Calendar descriptions/attendees have no schema columns.
 
 - [ ] **Step 2: Verify RED**
 
@@ -120,9 +120,9 @@ export type CalendarSyncInput = Readonly<{
 
 Validate exact dates/timestamps, bounded strings, supported source/workspace combinations, ordinals >= 1, batch `1..batchCount`, and HTTPS Google source URLs only when present.
 
-- [ ] **Step 4: Implement schema**
+- [ ] **Step 4: Implement the exact persistence schema**
 
-The migration should use STRICT tables and existing FK boundaries. Minimum schema contract:
+Use STRICT tables and existing FK boundaries. Required schema shape:
 
 ```sql
 CREATE TABLE intake_items (
@@ -133,7 +133,7 @@ CREATE TABLE intake_items (
   intake_type TEXT NOT NULL CHECK (intake_type IN ('TASK','FOLLOW_UP','BILL','AWARENESS')),
   status TEXT NOT NULL CHECK (status IN ('PENDING','DEFERRED','APPROVED','DISMISSED','ARCHIVED')),
   source_type TEXT NOT NULL CHECK (source_type IN ('gmail','calendar')),
-  source_key TEXT NOT NULL,
+  source_key TEXT NOT NULL CHECK (source_key IN ('personal_gmail','professional_gmail','indelitech_gmail','primary_calendar','family_calendar')),
   source_message_id TEXT,
   source_thread_id TEXT,
   source_event_id TEXT,
@@ -148,31 +148,97 @@ CREATE TABLE intake_items (
   title TEXT NOT NULL,
   due_date TEXT,
   follow_up_at TEXT,
-  priority TEXT,
-  amount_minor INTEGER,
+  priority TEXT CHECK (priority IS NULL OR priority IN ('LOW','MEDIUM','HIGH')),
+  amount_minor INTEGER CHECK (amount_minor IS NULL OR amount_minor >= 0),
   currency TEXT,
-  target_payload_json TEXT NOT NULL DEFAULT '{}',
+  target_payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(target_payload_json)),
   semantic_key TEXT NOT NULL,
+  user_edited_at TEXT,
   defer_until TEXT,
-  approved_target_kind TEXT,
+  approved_target_kind TEXT CHECK (approved_target_kind IS NULL OR approved_target_kind IN ('TASK','BILL')),
   approved_target_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (user_id, semantic_key)
 ) STRICT;
-```
 
-Add the Calendar/sync/status tables with user-level ownership and exact source keys. Add:
+CREATE TABLE projected_calendar_events (
+  event_projection_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  source_key TEXT NOT NULL CHECK (source_key IN ('primary_calendar','family_calendar')),
+  google_event_id TEXT NOT NULL,
+  series_id TEXT,
+  occurrence_key TEXT,
+  title TEXT NOT NULL,
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  all_day INTEGER NOT NULL CHECK (all_day IN (0,1)),
+  location TEXT,
+  source_url TEXT,
+  automatic_workspace_key TEXT NOT NULL CHECK (automatic_workspace_key IN ('personal','indelitech')),
+  last_seen_scan_run_id TEXT NOT NULL,
+  removed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, source_key, google_event_id)
+) STRICT;
 
-```sql
+CREATE TABLE calendar_workspace_overrides (
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  source_key TEXT NOT NULL CHECK (source_key IN ('primary_calendar','family_calendar')),
+  scope TEXT NOT NULL CHECK (scope IN ('SERIES','OCCURRENCE')),
+  identity_key TEXT NOT NULL,
+  workspace_key TEXT NOT NULL CHECK (workspace_key IN ('personal','indelitech')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, source_key, scope, identity_key)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE calendar_sync_runs (
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  source_key TEXT NOT NULL CHECK (source_key IN ('primary_calendar','family_calendar')),
+  scan_run_id TEXT NOT NULL,
+  window_start TEXT NOT NULL,
+  window_end TEXT NOT NULL,
+  batch_count INTEGER NOT NULL CHECK (batch_count >= 1),
+  state TEXT NOT NULL CHECK (state IN ('RECEIVING','COMPLETE')),
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  PRIMARY KEY (user_id, source_key, scan_run_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE calendar_sync_batches (
+  user_id TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  scan_run_id TEXT NOT NULL,
+  batch_index INTEGER NOT NULL CHECK (batch_index >= 1),
+  received_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, source_key, scan_run_id, batch_index),
+  FOREIGN KEY (user_id, source_key, scan_run_id)
+    REFERENCES calendar_sync_runs(user_id, source_key, scan_run_id) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE daily_intake_source_status (
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  source_key TEXT NOT NULL CHECK (source_key IN ('personal_gmail','professional_gmail','indelitech_gmail','primary_calendar','family_calendar')),
+  state TEXT NOT NULL CHECK (state IN ('SUCCESS','FAILED')),
+  last_attempt_at TEXT NOT NULL,
+  last_successful_at TEXT,
+  diagnostic TEXT,
+  scan_run_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, source_key)
+) WITHOUT ROWID, STRICT;
+
 ALTER TABLE bills ADD COLUMN source_intake_id TEXT;
 CREATE UNIQUE INDEX bills_source_intake_uidx
   ON bills(source_intake_id) WHERE source_intake_id IS NOT NULL;
 ```
 
+Add indexes for Intake status/workspace sorting, event date/source reads, and sync-run cleanup without changing the uniqueness rules above.
+
 - [ ] **Step 5: Verify GREEN and commit**
 
-Run focused tests, then:
 ```bash
 npm test -- tests/daily-intake-migration.test.ts tests/daily-intake-domain.test.ts
 ```
@@ -193,7 +259,7 @@ Commit: `Add 1G-H intake and calendar schema`
 
 - [ ] **Step 1: Write failing repository tests**
 
-Cover exact-workspace authorization, Gmail semantic slots, later-message/new-action behavior, replay through a different Todoist task, no resurrection after APPROVED/DISMISSED/ARCHIVED, editable unresolved items, defer visibility, Awareness restrictions, and cross-user isolation.
+Cover exact-workspace authorization for user mutations/reads, Gmail semantic slots, later-message/new-action behavior, replay through a different Todoist task, no resurrection after APPROVED/DISMISSED/ARCHIVED, manual workspace correction, duplicate delivery after manual correction, defer visibility, Awareness restrictions, and cross-user isolation.
 
 - [ ] **Step 2: Verify RED**
 
@@ -214,9 +280,9 @@ function semanticKey(input: IntakeProposalInput): string {
 }
 ```
 
-On duplicate unresolved delivery, update source summary/classification/proposed fields only when the item has not been manually edited after ingestion. Preserve user edits and terminal states.
+Ingest dedupes by `(user_id, semantic_key)` across that user's own logical workspaces. That is required so a user moving a proposal from Personal to Indelitech does not allow a later source replay to insert a duplicate in the old workspace.
 
-- [ ] **Step 4: Implement lifecycle methods**
+- [ ] **Step 4: Implement lifecycle methods with explicit edit protection**
 
 Repository contract:
 
@@ -225,7 +291,12 @@ interface IntakeRepository {
   ingest(context: RequestContext, input: IntakeProposalInput): Promise<IntakeIngestResult>;
   list(context: RequestContext, filter: IntakeListFilter): Promise<HostedIntakeItem[]>;
   get(context: RequestContext, intakeId: string): Promise<HostedIntakeItem | null>;
-  edit(context: RequestContext, intakeId: string, patch: IntakeEditablePatch): Promise<HostedIntakeItem>;
+  edit(
+    context: RequestContext,
+    intakeId: string,
+    patch: IntakeEditablePatch,
+    destinationContext?: RequestContext,
+  ): Promise<HostedIntakeItem>;
   defer(context: RequestContext, intakeId: string, until: string): Promise<HostedIntakeItem>;
   dismiss(context: RequestContext, intakeId: string): Promise<HostedIntakeItem>;
   archive(context: RequestContext, intakeId: string): Promise<HostedIntakeItem>;
@@ -233,7 +304,7 @@ interface IntakeRepository {
 }
 ```
 
-Store an `edited_at`/equivalent marker in `target_payload_json` or add a dedicated nullable column if tests show it makes preservation clearer. Prefer an explicit column over inference from timestamps.
+Every user `edit()` sets `user_edited_at`. If a later duplicate source delivery finds `user_edited_at IS NULL`, it may refresh source-derived proposal fields. If `user_edited_at IS NOT NULL`, it may refresh source metadata (`source_summary`, `classification_reason`, source timestamp/link) but **must not** overwrite user-editable fields: workspace, title, due/follow-up timing, priority, amount/currency, recurrence, or target payload. Moving workspace requires a separately authorized `destinationContext` and updates both physical `workspace_id` and logical `workspace_key` atomically.
 
 - [ ] **Step 5: Verify GREEN and commit**
 
@@ -256,7 +327,7 @@ Commit: `Add authorized intake repository`
 
 **Interfaces:**
 - Consumes: active DCC `userId`, validated `CalendarSyncInput`, validated scan-status payloads, requested logical workspace for reads/overrides.
-- Produces: 45-day projection rows with resolved workspace, complete-run reconciliation, manual series/occurrence overrides, per-source freshness.
+- Produces: 45-day projection rows with resolved workspace and related Intake/Task references, complete-run reconciliation, manual series/occurrence overrides, per-source freshness.
 
 - [ ] **Step 1: Write RED tests for Calendar sync**
 
@@ -272,9 +343,9 @@ Prove:
 
 Also prove a series correction affects later synced occurrences and an occurrence-only correction does not rewrite the series.
 
-- [ ] **Step 3: Write RED tests for freshness**
+- [ ] **Step 3: Write RED tests for freshness and event relationships**
 
-Missing status = unknown/stale; FAILED does not advance last successful time; SUCCESS advances it even when the scan produced zero Intake items/events.
+Missing status = unknown/stale; FAILED does not advance last successful time; SUCCESS advances it even when the scan produced zero Intake items/events. For an event with a source-matched Intake proposal, Calendar reads return a relationship summary containing Intake status and, after approval, canonical target kind/ID.
 
 - [ ] **Step 4: Implement repositories**
 
@@ -288,6 +359,8 @@ resolvedWorkspace = occurrenceOverride
   ?? event.automaticWorkspaceId
   ?? sourceDefaultWorkspace(event.sourceKey);
 ```
+
+When listing events, join/lookup `intake_items` by the same `user_id + source_key + source_event_id` and return only relationship metadata needed by UI (`intakeId`, Intake type/status, approved target kind/ID). Do not copy proposal/source bodies into the event record.
 
 Source status API should expose `lastAttemptAt`, `lastSuccessfulAt`, `state`, `diagnostic`, and `scanRunId` without copying provider message bodies.
 
@@ -337,7 +410,7 @@ export type ParsedDccEnvelope =
   | { kind: "scan_status"; payload: ScanStatusInput };
 ```
 
-Do not allow envelope transport to supply `userId`, physical `workspaceId`, canonical Task IDs, or canonical Bill IDs.
+Set and test one explicit serialized payload ceiling (8 KiB for v1 unless a stricter existing Todoist client limit is lower). Reject unknown top-level payload keys. Do not allow envelope transport to supply `userId`, physical workspace IDs, canonical Task IDs, or canonical Bill IDs.
 
 - [ ] **Step 4: Verify GREEN and commit**
 
@@ -374,7 +447,7 @@ resolveUser(): Promise<{ userId: string }>;
 resolve(workspaceId: string): Promise<RequestContext>; // existing behavior unchanged
 ```
 
-`intake_proposal` additionally resolves its logical workspace. `calendar_sync` and `scan_status` require an active configured user; any Indelitech-classified event must also prove that user's Indelitech membership before persistence.
+`intake_proposal` additionally resolves its logical workspace. `calendar_sync` and `scan_status` require an active configured user. Before a Calendar batch persists any event automatically classified to Indelitech, resolve `indelitech` once for that batch; fail the batch closed if the configured user lacks that membership.
 
 - [ ] **Step 3: Implement dispatcher**
 
@@ -471,7 +544,7 @@ Commit: `Add idempotent Intake approval service`
 
 - [ ] **Step 1: Write RED handler/route tests**
 
-Cover auth required, workspace required, exact-workspace reads, status/type filters, no cross-user reads, malformed edits, single Bill approval only, conservative non-Bill bulk approve/dismiss, and no-store headers.
+Cover auth required, workspace required, exact-workspace reads, status/type filters, no cross-user reads, malformed edits, workspace move requiring destination membership, single Bill approval only, conservative non-Bill bulk approve/dismiss, partial bulk-result reporting, and no-store headers.
 
 - [ ] **Step 2: Implement API contract**
 
@@ -480,6 +553,8 @@ Use:
 - `PATCH /api/hosted/intake?workspaceId=<logical>` with `{ intakeId, action: "EDIT" | "DEFER" | "DISMISS" | "ARCHIVE", ... }`
 - `POST /api/hosted/intake?workspaceId=<logical>` with `{ action: "APPROVE" | "APPROVE_BULK" | "DISMISS_BULK", intakeIds: [...] }`
 - `GET /api/hosted/intake/status?workspaceId=<logical>` returns the five known source freshness records visible to the authenticated user.
+
+Bulk operations return a per-item result array and never imply atomic all-or-nothing behavior. Bills are rejected from `APPROVE_BULK` in v1.
 
 For the UI's explicit `All` view, fetch Personal and Indelitech separately and combine client-side with visible workspace labels. Do not introduce a hidden financial roll-up API.
 
@@ -506,11 +581,11 @@ Commit: `Add hosted Intake API`
 
 **Interfaces:**
 - Consumes: Cloudflare Access session, authorized logical workspace selection, D1 Calendar projection repository.
-- Produces: bounded event reads and explicit series/occurrence override mutations.
+- Produces: bounded event reads with related Intake/approved-target references and explicit series/occurrence override mutations.
 
 - [ ] **Step 1: Write RED tests**
 
-Cover 45-day maximum read window, exact logical workspace filter, Personal vs Indelitech event classification, no user leakage, series/occurrence override updates, clearing overrides, invalid source/event IDs, and no-store responses.
+Cover 45-day maximum read window, exact logical workspace filter, Personal vs Indelitech event classification, no user leakage, related Intake metadata, approved Task/Bill target IDs when present, series/occurrence override updates, clearing overrides, invalid source/event IDs, target workspace authorization, and no-store responses.
 
 - [ ] **Step 2: Implement API**
 
@@ -528,7 +603,7 @@ Use:
 }
 ```
 
-The mutation must prove the authenticated user owns the projection and is currently authorized for the target logical workspace.
+Each GET event includes a compact `relatedIntake` array with `{ intakeId, intakeType, status, approvedTargetKind, approvedTargetId }` for source-matched proposals. The mutation must prove the authenticated user owns the projection and is currently authorized for the target logical workspace.
 
 - [ ] **Step 3: Verify GREEN and commit**
 
@@ -562,11 +637,11 @@ Assert Intake navigation exists in Personal and Indelitech, Pending is default, 
 
 - [ ] **Step 2: Add Intake navigation with minimal `control-center.tsx` impact**
 
-Extend `WorkspacePageId` and the `Tab` union with `intake`; add an Inbox icon entry after Today/Tasks as appropriate. Keep data fetching and review logic inside `IntakeView`, not the 148k control-center monolith.
+Extend `WorkspacePageId` and the `Tab` union with `intake`; add an Inbox icon entry after Tasks. Keep data fetching and review logic inside `IntakeView`, not the large control-center component.
 
 - [ ] **Step 3: Implement review cards and edit flow**
 
-Show title, type, workspace, source, source timestamp, supported date/amount, short reason, freshness warning when relevant, and source link if present. `Edit & Approve` must expose only canonical-supported fields; blank unknown values remain blank.
+Show title, type, workspace, source, source timestamp, supported date/amount, short reason, freshness warning when relevant, and source link if present. `Edit & Approve` must expose only canonical-supported fields; blank unknown values remain blank. A workspace correction resolves destination authorization before PATCH and remains durable through future source replays.
 
 - [ ] **Step 4: Implement explicit All behavior**
 
@@ -597,7 +672,7 @@ Commit: `Add Daily Intake review surface`
 
 - [ ] **Step 1: Write RED projection/UI tests**
 
-Cover event rendering without task completion/overdue semantics, 45-day limit, grouping by date, Personal/Indelitech/All filter, source calendar labels, recurring indication, override defaulting to whole series, occurrence-only exception, and related Intake/Task link metadata when available.
+Cover event rendering without task completion/overdue semantics, 45-day limit, grouping by date, Personal/Indelitech/All filter, source calendar labels, recurring indication, override defaulting to whole series, occurrence-only exception, and related Intake/approved Task links.
 
 - [ ] **Step 2: Extend Calendar projection union**
 
@@ -614,7 +689,7 @@ Do not reuse priority/overdue CSS classes for EVENT.
 
 - [ ] **Step 3: Add Upcoming segmented view**
 
-Extend `month | agenda` to `month | agenda | upcoming`. `upcoming` is the canonical next-45-days event surface; existing month/agenda continue to show Tasks/Bills and may include events where dates overlap.
+Extend `month | agenda` to `month | agenda | upcoming`. `upcoming` is the canonical next-45-days event surface; existing month/agenda continue to show Tasks/Bills and include Google events where dates overlap. The Upcoming panel displays event relationships from `relatedIntake`; approved Task targets navigate to the canonical task when available.
 
 - [ ] **Step 4: Add override interaction**
 
@@ -712,6 +787,7 @@ Send one safe `intake_proposal` envelope and one small `calendar_sync` run throu
 - the Intake proposal appears but does not create a Task;
 - calendar events appear in Upcoming;
 - replay creates no duplicates;
+- event relationship metadata appears when the proposal references the event;
 - the existing simple ChatGPT → Todoist → DCC Task capture still works.
 
 - [ ] **Step 7: Run the controlled 7-day bootstrap**
@@ -761,13 +837,15 @@ Commit: `Close out 1G-H Daily Intake`
 
 Before implementation begins, confirm:
 
-- [ ] Every approved spec requirement maps to a task above.
-- [ ] No `TODO`, `TBD`, placeholder function, or unspecified security boundary remains.
-- [ ] Transport types line up across parser → ingress service → D1 repositories.
-- [ ] Hosted API types line up with UI hooks/components.
-- [ ] Task approval reuses `requestId=intake:<id>` idempotency.
-- [ ] Bill approval has independent replay safety through `source_intake_id`.
-- [ ] Calendar deletion reconciliation cannot occur from partial batches.
-- [ ] `scan_status` can mark successful zero-result scans fresh.
-- [ ] Legacy Todoist task capture remains covered by regression tests.
-- [ ] Automation creation remains after protected deployment/manual acceptance, not before.
+- [x] Every approved spec requirement maps to a task above.
+- [x] No `TODO`, `TBD`, placeholder function, or unspecified security boundary remains.
+- [x] Transport types line up across parser → ingress service → D1 repositories.
+- [x] Hosted API types line up with UI hooks/components.
+- [x] User-edited Intake fields have an explicit durable overwrite-protection marker.
+- [x] Event reads explicitly return source-matched Intake/approved-target relationships.
+- [x] Task approval reuses `requestId=intake:<id>` idempotency.
+- [x] Bill approval has independent replay safety through `source_intake_id`.
+- [x] Calendar deletion reconciliation cannot occur from partial batches.
+- [x] `scan_status` can mark successful zero-result scans fresh.
+- [x] Legacy Todoist task capture remains covered by regression tests.
+- [x] Automation creation remains after protected deployment/manual acceptance, not before.
