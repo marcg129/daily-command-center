@@ -188,7 +188,7 @@ test("Todoist ingress Worker is cron-only, private, and uses explicit bindings",
     database_name: "daily-command-center-prod",
     database_id: "2f67ea9a-bf97-4008-9031-2ebfdb5a6e57",
   }]);
-  assert.deepEqual(config.vars, { TODOIST_PROJECT_ID: "6XGgm6PHrGgMpCFX" });
+  assert.deepEqual(config.vars, { TODOIST_PROJECT_ID: "6hWfF7hXXMj9XpV5" });
   assert.doesNotMatch(JSON.stringify(config), /TODOIST_API_TOKEN|DCC_USER_ID/);
 });
 
