@@ -193,9 +193,8 @@ test("workspace resolution precedence is occurrence override, series override, a
 
 test("series overrides affect later synced occurrences while occurrence-only overrides remain narrow", async () => {
   const { database, repo } = setup();
-  await repo.ingestBatch("user:marc", sync({
-    events: [event("event-1", "Weekly client call", "2026-09-20T14:00:00-04:00", "indelitech")],
-  }));
+  const firstOccurrence = event("event-1", "Weekly client call", "2026-09-20T14:00:00-04:00", "indelitech");
+  await repo.ingestBatch("user:marc", sync({ events: [firstOccurrence] }));
   await repo.setWorkspaceOverride("user:marc", {
     sourceKey: "primary_calendar",
     scope: "SERIES",
@@ -211,7 +210,10 @@ test("series overrides affect later synced occurrences while occurrence-only ove
 
   await repo.ingestBatch("user:marc", sync({
     scanRunId: "next-week",
-    events: [event("event-2", "Weekly client call", "2026-09-27T14:00:00-04:00", "indelitech")],
+    events: [
+      firstOccurrence,
+      event("event-2", "Weekly client call", "2026-09-27T14:00:00-04:00", "indelitech"),
+    ],
   }));
 
   const personal = await repo.list("user:marc", "personal", { fromDate: "2026-09-17", throughDate: "2026-11-01" });
