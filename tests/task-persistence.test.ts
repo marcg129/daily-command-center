@@ -145,7 +145,9 @@ test("reminder-only handler never rewrites tasks", async () => {
 
 test("post-bootstrap client saves use narrow ordered task and reminder paths", async () => {
   const source = await readFile(new URL("../components/control-center.tsx", import.meta.url), "utf8");
-  const persistence = source.slice(source.indexOf("// Keep the emergency browser copy"), source.indexOf("if (!toast)"));
+  const persistenceStart = source.indexOf("const workspace = { reminders, tasks } satisfies WorkspaceState;");
+  assert.notEqual(persistenceStart, -1);
+  const persistence = source.slice(persistenceStart, source.indexOf("if (!toast)"));
   assert.match(persistence, /fetch\(taskMutationEndpoint\(runtimeMode, mutationWorkspaceId\)/);
   assert.match(persistence, /body: JSON\.stringify\(\{ mutations \}\)/);
   assert.match(persistence, /fetch\("\/api\/reminders"/);

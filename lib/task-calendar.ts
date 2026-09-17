@@ -1,4 +1,5 @@
 import type { ProductWorkspaceId } from "./runtime/context";
+import type { ProjectedCalendarEvent } from "./runtime/calendar-projection-repository";
 import { PRODUCT_TIME_ZONE } from "./product-time";
 import { normalizeTaskPriority, taskIsActive, taskIsOverdue, visibleTaskItems } from "./tasks";
 import type { TaskItem } from "./types";
@@ -25,6 +26,12 @@ function productDate(date: Date) {
   }).formatToParts(date);
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
   return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+export function projectedCalendarEventDate(event: Pick<ProjectedCalendarEvent, "allDay" | "startAt">): string {
+  if (event.allDay) return event.startAt.slice(0, 10);
+  const instant = new Date(event.startAt);
+  return Number.isFinite(instant.getTime()) ? productDate(instant) : event.startAt.slice(0, 10);
 }
 
 function dueDate(task: TaskItem, now: Date) {

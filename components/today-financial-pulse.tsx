@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CircleAlert, RefreshCw, WalletCards } from "lucide-react";
 import { billProjectionToday } from "@/lib/bill-projections";
@@ -18,6 +19,8 @@ import {
   formatPulseCurrencyMinor,
   pulseAmountQualifier,
 } from "@/lib/today-financial-pulse";
+import { TodayEvents } from "./today-events";
+import { TodayIntakeSummary } from "./today-intake-summary";
 import styles from "./today-financial-pulse.module.css";
 
 type IncomeSummary = Readonly<{
@@ -57,6 +60,7 @@ function formatDateOnly(value: string): string {
 }
 
 export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorkspaceId }) {
+  const router = useRouter();
   const today = billProjectionToday();
   const hosted = useSyncExternalStore(
     subscribeRuntimeMode,
@@ -155,7 +159,9 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
   const showError = errorWorkspaceId === workspaceId && Boolean(error);
   const showLoading = !showError && (loading || loadedWorkspaceId !== workspaceId);
 
-  return (
+  return <>
+    <TodayIntakeSummary workspaceId={workspaceId} enabled={hosted} onOpenIntake={() => router.push("/?tab=intake")} />
+    <TodayEvents workspaceId={workspaceId} enabled={hosted} onOpenCalendar={() => router.push("/?tab=calendar")} />
     <section className={styles.panel} aria-label={`${workspaceId === "personal" ? "Personal" : "Indelitech"} Financial Pulse`}>
       <div className={styles.header}>
         <div>
@@ -208,5 +214,5 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
 
       <p className={styles.disclaimer}>Workspace-scoped planning projection. Manual cash baselines are not bank verified, and this is not a spending recommendation.</p>
     </section>
-  );
+  </>;
 }

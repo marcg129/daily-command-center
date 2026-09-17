@@ -49,6 +49,18 @@ function addMembership(database: TestD1, userId: string, workspaceId: string, wo
   ).run(userId, workspaceId, workspaceKey);
 }
 
+test("configured active DCC user resolves independently of a workspace", async () => {
+  const d1 = new TestD1();
+  addUser(d1, "user:relay");
+  const resolver = new D1UserWorkspaceResolver(d1, "user:relay");
+  assert.deepEqual(await resolver.resolveUser(), { userId: "user:relay" });
+
+  addUser(d1, "user:disabled", "DISABLED");
+  await assert.rejects(new D1UserWorkspaceResolver(d1, "user:disabled").resolveUser(), /Workspace access denied/);
+  await assert.rejects(new D1UserWorkspaceResolver(d1, "user:missing").resolveUser(), /Workspace access denied/);
+  d1.sqlite.close();
+});
+
 test("configured active DCC user resolves the exact physical workspace", async () => {
   const d1 = new TestD1();
   addWorkspace(d1, "personal:relay-user");

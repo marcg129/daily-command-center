@@ -5,7 +5,7 @@ import { monthCalendarDays, shiftCalendarMonth, taskCalendarEntries } from "../l
 import type { TaskItem } from "../lib/types";
 
 function task(overrides: Partial<TaskItem> = {}): TaskItem {
-  return { id: "task", title: "Canonical task", description: "Details", due: "2026-09-15", recurrence: "One-time", priority: "HIGH", primaryWorkspaceId: "personal", done: false, status: "OPEN", ...overrides };
+  return { id: "task", title: `Canonical task`, description: "Details", due: "2026-09-15", recurrence: "One-time", priority: "HIGH", primaryWorkspaceId: "personal", done: false, status: "OPEN", ...overrides };
 }
 
 test("projects due dates, reminders, and follow-ups without creating task records", () => {
@@ -34,6 +34,16 @@ test("marks past due, reminder, and follow-up entries as overdue", () => {
   const now = new Date("2026-09-15T16:00:00Z");
   const entries = taskCalendarEntries([task({ due: "2026-09-14", remindAt: "2026-09-15T15:00:00Z", followUpAt: "2026-09-15T14:00:00Z", status: "WAITING" })], "personal", now);
   assert.ok(entries.every(({ overdue }) => overdue));
+});
+
+test("projected Google events keep all-day dates and use the product timezone for timed starts", async () => {
+  const calendar = await import("../lib/task-calendar");
+  const projectionDate = (calendar as typeof calendar & {
+    projectedCalendarEventDate?: (event: { allDay: boolean; startAt: string }) => string;
+  }).projectedCalendarEventDate;
+  assert.equal(typeof projectionDate, "function");
+  assert.equal(projectionDate!({ allDay: true, startAt: "2026-09-18" }), "2026-09-18");
+  assert.equal(projectionDate!({ allDay: false, startAt: "2026-09-18T02:30:00Z" }), "2026-09-17");
 });
 
 test("builds stable six-week month grids across year boundaries", () => {

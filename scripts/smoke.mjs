@@ -311,6 +311,28 @@ try {
     });
     if (rejected.status !== 400) throw new Error("Configuration fields accepted an autofilled email address.");
   }
+
+  const hostedFrom = new Date().toISOString().slice(0, 10);
+  const hostedThroughDate = new Date();
+  hostedThroughDate.setUTCDate(hostedThroughDate.getUTCDate() + 1);
+  const hostedThrough = hostedThroughDate.toISOString().slice(0, 10);
+  for (const pathname of [
+    "/api/hosted/intake?workspaceId=personal&view=PENDING",
+    `/api/hosted/events?workspaceId=personal&from=${hostedFrom}&to=${hostedThrough}`,
+  ]) {
+    const hosted = await fetch(`http://127.0.0.1:${port}${pathname}`);
+    const hostedPayload = await hosted.json();
+    if (
+      hosted.status !== 500 ||
+      hosted.headers.get("cache-control") !== "no-store" ||
+      hostedPayload.error !== "Hosted runtime is unavailable."
+    ) {
+      throw new Error(
+        `${pathname} did not preserve the local fail-closed hosted-route posture.`,
+      );
+    }
+  }
+
   const blocked = await fetch(`http://127.0.0.1:${port}/api/settings`, {
     headers: { Host: "attacker.example", Origin: "http://attacker.example" },
   });
@@ -321,7 +343,7 @@ try {
   if (server.exitCode !== null || server.signalCode !== null)
     throw new Error(`The launcher exited during smoke verification.\n${output}`);
   console.log(
-    "Golden-path launcher smoke passed: health, home page, generic empty first run, and localhost boundary.",
+    "Golden-path launcher smoke passed: health, home page, generic empty first run, hosted route fail-closed posture, and localhost boundary.",
   );
 } finally {
   await stopServer();

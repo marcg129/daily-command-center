@@ -1,7 +1,13 @@
 import type { D1Database } from "../lib/runtime/d1";
+import { createDailyIntakeIngressService } from "../lib/runtime/daily-intake-ingress-service";
+import { webIdGenerator } from "../lib/runtime/primitives";
 import { createTodoistApiClient } from "../lib/runtime/todoist-api";
+import { createTodoistIngressDispatcher } from "../lib/runtime/todoist-ingress-dispatcher";
 import { runTodoistIngressBatch } from "../lib/runtime/todoist-ingress-runner";
 import { createTodoistTaskIngressService } from "../lib/runtime/todoist-task-ingress-service";
+import { D1CalendarProjectionRepository } from "../lib/server/d1-calendar-projection-repository";
+import { D1IntakeRepository } from "../lib/server/d1-intake-repository";
+import { D1SourceFreshnessRepository } from "../lib/server/d1-source-freshness-repository";
 import { D1TaskRepository } from "../lib/server/d1-task-repository";
 import { D1TodoistIngressControlStore } from "../lib/server/d1-todoist-ingress-control-store";
 import { D1UserWorkspaceResolver } from "../lib/server/d1-user-workspace-resolver";
@@ -34,17 +40,34 @@ async function run(env: Env, scheduledTime: number) {
     ? scheduledTime
     : Date.now();
   const captureNow = new Date(captureNowMs);
+  const clock = { now: () => captureNow };
   const api = createTodoistApiClient({
     token,
     projectId: env.TODOIST_PROJECT_ID,
   });
-  const repository = new D1TaskRepository(env.DB);
+  const taskRepository = new D1TaskRepository(env.DB);
+  const intakeRepository = new D1IntakeRepository(env.DB, clock, webIdGenerator);
+  const calendarRepository = new D1CalendarProjectionRepository(env.DB, clock, webIdGenerator);
+  const sourceFreshnessRepository = new D1SourceFreshnessRepository(env.DB);
   const workspaceResolver = new D1UserWorkspaceResolver(env.DB, userId);
   const control = new D1TodoistIngressControlStore(env.DB);
-  const importTask = createTodoistTaskIngressService({
-    repository,
-    clock: { now: () => captureNow },
+
+  const legacyImportTask = createTodoistTaskIngressService({
+    repository: taskRepository,
+    clock,
     workspaceResolver,
+    relay: api,
+  });
+  const dailyIntake = createDailyIntakeIngressService({
+    intakeRepository,
+    calendarRepository,
+    sourceFreshnessRepository,
+    workspaceResolver,
+    relay: api,
+  });
+  const importTask = createTodoistIngressDispatcher({
+    legacyImportTask,
+    dailyIntakeImport: dailyIntake.import,
     relay: api,
   });
 

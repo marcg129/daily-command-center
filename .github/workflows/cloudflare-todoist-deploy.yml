@@ -131,6 +131,12 @@ jobs:
           if (config.vars?.TODOIST_API_TOKEN !== undefined || config.vars?.DCC_USER_ID !== undefined) throw new Error('Todoist runtime secrets must not be plaintext vars');
           EOF
 
+      - name: Verify 1G-H Daily Intake migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s migrations/0012_daily_intake_events.sql
+
       - name: Apply production migrations for Todoist ingress state
         run: npx wrangler d1 migrations apply daily-command-center-prod --remote --config wrangler.todoist.jsonc
 

@@ -27,14 +27,14 @@ test("invalid persisted selections fall back to Personal", () => {
 
 test("Personal primary navigation is the exact V1 set", () => {
   assert.deepEqual(WORKSPACES.personal.navigation.map(({ label }) => label), [
-    "Today", "Tasks", "Calendar", "News", "Settings",
+    "Today", "Tasks", "Intake", "Calendar", "News", "Settings",
   ]);
   assert.equal(WORKSPACES.personal.navigation.some(({ label }) => label === "Mentions"), false);
 });
 
 test("Indelitech primary navigation is the exact V1 set", () => {
   assert.deepEqual(WORKSPACES.indelitech.navigation.map(({ label }) => label), [
-    "Today", "Tasks", "Calendar", "Intel", "Mentions", "Settings",
+    "Today", "Tasks", "Intake", "Calendar", "Intel", "Mentions", "Settings",
   ]);
   assert.equal(WORKSPACES.indelitech.navigation.some(({ label }) => label === "News"), false);
 });
