@@ -62,3 +62,9 @@ test("Intake badges and evidence cards use theme-aware surfaces with explicit re
   assert.match(css, /\.evidenceGrid span\{[^}]*color:var\(--muted/);
   assert.match(css, /\.evidenceGrid b\{[^}]*color:var\(--ink/);
 });
+
+test("Intake primary actions keep readable theme contrast in both light and dark palettes", () => {
+  const css = source("components/intake-view.module.css");
+  assert.match(css, /\.refreshButton,.primaryButton\{[^}]*border:1px solid var\(--coral-dark[^}]*background:var\(--coral-dark[^}]*color:var\(--paper/);
+  assert.match(css, /\.modalActions \.primaryButton\{[^}]*border-color:var\(--coral-dark[^}]*background:var\(--coral-dark[^}]*color:var\(--paper/);
+});
