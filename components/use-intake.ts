@@ -138,9 +138,13 @@ export function useIntake({ scope, viewMode, authorizedWorkspaceIds, enabled }: 
         if (controller.signal.aborted) return;
         setItems(sortItems(filterMode(responses.flatMap((response) => response.items), viewMode), viewMode));
         try {
-          const statusWorkspace = workspaceIds[0];
-          const freshness = await requestJson<{ sources: SourceFreshness[] }>(`/api/hosted/intake/status?workspaceId=${encodeURIComponent(statusWorkspace)}`, { signal: controller.signal });
-          if (!controller.signal.aborted) setSources(freshness.sources);
+          const freshnessResponses = await Promise.all(workspaceIds.map((workspaceId) =>
+            requestJson<{ sources: SourceFreshness[] }>(
+              `/api/hosted/intake/status?workspaceId=${encodeURIComponent(workspaceId)}`,
+              { signal: controller.signal },
+            ),
+          ));
+          if (!controller.signal.aborted) setSources(freshnessResponses.flatMap((response) => response.sources));
         } catch (caught) {
           if (!controller.signal.aborted) {
             setSources([]);
