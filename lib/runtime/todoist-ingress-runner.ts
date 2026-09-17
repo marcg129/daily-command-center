@@ -8,13 +8,19 @@ export interface TodoistIngressQueue {
 }
 
 export type TodoistIngressControlState = Readonly<{
-  rotationOffset: number;
+  cursorAddedAt: string | null;
+  cursorTaskId: string | null;
   cooldownUntilMs: number | null;
+}>;
+
+export type TodoistIngressControlWriteMetadata = Readonly<{
+  runStartedAtMs: number;
+  observedAtMs: number;
 }>;
 
 export interface TodoistIngressControlStore {
   load(): Promise<TodoistIngressControlState>;
-  save(state: TodoistIngressControlState): Promise<void>;
+  save(state: TodoistIngressControlState, metadata: TodoistIngressControlWriteMetadata): Promise<void>;
 }
 
 export type TodoistIngressBatchSummary = Readonly<{
@@ -31,11 +37,12 @@ export type TodoistIngressBatchSummary = Readonly<{
 
 type RunOptions = Readonly<{
   control?: TodoistIngressControlStore;
-  nowMs?: number;
+  clock?: () => number;
 }>;
 
 const DEFAULT_CONTROL_STATE: TodoistIngressControlState = {
-  rotationOffset: 0,
+  cursorAddedAt: null,
+  cursorTaskId: null,
   cooldownUntilMs: null,
 };
 
@@ -46,11 +53,53 @@ function retryAfterSeconds(value: unknown): number | null {
   return Math.ceil(raw);
 }
 
-function rotatedBatch(tasks: TodoistRelayTask[], offset: number): TodoistRelayTask[] {
-  if (tasks.length === 0) return [];
-  const start = offset % tasks.length;
-  const count = Math.min(tasks.length, TODOIST_INGRESS_BATCH_LIMIT);
-  return Array.from({ length: count }, (_, index) => tasks[(start + index) % tasks.length]);
+function now(clock: () => number): number {
+  const value = clock();
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Todoist ingress run time is invalid.");
+  return value;
+}
+
+function validateControlState(state: TodoistIngressControlState) {
+  if ((state.cursorAddedAt === null) !== (state.cursorTaskId === null)) {
+    throw new Error("Todoist ingress cursor state is invalid.");
+  }
+  if (state.cursorAddedAt !== null && !Number.isFinite(Date.parse(state.cursorAddedAt))) {
+    throw new Error("Todoist ingress cursor state is invalid.");
+  }
+  if (state.cursorTaskId !== null && !state.cursorTaskId.trim()) {
+    throw new Error("Todoist ingress cursor state is invalid.");
+  }
+  if (state.cooldownUntilMs !== null && (!Number.isSafeInteger(state.cooldownUntilMs) || state.cooldownUntilMs < 0)) {
+    throw new Error("Todoist ingress cooldown state is invalid.");
+  }
+}
+
+function compareRelayTasks(left: TodoistRelayTask, right: TodoistRelayTask): number {
+  const leftAddedAt = left.addedAt;
+  const rightAddedAt = right.addedAt;
+  if (!leftAddedAt || !rightAddedAt || !Number.isFinite(Date.parse(leftAddedAt)) || !Number.isFinite(Date.parse(rightAddedAt))) {
+    throw new Error("Todoist ingress task ordering metadata is invalid.");
+  }
+  const added = leftAddedAt.localeCompare(rightAddedAt);
+  return added !== 0 ? added : left.id.localeCompare(right.id);
+}
+
+function compareTaskToCursor(task: TodoistRelayTask, state: TodoistIngressControlState): number {
+  if (state.cursorAddedAt === null || state.cursorTaskId === null) return 1;
+  if (!task.addedAt) throw new Error("Todoist ingress task ordering metadata is invalid.");
+  const added = task.addedAt.localeCompare(state.cursorAddedAt);
+  return added !== 0 ? added : task.id.localeCompare(state.cursorTaskId);
+}
+
+function stableCursorBatch(tasks: TodoistRelayTask[], state: TodoistIngressControlState): TodoistRelayTask[] {
+  const ordered = [...tasks].sort(compareRelayTasks);
+  if (ordered.length === 0) return [];
+  const afterCursor = state.cursorTaskId === null
+    ? 0
+    : ordered.findIndex((task) => compareTaskToCursor(task, state) > 0);
+  const start = afterCursor < 0 ? 0 : afterCursor;
+  const count = Math.min(ordered.length, TODOIST_INGRESS_BATCH_LIMIT);
+  return Array.from({ length: count }, (_, index) => ordered[(start + index) % ordered.length]);
 }
 
 function emptySummary(retryAfter: number | null, skippedForBackoff: boolean): TodoistIngressBatchSummary {
@@ -68,29 +117,22 @@ function emptySummary(retryAfter: number | null, skippedForBackoff: boolean): To
 }
 
 /**
- * Runs one bounded poll of the relay project. A durable control store is used
- * by the scheduled Worker to honor provider cooldowns across invocations and
- * rotate the starting point so permanently failed open tasks cannot starve
- * later relays. Queue-read failures remain visible by rejecting the run.
+ * Runs one bounded poll of the relay project. The scheduled Worker persists a
+ * stable Todoist task cursor and provider cooldown so closed tasks/new arrivals
+ * cannot starve deferred relays and rate-limit windows survive cron invocations.
  */
 export async function runTodoistIngressBatch(
   queue: TodoistIngressQueue,
   importTask: (task: TodoistRelayTask) => Promise<TodoistTaskIngressOutcome>,
   options: RunOptions = {},
 ): Promise<TodoistIngressBatchSummary> {
-  const nowMs = options.nowMs ?? Date.now();
-  if (!Number.isFinite(nowMs) || nowMs < 0) throw new Error("Todoist ingress run time is invalid.");
-
+  const clock = options.clock ?? Date.now;
+  const runStartedAtMs = now(clock);
   const state = options.control ? await options.control.load() : DEFAULT_CONTROL_STATE;
-  if (!Number.isSafeInteger(state.rotationOffset) || state.rotationOffset < 0) {
-    throw new Error("Todoist ingress rotation state is invalid.");
-  }
-  if (state.cooldownUntilMs !== null && (!Number.isSafeInteger(state.cooldownUntilMs) || state.cooldownUntilMs < 0)) {
-    throw new Error("Todoist ingress cooldown state is invalid.");
-  }
+  validateControlState(state);
 
-  if (state.cooldownUntilMs !== null && state.cooldownUntilMs > nowMs) {
-    return emptySummary(Math.ceil((state.cooldownUntilMs - nowMs) / 1000), true);
+  if (state.cooldownUntilMs !== null && state.cooldownUntilMs > runStartedAtMs) {
+    return emptySummary(Math.ceil((state.cooldownUntilMs - runStartedAtMs) / 1000), true);
   }
 
   let listedTasks: TodoistRelayTask[];
@@ -99,32 +141,38 @@ export async function runTodoistIngressBatch(
   } catch (error) {
     const retryAfter = retryAfterSeconds(error);
     if (options.control && retryAfter !== null) {
+      const observedAtMs = now(clock);
       await options.control.save({
-        rotationOffset: state.rotationOffset,
-        cooldownUntilMs: nowMs + retryAfter * 1000,
-      });
+        ...state,
+        cooldownUntilMs: observedAtMs + retryAfter * 1000,
+      }, { runStartedAtMs, observedAtMs });
     }
     throw error;
   }
 
   if (listedTasks.length === 0) {
-    if (options.control && (state.rotationOffset !== 0 || state.cooldownUntilMs !== null)) {
-      await options.control.save(DEFAULT_CONTROL_STATE);
+    if (options.control && state.cooldownUntilMs !== null) {
+      const observedAtMs = now(clock);
+      await options.control.save({ ...state, cooldownUntilMs: null }, { runStartedAtMs, observedAtMs });
     }
     return emptySummary(null, false);
   }
 
-  const tasks = rotatedBatch(listedTasks, state.rotationOffset);
-  const start = state.rotationOffset % listedTasks.length;
+  const tasks = options.control
+    ? stableCursorBatch(listedTasks, state)
+    : listedTasks.slice(0, TODOIST_INGRESS_BATCH_LIMIT);
   let imported = 0;
   let alreadyImported = 0;
   let permanentFailures = 0;
   let transientFailures = 0;
   let attempted = 0;
   let providerRetryAfter: number | null = null;
+  let providerRetryObservedAtMs: number | null = null;
+  let lastAttemptedTask: TodoistRelayTask | null = null;
 
   for (const task of tasks) {
     attempted += 1;
+    lastAttemptedTask = task;
     try {
       const outcome = await importTask(task);
       if (outcome.status === "imported") imported += 1;
@@ -138,23 +186,29 @@ export async function runTodoistIngressBatch(
           outcome.retryAfterSeconds > 0
         ) {
           providerRetryAfter = Math.ceil(outcome.retryAfterSeconds);
+          providerRetryObservedAtMs = now(clock);
           break;
         }
       }
     } catch {
-      // Unexpected per-task faults are retryable by default. Without provider
-      // retry metadata, continue so one D1/provider edge case does not block
-      // unrelated relay items in the same bounded batch.
       transientFailures += 1;
     }
   }
 
-  const nextRotationOffset = (start + attempted) % listedTasks.length;
   if (options.control) {
+    const observedAtMs = providerRetryObservedAtMs ?? now(clock);
+    const cursorAddedAt = lastAttemptedTask?.addedAt ?? state.cursorAddedAt;
+    const cursorTaskId = lastAttemptedTask?.id ?? state.cursorTaskId;
+    if ((cursorAddedAt === null) !== (cursorTaskId === null) || (cursorAddedAt !== null && cursorAddedAt === undefined)) {
+      throw new Error("Todoist ingress task ordering metadata is invalid.");
+    }
     await options.control.save({
-      rotationOffset: nextRotationOffset,
-      cooldownUntilMs: providerRetryAfter === null ? null : nowMs + providerRetryAfter * 1000,
-    });
+      cursorAddedAt: cursorAddedAt ?? null,
+      cursorTaskId: cursorTaskId ?? null,
+      cooldownUntilMs: providerRetryAfter === null
+        ? null
+        : observedAtMs + providerRetryAfter * 1000,
+    }, { runStartedAtMs, observedAtMs });
   }
 
   return {
