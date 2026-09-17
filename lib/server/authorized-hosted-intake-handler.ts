@@ -263,8 +263,8 @@ export function createAuthorizedHostedIntakeHandler(
             for (const intakeId of intakeIds) {
               try {
                 results.push(await approveOne(authorization.context, intakeId));
-              } catch (error) {
-                results.push({ intakeId, ok: false, error: error instanceof Error ? error.message : "Approval failed." });
+              } catch {
+                results.push({ intakeId, ok: false, error: "Intake item could not be approved." });
               }
             }
             return json({ results });
@@ -276,8 +276,8 @@ export function createAuthorizedHostedIntakeHandler(
               try {
                 const item = await intakeRepository.dismiss(authorization.context, intakeId);
                 results.push({ intakeId, ok: true, item });
-              } catch (error) {
-                results.push({ intakeId, ok: false, error: error instanceof Error ? error.message : "Dismiss failed." });
+              } catch {
+                results.push({ intakeId, ok: false, error: "Intake item could not be dismissed." });
               }
             }
             return json({ results });
