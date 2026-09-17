@@ -73,11 +73,10 @@ function insertIntake(sqlite: DatabaseSync, overrides: Partial<Record<string, Sq
     currency: null,
     target_payload_json: "{}",
     semantic_key: "personal_gmail:message:msg-1:1",
-    scan_run_id: "scan-1",
+    user_edited_at: null,
     defer_until: null,
     approved_target_kind: null,
     approved_target_id: null,
-    edited_at: null,
     created_at: "2026-09-17T12:10:00Z",
     updated_at: "2026-09-17T12:10:00Z",
     ...overrides,
@@ -141,6 +140,11 @@ test("intake semantic identity is unique per user and terminal/schema invariants
     semantic_key: "bad-workspace-key",
     workspace_key: "personal:marc",
   }));
+  assert.throws(() => insertIntake(sqlite, {
+    intake_id: "bad-json",
+    semantic_key: "bad-json",
+    target_payload_json: "{not-json",
+  }));
 
   sqlite.close();
 });
@@ -151,16 +155,16 @@ test("calendar projection identity is user/source scoped and override scope is c
   addUser(sqlite, "user:other");
 
   const insertEvent = sqlite.prepare(`INSERT INTO projected_calendar_events (
-    projection_id, user_id, source_key, google_event_id, series_id, occurrence_id,
-    title, starts_at, ends_at, all_day, location, source_url, automatic_workspace_key,
-    projection_status, last_seen_scan_run_id, removed_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    event_projection_id, user_id, source_key, google_event_id, series_id, occurrence_key,
+    title, start_at, end_at, all_day, location, source_url, automatic_workspace_key,
+    last_seen_scan_run_id, removed_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
   const eventValues = (projectionId: string, userId: string, sourceKey: string) => [
     projectionId, userId, sourceKey, "evt-shared", "series-1", "occ-1",
     "Dentist", "2026-09-25T14:00:00-04:00", "2026-09-25T15:00:00-04:00", 0,
     "Office", "https://calendar.google.com/calendar/event?eid=evt-shared", "personal",
-    "ACTIVE", "scan-1", null, "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z",
+    "scan-1", null, "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z",
   ] as const;
 
   insertEvent.run(...eventValues("projection-1", "user:marc", "primary_calendar"));
@@ -169,14 +173,14 @@ test("calendar projection identity is user/source scoped and override scope is c
   assert.doesNotThrow(() => insertEvent.run(...eventValues("projection-other-user", "user:other", "primary_calendar")));
 
   const insertOverride = sqlite.prepare(`INSERT INTO calendar_workspace_overrides (
-    override_id, user_id, source_key, scope, target_id, workspace_key, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    user_id, source_key, scope, identity_key, workspace_key, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
   assert.doesNotThrow(() => insertOverride.run(
-    "override-series", "user:marc", "primary_calendar", "SERIES", "series-1", "indelitech",
+    "user:marc", "primary_calendar", "SERIES", "series-1", "indelitech",
     "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z",
   ));
   assert.throws(() => insertOverride.run(
-    "override-bad", "user:marc", "primary_calendar", "EVENT", "evt-shared", "personal",
+    "user:marc", "primary_calendar", "EVENT", "evt-shared", "personal",
     "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z",
   ));
 
@@ -188,12 +192,12 @@ test("calendar sync batches are unique per user, source, run, and batch index", 
   addUser(sqlite, "user:marc");
 
   sqlite.prepare(`INSERT INTO calendar_sync_runs (
-    user_id, source_key, scan_run_id, window_start, window_end, expected_batch_count,
-    status, started_at, updated_at, completed_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    user_id, source_key, scan_run_id, window_start, window_end, batch_count,
+    state, started_at, completed_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(
       "user:marc", "primary_calendar", "scan-1", "2026-09-17T00:00:00-04:00", "2026-11-01T00:00:00-04:00",
-      2, "OPEN", "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z", null,
+      2, "RECEIVING", "2026-09-17T12:00:00Z", null,
     );
 
   const insertBatch = sqlite.prepare(`INSERT INTO calendar_sync_batches (
