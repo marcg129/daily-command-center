@@ -127,7 +127,7 @@ jobs:
           if (config.preview_urls !== false) throw new Error('Todoist preview URLs must remain disabled');
           if (d1?.database_id !== '2f67ea9a-bf97-4008-9031-2ebfdb5a6e57') throw new Error('Unexpected Todoist D1 binding');
           if (JSON.stringify(config.triggers?.crons ?? []) !== JSON.stringify(['* * * * *'])) throw new Error('Unexpected Todoist cron schedule');
-          if (config.vars?.TODOIST_PROJECT_ID !== '6XGgm6PHrGgMpCFX') throw new Error('Unexpected Todoist project binding');
+          if (config.vars?.TODOIST_PROJECT_ID !== '6hWfF7hXXMj9XpV5') throw new Error('Unexpected Todoist project binding');
           if (config.vars?.TODOIST_API_TOKEN !== undefined || config.vars?.DCC_USER_ID !== undefined) throw new Error('Todoist runtime secrets must not be plaintext vars');
           EOF
 
