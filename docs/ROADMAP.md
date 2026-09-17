@@ -1,6 +1,6 @@
 # Project roadmap
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 This document is the canonical near-term delivery order. Completed milestone notes preserve implementation detail; this roadmap records the current boundary and what comes next.
 
@@ -14,9 +14,10 @@ This document is the canonical near-term delivery order. Completed milestone not
 | 1G-D | **Complete, merged, deployed, and verified** | First-class Bills & Obligations model, authorized API, management UI, recurrence, resolution history |
 | 1G-E | **Complete, merged, deployed, and verified** | Canonical Bills projection into Today and Calendar without fake task rows |
 | 1G-F | **Complete, merged, deployed, and verified** | Payday schedules, authorized Income APIs, manual cash baseline, and workspace-scoped Cash Flow forecasting without bank linking |
-| 1G-G | **In progress** | Read-only hosted Today Financial Pulse using the canonical 1G-F forecast, with strict per-workspace financial isolation |
+| 1G-G | **Complete, merged, deployed, and verified** | Read-only hosted Today Financial Pulse using the canonical 1G-F forecast, with strict per-workspace financial isolation |
+| 1G-H | **Implementation complete; pre-production acceptance pending** | Conservative Daily Intake, 45-day Google event projections, review/approval workflow, Today summaries, and operational Todoist relay |
 
-Milestones 1G-A through 1G-F are closed. 1G-G is the active product milestone. Do not reopen closed milestones unless a regression, security issue, or explicitly approved enhancement requires it.
+Milestones 1G-A through 1G-G are closed. 1G-H is the active product milestone. Its implementation and automated hardening are complete on the feature branch, but protected PR review, merge, production deployment, source bootstrap, scheduled scans, and manual acceptance remain pending. Do not reopen closed milestones unless a regression, security issue, or explicitly approved enhancement requires it.
 
 ## Closed milestone references
 
@@ -157,15 +158,15 @@ For a next payday `P` and product date `T`:
 - investment tracking; and
 - financial-advice scoring or “safe to spend” claims.
 
-## Active milestone 1G-G — Today Financial Pulse & Command Summary
+## Closed milestone 1G-G — Today Financial Pulse & Command Summary
 
-Status: **In progress.**
+Status: **Complete, merged, deployed, and verified.**
 
 ### Goal
 
 Make hosted Today reflect the live 1G-F money picture without turning Today into a second financial-management surface.
 
-The Financial Pulse is a read-only projection of existing canonical Income, Bills, and optional manual cash-baseline data. It reuses `buildPaydayForecast` and shows the selected workspace's next payday, expected income, Bills due before payday, projected known cash after payday when a baseline exists, and visible uncertainty.
+The Financial Pulse is a read-only projection of existing canonical Income, Bills, and optional manual cash-baseline data. It reuses the canonical payday forecast and shows the selected workspace's next payday, expected income, Bills due before payday, projected known cash after payday when a baseline exists, and visible uncertainty.
 
 ### Financial isolation boundary
 
@@ -181,14 +182,69 @@ See:
 - `docs/MILESTONE-1G-G-TODAY-FINANCIAL-PULSE.md`
 - `docs/superpowers/plans/2026-09-16-today-financial-pulse.md`
 
-## Parallel integration experiment — Todoist task ingress
+## Operational integration — Todoist relay
 
-The Todoist relay is intentionally separate from 1G-G. The native ChatGPT Todoist integration has successfully created and read back a structured test task in a dedicated `Daily Command Center Inbox` project, preserving the metadata needed for deterministic import.
+The Todoist relay is now an operational, private scheduled bridge rather than an experiment. It uses the dedicated `Daily Command Center Inbox` project and a cron-only Cloudflare Worker with `workers.dev` and preview URLs disabled.
 
-The planned v0.1 bridge is:
+The bridge is:
 
-**ChatGPT → Todoist capture project → scheduled Cloudflare importer → canonical Daily Command Center task capture**
+**ChatGPT / source collectors → Todoist capture project → scheduled Cloudflare importer → canonical Daily Command Center persistence**
 
-Daily Command Center remains the system of record. The bridge should be idempotent, keep Personal/Indelitech task authorization intact, complete successful relay items, and leave failed items visible with a diagnostic marker/detail rather than silently dropping them.
+The importer supports the existing structured task-capture relay and the versioned 1G-H Daily Intake envelopes. Daily Command Center remains the system of record. Relay processing is idempotent, preserves Personal/Indelitech authorization, closes successfully persisted items, and leaves permanent failures visible rather than silently dropping them. Todoist credentials and the durable DCC user identity remain Cloudflare Worker secrets rather than repository or GitHub secrets.
 
-Implementation work remains isolated on the `integration/todoist-task-ingress` branch and does not change 1G-G acceptance criteria.
+The production deployment workflow preserves the canonical Todoist project ID, verifies the private Worker posture, applies D1 migrations before deployment, and now explicitly requires the 1G-H migration file before the remote migration step.
+
+## Active milestone 1G-H — Daily Intake & Upcoming Events
+
+Status: **Implementation complete; protected PR review, merge, deployment, source bootstrap, scheduled scans, and manual production acceptance pending.**
+
+### Goal
+
+Turn high-signal Gmail and Google Calendar findings into a conservative review inbox and useful calendar awareness without letting source automation silently mutate canonical Tasks or Bills.
+
+### Implemented slices
+
+- durable Daily Intake schema, source freshness, calendar projection, override, and scan-run state;
+- versioned Todoist ingress envelopes for Gmail/Calendar findings and scan status;
+- hosted Intake APIs with exact user/workspace authorization, terminal-state protection, defer/dismiss/archive, and conservative approval;
+- idempotent approval into canonical Tasks, Follow-ups, and source-supported Bills;
+- dedicated Intake review UI with Pending, Deferred, Awareness, and History modes;
+- 45-day Google Calendar projections in Month/Agenda plus a dedicated Upcoming view;
+- explicit Personal/Indelitech/All event scoping assembled from authorized reads rather than a synthetic server-side All workspace;
+- recurring-event workspace correction with series scope by default and explicit occurrence-only override;
+- lightweight Today summaries for today's events, the next seven days, Pending Intake count, and source-health warnings;
+- deployment hardening that verifies `migrations/0012_daily_intake_events.sql` before the Todoist remote migration step; and
+- launcher smoke coverage proving hosted Intake and Events routes remain registered, no-store, and fail closed when hosted Cloudflare bindings are unavailable.
+
+### Safety and data boundaries
+
+- Gmail and calendar automation creates reviewable Intake/projection records first; it does not directly manufacture canonical Bills or Tasks from inferred source data.
+- Awareness findings cannot be approved.
+- Bills require source-supported due date, amount, and currency before approval; missing values are not invented.
+- Cross-workspace moves require authorization for the destination workspace.
+- Personal roll-up behavior does not collapse Personal and Indelitech authorization boundaries.
+- Calendar events remain projections and never inherit Task completion, priority, or overdue semantics.
+- Hosted Intake/Event responses remain `Cache-Control: no-store`.
+
+### Recurring scan boundary
+
+Recurring 1G-H scans are intentionally bounded to the current operating window. After controlled bootstrap/acceptance, recurring Gmail collection should use the rolling recent window defined by the 1G-H automation plan rather than repeatedly mining the entire mailbox.
+
+Historical Gmail cleanup is a **separate one-time activity**, not part of recurring 1G-H scans. Messages older than the approved bootstrap window should only be imported through an explicit historical-cleanup workflow with its own review/acceptance boundary; they must not silently expand the recurring scan scope.
+
+### Remaining acceptance boundary
+
+Before 1G-H can be marked closed:
+
+- open the protected 1G-H PR and require the full Linux/macOS/Windows Check matrix plus review;
+- merge only after explicit approval;
+- deploy current main through the protected web/Todoist workflows and apply production migration `0012`;
+- verify production Todoist relay behavior and source freshness;
+- perform the controlled Gmail/Calendar bootstrap and the three planned source scans;
+- create/enable the approved scheduled Automations only after source acceptance; and
+- record production evidence in `docs/MILESTONE-1G-H-CLOSEOUT.md`.
+
+See:
+
+- `docs/superpowers/specs/2026-09-17-1g-h-daily-intake-design.md`
+- `docs/superpowers/plans/2026-09-17-daily-intake-and-upcoming-events.md`
