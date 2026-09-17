@@ -3,8 +3,12 @@ import test from "node:test";
 import type { RequestContext } from "../lib/runtime/context";
 import type { HostedTaskRepository } from "../lib/runtime/hosted-task-repository";
 import type { HostedTask } from "../lib/runtime/hosted-tasks";
-import type { IntakeRepository, HostedIntakeItem, ApprovedTarget } from "../lib/runtime/intake-repository";
-import type { IntakeProposalInput, IntakeEditablePatch } from "../lib/runtime/daily-intake";
+import type {
+  ApprovedTarget,
+  HostedIntakeItem,
+  IntakeIngestResult,
+  IntakeRepository,
+} from "../lib/runtime/intake-repository";
 import type { BillDefinitionCore } from "../lib/runtime/bills";
 import type { HostedBill, HostedBillOccurrence } from "../lib/runtime/hosted-bills";
 import { createIntakeApprovalService } from "../lib/server/intake-approval-service";
@@ -54,16 +58,16 @@ function item(overrides: Partial<HostedIntakeItem> = {}): HostedIntakeItem {
 
 class FakeIntakeRepository implements IntakeRepository {
   constructor(public current: HostedIntakeItem) {}
-  async ingest(_context: RequestContext, _input: IntakeProposalInput) { throw new Error("unused"); }
+  async ingest(): Promise<IntakeIngestResult> { throw new Error("unused"); }
   async list() { return [this.current]; }
   async get(context: RequestContext, intakeId: string) {
     if (intakeId !== this.current.intakeId || context.userId !== this.current.userId || context.workspaceKey !== this.current.workspaceKey) return null;
     return this.current;
   }
-  async edit(_context: RequestContext, _intakeId: string, _patch: IntakeEditablePatch, _destinationContext?: RequestContext) { throw new Error("unused"); }
-  async defer() { throw new Error("unused"); }
-  async dismiss() { throw new Error("unused"); }
-  async archive() { throw new Error("unused"); }
+  async edit(): Promise<HostedIntakeItem> { throw new Error("unused"); }
+  async defer(): Promise<HostedIntakeItem> { throw new Error("unused"); }
+  async dismiss(): Promise<HostedIntakeItem> { throw new Error("unused"); }
+  async archive(): Promise<HostedIntakeItem> { throw new Error("unused"); }
   async markApproved(context: RequestContext, intakeId: string, target: ApprovedTarget) {
     if (context.workspaceKey !== this.current.workspaceKey || intakeId !== this.current.intakeId) throw new Error("Intake item not found.");
     if (this.current.status === "APPROVED") {
