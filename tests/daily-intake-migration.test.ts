@@ -42,8 +42,10 @@ function addUser(sqlite: DatabaseSync, userId: string) {
     .run(userId, "2026-09-17T12:00:00Z", "2026-09-17T12:00:00Z");
 }
 
-function insertIntake(sqlite: DatabaseSync, overrides: Partial<Record<string, unknown>> = {}) {
-  const row: Record<string, unknown> = {
+type SqlScalar = string | number | null;
+
+function insertIntake(sqlite: DatabaseSync, overrides: Partial<Record<string, SqlScalar>> = {}) {
+  const row: Record<string, SqlScalar> = {
     intake_id: "intake-1",
     user_id: "user:marc",
     workspace_id: "personal",
