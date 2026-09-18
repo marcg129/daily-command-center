@@ -1,14 +1,14 @@
 import type { JWTVerifyGetKey } from "jose";
 import { systemClock, type Clock } from "@/lib/runtime/primitives";
 import { createAuthorizedHostedIntelHandler } from "@/lib/server/authorized-hosted-intel-handler";
-import { CloudflareAccessSessionProvider } from "@/lib/server/cloudflare-access-session-provider";
+import { createHostedAuthenticationSessionProvider, type HostedAuthenticationBindings } from "@/lib/server/hosted-authentication-runtime";
 import { D1CollectorSnapshotRepository } from "@/lib/server/d1-collector-snapshot-repository";
 import { D1WorkspaceResolver } from "@/lib/server/d1-workspace-resolver";
 import type { HostedTaskRouteBindings } from "@/lib/server/hosted-task-route-runtime";
 
 export function createHostedIntelRouteRuntime(
   bindings: HostedTaskRouteBindings,
-  options: { clock?: Clock; accessKeyResolver?: JWTVerifyGetKey } = {},
+  options: { clock?: Clock; accessKeyResolver?: JWTVerifyGetKey; workosKeyResolver?: JWTVerifyGetKey } = {},
 ) {
   if (!bindings?.DB) throw new Error("A D1 DB binding is required.");
   if (!bindings.TEAM_DOMAIN || !bindings.POLICY_AUD) {
@@ -16,11 +16,9 @@ export function createHostedIntelRouteRuntime(
   }
   const clock = options.clock ?? systemClock;
   return createAuthorizedHostedIntelHandler(
-    new CloudflareAccessSessionProvider({
-      teamDomain: bindings.TEAM_DOMAIN,
-      audience: bindings.POLICY_AUD,
-      clock,
-      keyResolver: options.accessKeyResolver,
+    createHostedAuthenticationSessionProvider(bindings, clock, {
+      accessKeyResolver: options.accessKeyResolver,
+      workosKeyResolver: options.workosKeyResolver,
     }),
     new D1WorkspaceResolver(bindings.DB),
     new D1CollectorSnapshotRepository(bindings.DB),
