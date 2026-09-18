@@ -215,6 +215,56 @@ test("auto-provisioning policy can reject non-human authenticated principals wit
 });
 
 
+test("existing resolvable identities still fail closed unless they own exactly one Personal workspace", async () => {
+  const database = new TestD1();
+
+  database.sqlite.prepare(
+    "INSERT INTO users (user_id,status,created_at,updated_at) VALUES ('user:indelitech-only','ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO user_principals (principal_id,user_id,provider,created_at) VALUES ('cf-user:indelitech-only','user:indelitech-only','CLOUDFLARE_ACCESS',CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO workspace_memberships (user_id,workspace_id,workspace_key,role) VALUES ('user:indelitech-only','indelitech','indelitech','OWNER')",
+  ).run();
+
+  database.sqlite.prepare(
+    "INSERT INTO users (user_id,status,created_at,updated_at) VALUES ('user:personal-member','ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO user_principals (principal_id,user_id,provider,created_at) VALUES ('cf-user:personal-member','user:personal-member','CLOUDFLARE_ACCESS',CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO workspace_memberships (user_id,workspace_id,workspace_key,role) VALUES ('user:personal-member','personal','personal','MEMBER')",
+  ).run();
+
+  const resolver = new D1ApplicationUserResolver(database);
+  const provisioner = new D1ApplicationUserProvisioner(database, idFactory);
+  const auto = new AutoProvisioningApplicationUserResolver(
+    resolver,
+    provisioner,
+    "CLOUDFLARE_ACCESS",
+  );
+
+  await assert.rejects(
+    auto.resolve({ principalId: principalId("cf-user:indelitech-only") }),
+    /provisioning denied/i,
+  );
+  await assert.rejects(
+    auto.resolve({ principalId: principalId("cf-user:personal-member") }),
+    /provisioning denied/i,
+  );
+
+  assert.equal(
+    database.sqlite.prepare(
+      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id IN ('user:indelitech-only','user:personal-member')",
+    ).get()!.count,
+    2,
+  );
+  database.sqlite.close();
+});
+
+
 test("existing owner identity keeps its current Personal and Indelitech memberships without reprovisioning", async () => {
   const database = new TestD1();
   database.sqlite.prepare(
