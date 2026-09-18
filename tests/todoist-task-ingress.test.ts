@@ -181,3 +181,17 @@ test("explicit structured metadata overrides Personal/native defaults and still 
     (error) => error instanceof TodoistTaskIngressValidationError && /key: value/i.test(error.message),
   );
 });
+
+
+test("Todoist native priorities map into the three DCC priority levels", () => {
+  const expected = new Map([[4, "HIGH"], [3, "HIGH"], [2, "MEDIUM"], [1, "LOW"]]);
+  for (const [priority, mapped] of expected) {
+    const parsed = parseTodoistRelayTask({
+      id: `priority-${priority}`,
+      content: "Priority mapping",
+      description: "",
+      priority,
+    });
+    assert.equal(parsed.priority, mapped);
+  }
+});
