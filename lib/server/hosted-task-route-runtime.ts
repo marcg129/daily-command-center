@@ -5,7 +5,9 @@ import { createAuthorizedHostedTaskSurfaceHandler } from "@/lib/server/authorize
 import { createHostedAuthenticationSessionProvider, type HostedAuthenticationBindings } from "@/lib/server/hosted-authentication-runtime";
 import { D1WorkspaceResolver } from "@/lib/server/d1-workspace-resolver";
 
-export type HostedTaskRouteBindings = Readonly<{\n  DB: D1Database;\n}> & HostedAuthenticationBindings;
+export type HostedTaskRouteBindings = Readonly<{
+  DB: D1Database;
+}> & HostedAuthenticationBindings;
 
 export function createHostedTaskRouteRuntime(
   bindings: HostedTaskRouteBindings,
