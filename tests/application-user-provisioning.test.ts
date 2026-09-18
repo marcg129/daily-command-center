@@ -192,3 +192,24 @@ test("auto-provisioning resolver creates only the missing Personal boundary and 
   );
   database.sqlite.close();
 });
+
+
+test("auto-provisioning policy can reject non-human authenticated principals without creating data", async () => {
+  const database = new TestD1();
+  const principal = { principalId: principalId("cf-service:worker") };
+  const resolver = new D1ApplicationUserResolver(database);
+  const provisioner = new D1ApplicationUserProvisioner(database, idFactory);
+  const auto = new AutoProvisioningApplicationUserResolver(
+    resolver,
+    provisioner,
+    "CLOUDFLARE_ACCESS",
+    (candidate) => candidate.principalId.startsWith("cf-user:"),
+  );
+
+  await assert.rejects(auto.resolve(principal), /Application user access denied/i);
+  assert.equal(
+    database.sqlite.prepare("SELECT COUNT(*) count FROM user_principals WHERE principal_id='cf-service:worker'").get()!.count,
+    0,
+  );
+  database.sqlite.close();
+});
