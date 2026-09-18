@@ -1,7 +1,7 @@
 import type { ProductWorkspaceId, RequestContext } from "./context";
 import type {
   BillProposalRecurrence,
-  DailyIntakeSourceKey,
+  IntakeSourceKey,
   IntakeEditablePatch,
   IntakePriority,
   IntakeProposalInput,
@@ -22,7 +22,7 @@ export type HostedIntakeItem = Readonly<{
   intakeType: IntakeType;
   status: IntakeStatus;
   sourceType: IntakeSourceType;
-  sourceKey: DailyIntakeSourceKey;
+  sourceKey: IntakeSourceKey;
   sourceMessageId: string | null;
   sourceThreadId: string | null;
   sourceEventId: string | null;
@@ -59,7 +59,7 @@ export type IntakeIngestResult = Readonly<{
 export type IntakeListFilter = Readonly<{
   status?: IntakeStatus;
   type?: IntakeType;
-  sourceKey?: DailyIntakeSourceKey;
+  sourceKey?: IntakeSourceKey;
 }>;
 
 export interface IntakeRepository {
