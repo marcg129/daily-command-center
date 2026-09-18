@@ -16,6 +16,7 @@ const MIGRATIONS = [
   "0010_income_and_cashflow.sql",
   "0011_todoist_ingress_control.sql",
   "0012_daily_intake_events.sql",
+  "0013_chat_history_intake.sql",
 ] as const;
 
 function setupDatabase(): DatabaseSync {
@@ -102,5 +103,16 @@ test("calendar automatic workspace is always explicit and bill source links stay
   assert.equal(billNames.includes("source_intake_id"), true);
   const index = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='bills_source_intake_uidx'").get() as { sql?: string } | undefined;
   assert.match(index?.sql ?? "", /UNIQUE INDEX[\s\S]*source_intake_id[\s\S]*WHERE source_intake_id IS NOT NULL/i);
+  sqlite.close();
+});
+
+
+test("chat history is an Intake-only provenance and does not expand daily source freshness", () => {
+  const sqlite = setupDatabase();
+  const intakeSql = tableSql(sqlite, "intake_items");
+  const freshnessSql = tableSql(sqlite, "daily_intake_source_status");
+  assert.match(intakeSql, /chat_history/);
+  assert.match(intakeSql, /source_type[^]*chat/i);
+  assert.doesNotMatch(freshnessSql, /chat_history/);
   sqlite.close();
 });
