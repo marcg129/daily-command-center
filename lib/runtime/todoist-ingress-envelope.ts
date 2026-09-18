@@ -22,7 +22,7 @@ export type ParsedDccEnvelope =
   | Readonly<{ kind: "scan_status"; payload: ScanStatusInput }>;
 
 const INTAKE_KEYS = new Set([
-  "scanRunId", "workspaceId", "sourceKey", "sourceType", "messageId", "threadId", "eventId", "seriesId",
+  "scanRunId", "workspaceId", "sourceKey", "sourceType", "messageId", "threadId", "chatItemId", "chatThreadId", "eventId", "seriesId",
   "proposalOrdinal", "sourceTimestamp", "sender", "subject", "sourceUrl", "intakeType", "title", "summary",
   "classificationReason", "dueDate", "followUpAt", "priority", "amountMinor", "currency", "recurrence",
 ]);
