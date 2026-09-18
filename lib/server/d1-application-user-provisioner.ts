@@ -91,7 +91,7 @@ function verifyExisting(rows: readonly IdentityRow[], provider: string): "missin
   if (
     personal.length !== 1 ||
     !personal[0].workspace_id ||
-    (personal[0].role !== "OWNER" && personal[0].role !== "MEMBER")
+    personal[0].role !== "OWNER"
   ) {
     throw new ApplicationUserProvisioningError();
   }
@@ -184,17 +184,27 @@ export class AutoProvisioningApplicationUserResolver implements ApplicationUserR
   ) {}
 
   async resolve(principal: AuthenticatedPrincipal): Promise<ResolvedApplicationUser> {
+    let resolved: ResolvedApplicationUser;
     try {
-      return await this.resolver.resolve(principal);
+      resolved = await this.resolver.resolve(principal);
     } catch (error) {
       if (!(error instanceof ApplicationUserAccessError)) throw error;
       if (!this.allowPrincipal(principal)) throw error;
+
+      await this.provisioner.provision({
+        principalId: principal.principalId,
+        provider: this.provider,
+      });
+      return this.resolver.resolve(principal);
     }
 
+    // A resolver success only proves the principal has at least one authorized
+    // membership. Existing identities must still satisfy the stronger private
+    // Personal OWNER boundary before a hosted session is returned.
     await this.provisioner.provision({
       principalId: principal.principalId,
       provider: this.provider,
     });
-    return this.resolver.resolve(principal);
+    return resolved;
   }
 }
