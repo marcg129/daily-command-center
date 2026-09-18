@@ -13,9 +13,9 @@ test("hosted Intel route delegates only to the hosted runtime", () => {
   assert.doesNotMatch(route, /api\/live\/industry|readSettings|getDatabase/);
 });
 
-test("hosted Intel runtime composes Access grants with the D1 collector snapshot repository", () => {
+test("hosted Intel runtime composes shared hosted authentication with D1 authorization and collector storage", () => {
   const runtime = source("lib/server/hosted-intel-route-runtime.ts");
-  assert.match(runtime, /CloudflareAccessSessionProvider/);
+  assert.match(runtime, /createHostedAuthenticationSessionProvider/);
   assert.match(runtime, /D1WorkspaceResolver/);
   assert.match(runtime, /D1CollectorSnapshotRepository/);
   assert.doesNotMatch(runtime, /LocalCollector|LocalSettings|legacyRequestContext/);

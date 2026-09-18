@@ -9,10 +9,10 @@ import { isProductWorkspaceId } from "@/lib/runtime/context";
 import type { D1Database } from "@/lib/runtime/d1";
 import type { Clock, IdGenerator } from "@/lib/runtime/primitives";
 import { requireAuthenticatedSession, type SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import { D1CalendarProjectionRepository } from "@/lib/server/d1-calendar-projection-repository";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 type Principal = Parameters<WorkspaceResolver["resolve"]>[0];
@@ -48,10 +48,10 @@ async function readBody(request: Request): Promise<Record<string, unknown> | nul
 }
 
 async function principalFor(request: Request, sessionProvider: SessionProvider, clock: Clock): Promise<Principal | Response> {
-  const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-  if (!assertion) return errorResponse("Authentication required.", 403);
+  const sessionIdentity = readRequestSessionIdentity(request);
+  if (!sessionIdentity) return errorResponse("Authentication required.", 403);
   try {
-    const session = await sessionProvider.getSession(assertion);
+    const session = await sessionProvider.getSession(sessionIdentity);
     return requireAuthenticatedSession(session, clock.now());
   } catch {
     return errorResponse("Authentication required.", 403);

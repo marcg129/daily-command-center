@@ -3,10 +3,10 @@ import type { CollectorSnapshotRepository } from "@/lib/runtime/collector-snapsh
 import { hostedIntelSnapshotResponse } from "@/lib/runtime/hosted-intel";
 import type { Clock } from "@/lib/runtime/primitives";
 import { requireAuthenticatedSession, type SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import type { LiveFeedResponse } from "@/lib/types";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 
 function errorResponse(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -22,15 +22,15 @@ async function authorize(
   workspaceResolver: WorkspaceResolver,
   clock: Clock,
 ): Promise<AuthorizationResult> {
-  const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-  if (!assertion) return { authorized: false, response: errorResponse("Authentication required.", 403) };
+  const sessionIdentity = readRequestSessionIdentity(request);
+  if (!sessionIdentity) return { authorized: false, response: errorResponse("Authentication required.", 403) };
 
   const workspaceId = new URL(request.url).searchParams.get("workspaceId");
   if (workspaceId !== INDELITECH_WORKSPACE_ID) {
     return { authorized: false, response: errorResponse("workspaceId must be indelitech.", 400) };
   }
 
-  const session = await sessionProvider.getSession(assertion);
+  const session = await sessionProvider.getSession(sessionIdentity);
   const principal = requireAuthenticatedSession(session, clock.now());
   const context = await workspaceResolver.resolve(principal, workspaceId);
   return { authorized: true, context };

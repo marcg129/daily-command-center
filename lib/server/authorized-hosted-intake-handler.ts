@@ -14,6 +14,7 @@ import {
 } from "@/lib/runtime/intake-approval";
 import type { Clock, IdGenerator } from "@/lib/runtime/primitives";
 import { requireAuthenticatedSession, type SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import { D1BillRepository } from "@/lib/server/d1-bill-repository";
 import { D1IntakeRepository } from "@/lib/server/d1-intake-repository";
@@ -21,7 +22,6 @@ import { D1SourceFreshnessRepository } from "@/lib/server/d1-source-freshness-re
 import { D1TaskRepository } from "@/lib/server/d1-task-repository";
 import { createIntakeApprovalService } from "@/lib/server/intake-approval-service";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MAX_BULK_ITEMS = 100;
 
@@ -63,9 +63,9 @@ async function authorize(
   workspaceResolver: WorkspaceResolver,
   clock: Clock,
 ): Promise<Authorization | Response> {
-  const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-  if (!assertion) return errorResponse("Authentication required.", 403);
-  const session = await sessionProvider.getSession(assertion);
+  const sessionIdentity = readRequestSessionIdentity(request);
+  if (!sessionIdentity) return errorResponse("Authentication required.", 403);
+  const session = await sessionProvider.getSession(sessionIdentity);
   const principal = requireAuthenticatedSession(session, clock.now());
   const workspaceId = new URL(request.url).searchParams.get("workspaceId");
   if (!isProductWorkspaceId(workspaceId)) {
