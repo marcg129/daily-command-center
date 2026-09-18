@@ -230,3 +230,33 @@ test("failure-marker transport errors are classified without leaking provider de
   assert.equal(outcome.retryAfterSeconds, 30);
   assert.doesNotMatch(JSON.stringify(outcome), /should-not-leak/);
 });
+
+
+test("normal Todoist fallback persists mapped Personal task before closing relay", async () => {
+  const repository = new MemoryHostedTaskRepository();
+  const relay = relayActions(repository.events);
+  const service = createTodoistTaskIngressService({ repository, clock, workspaceResolver: resolver(), relay });
+  const context = "Check updated injury news. Current plan: keep the insurance option until status is clear.";
+
+  const outcome = await service(relayTask({
+    content: "Monitor TE decision",
+    description: context,
+    priority: 4,
+    due: {
+      date: "2026-09-20T11:00:00",
+      timezone: "America/New_York",
+      isRecurring: false,
+    },
+  }));
+
+  assert.equal(outcome.status, "imported");
+  assert.deepEqual(repository.events, ["get", "create", "close"]);
+  const saved = [...repository.tasks.values()][0];
+  assert.equal(saved.primaryWorkspaceId, "personal");
+  assert.equal(saved.context, context);
+  assert.equal(saved.priority, "HIGH");
+  assert.equal(saved.type, "DEADLINE");
+  assert.equal(saved.dueAt, "2026-09-20");
+  assert.equal(saved.dueIsDateOnly, true);
+  assert.equal(saved.remindAt, "2026-09-20T15:00:00.000Z");
+});
