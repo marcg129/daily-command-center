@@ -238,3 +238,54 @@ test("constructor rejects blank token/project and pagination is bounded against 
   await assert.rejects(client.listRelayTasks(), /pagination cursor repeated/i);
   assert.equal(calls, 2);
 });
+
+
+test("normal relay tasks preserve Todoist priority/due data and resolve floating times with the user's Todoist timezone", async () => {
+  const calls: string[] = [];
+  const client = createTodoistApiClient({
+    token,
+    projectId,
+    fetcher: async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/api/v1/tasks?")) {
+        return jsonResponse({
+          results: [{
+            id: "task-native",
+            content: "Monitor TE decision",
+            description: "Check status. Current plan: wait for the injury report.",
+            labels: [],
+            priority: 4,
+            due: {
+              date: "2026-09-20T11:00:00",
+              timezone: null,
+              string: "Sunday at 11 AM",
+              lang: "en",
+              is_recurring: false,
+            },
+            added_at: "2026-09-18T00:11:46.730Z",
+          }],
+          next_cursor: null,
+        });
+      }
+      if (url === "https://api.todoist.com/api/v1/user") {
+        return jsonResponse({
+          id: "user-1",
+          tz_info: { timezone: "America/New_York" },
+        });
+      }
+      throw new Error(`unexpected request ${url}`);
+    },
+  });
+
+  const tasks = await client.listRelayTasks();
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].priority, 4);
+  assert.deepEqual(tasks[0].due, {
+    date: "2026-09-20T11:00:00",
+    timezone: "America/New_York",
+    isRecurring: false,
+  });
+  assert.equal(calls.filter((url) => url === "https://api.todoist.com/api/v1/user").length, 1);
+});
