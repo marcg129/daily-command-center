@@ -300,3 +300,15 @@ test("one-time ChatGPT history proposals use honest chat provenance without join
     sourceUrl: "https://chatgpt.com/c/example",
   }), /source url|chat/i);
 });
+
+
+test("Gmail Intake rejects contradictory chat identity fields", () => {
+  assert.throws(() => validateIntakeProposalInput({
+    ...validIntake,
+    chatItemId: "should-not-be-here",
+  }), /gmail|chat|identity/i);
+  assert.throws(() => validateIntakeProposalInput({
+    ...validIntake,
+    chatThreadId: "should-not-be-here",
+  }), /gmail|chat|identity/i);
+});
