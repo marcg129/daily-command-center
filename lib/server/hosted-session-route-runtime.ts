@@ -3,6 +3,7 @@ import { systemClock, type Clock } from "@/lib/runtime/primitives";
 import { createAuthorizedHostedSessionHandler } from "@/lib/server/authorized-hosted-session-handler";
 import { CloudflareAccessSessionProvider } from "@/lib/server/cloudflare-access-session-provider";
 import { D1ApplicationUserResolver } from "@/lib/server/d1-application-user-resolver";
+import { AutoProvisioningApplicationUserResolver, D1ApplicationUserProvisioner } from "@/lib/server/d1-application-user-provisioner";
 import type { HostedTaskRouteBindings } from "@/lib/server/hosted-task-route-runtime";
 
 export function createHostedSessionRouteRuntime(
@@ -20,7 +21,12 @@ export function createHostedSessionRouteRuntime(
       clock,
       keyResolver: options.accessKeyResolver,
     }),
-    new D1ApplicationUserResolver(bindings.DB),
+    new AutoProvisioningApplicationUserResolver(
+      new D1ApplicationUserResolver(bindings.DB),
+      new D1ApplicationUserProvisioner(bindings.DB),
+      "CLOUDFLARE_ACCESS",
+      (principal) => principal.principalId.startsWith("cf-user:"),
+    ),
     clock,
   );
 }

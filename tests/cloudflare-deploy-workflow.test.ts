@@ -82,14 +82,13 @@ test("task-capture MCP remains independent from the web-domain migration", async
   assert.equal(config.routes, undefined);
 });
 
-test("owner bootstrap provisions the canonical user and workspace membership model", async () => {
+test("legacy Cloudflare provisioning workflow is verification-only and cannot grant shared workspaces", async () => {
   const workflow = await readBootstrap();
-  assert.match(workflow, /principal_id must be the verified cf-user:\* value returned by \/api\/hosted\/session/);
-  assert.match(workflow, /INSERT OR IGNORE INTO users/);
-  assert.match(workflow, /INSERT OR IGNORE INTO user_principals/);
-  assert.match(workflow, /INSERT OR IGNORE INTO workspace_memberships/);
-  assert.match(workflow, /'personal', 'OWNER'/);
-  assert.match(workflow, /'indelitech', 'OWNER'/);
+  assert.match(workflow, /principal_id must be a verified cf-user:\* identity/);
+  assert.match(workflow, /Verify private Personal provisioning/);
+  assert.match(workflow, /m\.workspace_key = 'personal'/);
   assert.match(workflow, /JOIN workspace_memberships m ON m\.user_id = u\.user_id/);
-  assert.doesNotMatch(workflow, /INSERT OR IGNORE INTO principal_workspace_grants/);
+  assert.doesNotMatch(workflow, /INSERT\s+(?:OR\s+IGNORE\s+)?INTO/i);
+  assert.doesNotMatch(workflow, /'indelitech'\s*,\s*'OWNER'/i);
+  assert.doesNotMatch(workflow, /principal_workspace_grants/);
 });

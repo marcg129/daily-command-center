@@ -1,10 +1,10 @@
-name: Cloudflare bootstrap workspace grants
+name: Cloudflare verify user provisioning
 
 on:
   workflow_dispatch:
     inputs:
       principal_id:
-        description: Verified principal from /api/hosted/session (must begin cf-user:)
+        description: Verified Cloudflare Access principal to inspect (must begin cf-user:)
         required: true
         type: string
 
@@ -16,8 +16,8 @@ env:
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
 jobs:
-  grant:
-    name: grant Personal and Indelitech access
+  verify:
+    name: Verify private Personal provisioning
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$PRINCIPAL_ID" =~ ^cf-user:[A-Za-z0-9:_-]{3,120}$ ]] || {
-            echo 'principal_id must be the verified cf-user:* value returned by /api/hosted/session' >&2
+            echo 'principal_id must be a verified cf-user:* identity' >&2
             exit 1
           }
 
@@ -54,21 +54,31 @@ jobs:
       - name: Verify Cloudflare authentication
         run: npx wrangler whoami
 
-      - name: Bootstrap owner and exact workspace memberships
+      - name: Verify private Personal provisioning
         shell: bash
         env:
           PRINCIPAL_ID: ${{ inputs.principal_id }}
         run: |
           set -euo pipefail
-          USER_ID="legacy:$PRINCIPAL_ID"
-          SQL="INSERT OR IGNORE INTO users (user_id, status, created_at, updated_at) VALUES ('$USER_ID', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT OR IGNORE INTO user_principals (principal_id, user_id, provider, created_at) VALUES ('$PRINCIPAL_ID', '$USER_ID', 'CLOUDFLARE_ACCESS', CURRENT_TIMESTAMP); INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, workspace_key, role) SELECT user_id, 'personal', 'personal', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID'; INSERT OR IGNORE INTO workspace_memberships (user_id, workspace_id, workspace_key, role) SELECT user_id, 'indelitech', 'indelitech', 'OWNER' FROM user_principals WHERE principal_id = '$PRINCIPAL_ID';"
-          npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.jsonc --command "$SQL"
-
-      - name: Verify exact owner memberships
-        shell: bash
-        env:
-          PRINCIPAL_ID: ${{ inputs.principal_id }}
-        run: |
-          set -euo pipefail
-          SQL="SELECT m.workspace_key, m.workspace_id, m.role FROM user_principals p JOIN users u ON u.user_id = p.user_id JOIN workspace_memberships m ON m.user_id = u.user_id WHERE p.principal_id = '$PRINCIPAL_ID' AND u.status = 'ACTIVE' ORDER BY m.workspace_key;"
-          npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.jsonc --command "$SQL"
+          SQL="SELECT u.user_id, m.workspace_key, m.workspace_id, m.role, w.workspace_type FROM user_principals p JOIN users u ON u.user_id = p.user_id JOIN workspace_memberships m ON m.user_id = u.user_id JOIN workspaces w ON w.workspace_id = m.workspace_id WHERE p.principal_id = '$PRINCIPAL_ID' AND u.status = 'ACTIVE' AND m.workspace_key = 'personal' AND m.role IN ('OWNER','MEMBER');"
+          npx wrangler d1 execute daily-command-center-prod --remote --config wrangler.jsonc --json --command "$SQL" > /tmp/dcc-provisioning.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('/tmp/dcc-provisioning.json', 'utf8'));
+          const batches = Array.isArray(payload) ? payload : [payload];
+          const rows = batches.flatMap((batch) => Array.isArray(batch?.results) ? batch.results : []);
+          if (rows.length !== 1) {
+            throw new Error(`Expected exactly one active Personal membership; found ${rows.length}.`);
+          }
+          const row = rows[0];
+          if (
+            row.workspace_key !== 'personal' ||
+            row.workspace_type !== 'PERSONAL' ||
+            !['OWNER', 'MEMBER'].includes(row.role) ||
+            typeof row.workspace_id !== 'string' ||
+            !row.workspace_id
+          ) {
+            throw new Error('Provisioned Personal membership is invalid.');
+          }
+          console.log('Private Personal provisioning verified.');
+          NODE

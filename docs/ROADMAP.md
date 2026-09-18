@@ -1,6 +1,6 @@
 # Project roadmap
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 This document is the canonical near-term delivery order. Completed milestone notes preserve implementation detail; this roadmap records the current boundary and what comes next.
 
@@ -15,9 +15,10 @@ This document is the canonical near-term delivery order. Completed milestone not
 | 1G-E | **Complete, merged, deployed, and verified** | Canonical Bills projection into Today and Calendar without fake task rows |
 | 1G-F | **Complete, merged, deployed, and verified** | Payday schedules, authorized Income APIs, manual cash baseline, and workspace-scoped Cash Flow forecasting without bank linking |
 | 1G-G | **Complete, merged, deployed, and verified** | Read-only hosted Today Financial Pulse using the canonical 1G-F forecast, with strict per-workspace financial isolation |
-| 1G-H | **Implementation complete; pre-production acceptance pending** | Conservative Daily Intake, 45-day Google event projections, review/approval workflow, Today summaries, and operational Todoist relay |
+| 1G-H | **Production operational; closeout evidence cleanup pending** | Conservative Daily Intake, 45-day Google event projections, review/approval workflow, Today summaries, and operational Todoist relay |
+| 2A | **Active** | Consumer-ready multi-user identity, automatic private Personal provisioning, first-class integrations, DCC-owned scheduling, and family pilot |
 
-Milestones 1G-A through 1G-G are closed. 1G-H is the active product milestone. Its implementation and automated hardening are complete on the feature branch, but protected PR review, merge, production deployment, source bootstrap, scheduled scans, and manual acceptance remain pending. Do not reopen closed milestones unless a regression, security issue, or explicitly approved enhancement requires it.
+Milestones 1G-A through 1G-G are closed. 1G-H is deployed and operational in production; its remaining work is closeout/evidence cleanup rather than product blocking. Milestone 2A is the active product milestone and moves DCC from owner-specific hosted plumbing toward a nontechnical multi-user onboarding and integration model. Do not reopen closed milestones unless a regression, security issue, or explicitly approved enhancement requires it.
 
 ## Closed milestone references
 
@@ -194,9 +195,9 @@ The importer supports the existing structured task-capture relay and the version
 
 The production deployment workflow preserves the canonical Todoist project ID, verifies the private Worker posture, applies D1 migrations before deployment, and now explicitly requires the 1G-H migration file before the remote migration step.
 
-## Active milestone 1G-H — Daily Intake & Upcoming Events
+## Production milestone 1G-H — Daily Intake & Upcoming Events
 
-Status: **Implementation complete; protected PR review, merge, deployment, source bootstrap, scheduled scans, and manual production acceptance pending.**
+Status: **Deployed and operational. Formal closeout/evidence cleanup remains.**
 
 ### Goal
 
@@ -248,3 +249,23 @@ See:
 
 - `docs/superpowers/specs/2026-09-17-1g-h-daily-intake-design.md`
 - `docs/superpowers/plans/2026-09-17-daily-intake-and-upcoming-events.md`
+
+
+## Active milestone 2A — Consumer-ready identity, provisioning, and integrations
+
+### Goal
+
+Make DCC usable by nontechnical additional users without requiring customer-facing Cloudflare, Todoist, GitHub, API-key, or infrastructure setup, while preserving the existing physical workspace isolation model and preparing for a later commercial product.
+
+### Immediate delivery order
+
+1. safe automatic private Personal provisioning for a newly authenticated human user;
+2. product authentication adapter behind the existing provider-neutral principal model;
+3. first-class user-owned integration accounts and encrypted token storage;
+4. DCC-owned scheduling instead of per-user ChatGPT Automations;
+5. direct Gmail/Calendar collection into Intake and projections;
+6. direct DCC conversational/task capture with Todoist retained only as a temporary fallback;
+7. onboarding + Integration Health UI;
+8. family pilot with cross-user isolation, lifecycle, and upgrade verification.
+
+See `docs/MILESTONE-2A-CONSUMER-IDENTITY-INTEGRATIONS.md`.
