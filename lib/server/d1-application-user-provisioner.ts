@@ -21,6 +21,10 @@ export type ProvisioningIdentity = Readonly<{
   provider: string;
 }>;
 
+export type ProvisioningProviderResolver =
+  | string
+  | ((principal: AuthenticatedPrincipal) => string | null);
+
 type IdentityRow = Readonly<{
   user_id: string;
   status: string;
@@ -179,31 +183,37 @@ export class AutoProvisioningApplicationUserResolver implements ApplicationUserR
   constructor(
     private readonly resolver: ApplicationUserResolver,
     private readonly provisioner: D1ApplicationUserProvisioner,
-    private readonly provider: string,
+    private readonly provider: ProvisioningProviderResolver,
     private readonly allowPrincipal: (principal: AuthenticatedPrincipal) => boolean = () => true,
   ) {}
 
   async resolve(principal: AuthenticatedPrincipal): Promise<ResolvedApplicationUser> {
+    const provider = typeof this.provider === "function"
+      ? this.provider(principal)
+      : this.provider;
+    if (!provider || !this.allowPrincipal(principal)) {
+      throw new ApplicationUserAccessError();
+    }
+
     let resolved: ResolvedApplicationUser;
     try {
       resolved = await this.resolver.resolve(principal);
     } catch (error) {
       if (!(error instanceof ApplicationUserAccessError)) throw error;
-      if (!this.allowPrincipal(principal)) throw error;
 
       await this.provisioner.provision({
         principalId: principal.principalId,
-        provider: this.provider,
+        provider,
       });
       return this.resolver.resolve(principal);
     }
 
     // A resolver success only proves the principal has at least one authorized
     // membership. Existing identities must still satisfy the stronger private
-    // Personal OWNER boundary before a hosted session is returned.
+    // Personal OWNER workspace before a hosted session is returned.
     await this.provisioner.provision({
       principalId: principal.principalId,
-      provider: this.provider,
+      provider,
     });
     return resolved;
   }
