@@ -180,6 +180,7 @@ export class AutoProvisioningApplicationUserResolver implements ApplicationUserR
     private readonly resolver: ApplicationUserResolver,
     private readonly provisioner: D1ApplicationUserProvisioner,
     private readonly provider: string,
+    private readonly allowPrincipal: (principal: AuthenticatedPrincipal) => boolean = () => true,
   ) {}
 
   async resolve(principal: AuthenticatedPrincipal): Promise<ResolvedApplicationUser> {
@@ -187,6 +188,7 @@ export class AutoProvisioningApplicationUserResolver implements ApplicationUserR
       return await this.resolver.resolve(principal);
     } catch (error) {
       if (!(error instanceof ApplicationUserAccessError)) throw error;
+      if (!this.allowPrincipal(principal)) throw error;
     }
 
     await this.provisioner.provision({
