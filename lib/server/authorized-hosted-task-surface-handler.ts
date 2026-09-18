@@ -1,13 +1,13 @@
 import { isProductWorkspaceId, type RequestContext } from "@/lib/runtime/context";
 import type { Clock } from "@/lib/runtime/primitives";
 import { requireAuthenticatedSession, type SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import type { TaskMutation } from "@/lib/runtime/task-mutations";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import type { D1Database } from "@/lib/runtime/d1";
 import { D1TaskMutationRepository } from "@/lib/server/d1-task-mutation-repository";
 import { readHostedWorkspace } from "@/lib/server/hosted-workspace-read-adapter";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 
 function errorResponse(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -44,10 +44,10 @@ async function authorize(
   workspaceResolver: WorkspaceResolver,
   clock: Clock,
 ): Promise<AuthorizationResult> {
-  const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-  if (!assertion) return { authorized: false, response: errorResponse("Authentication required.", 403) };
+  const sessionIdentity = readRequestSessionIdentity(request);
+  if (!sessionIdentity) return { authorized: false, response: errorResponse("Authentication required.", 403) };
 
-  const session = await sessionProvider.getSession(assertion);
+  const session = await sessionProvider.getSession(sessionIdentity);
   const principal = requireAuthenticatedSession(session, clock.now());
   const workspaceId = new URL(request.url).searchParams.get("workspaceId");
   if (!isProductWorkspaceId(workspaceId)) {
