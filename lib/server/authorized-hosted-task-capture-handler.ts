@@ -58,7 +58,7 @@ export function createAuthorizedHostedTaskCaptureHandler(
 
     try {
       const result = await capture({
-        sessionIdentity: assertion,
+        sessionIdentity,
         requestedWorkspaceId,
         capture: body,
       });
