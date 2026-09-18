@@ -5,7 +5,9 @@ import { createAuthorizedHostedEventsHandler } from "@/lib/server/authorized-hos
 import { createHostedAuthenticationSessionProvider, type HostedAuthenticationBindings } from "@/lib/server/hosted-authentication-runtime";
 import { D1WorkspaceResolver } from "@/lib/server/d1-workspace-resolver";
 
-export type HostedEventsRouteBindings = Readonly<{\n  DB: D1Database;\n}> & HostedAuthenticationBindings;
+export type HostedEventsRouteBindings = Readonly<{
+  DB: D1Database;
+}> & HostedAuthenticationBindings;
 
 export function createHostedEventsRouteRuntime(
   bindings: HostedEventsRouteBindings,
