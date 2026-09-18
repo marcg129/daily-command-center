@@ -52,8 +52,8 @@ class TestD1 implements D1Database {
 
 function idsFor(name: string): ProvisionedIdentityIds {
   return {
-    userId: `user:${name}`,
-    personalWorkspaceId: `personal:${name}`,
+    userId: `user:${name}-opaque`,
+    personalWorkspaceId: `personal:${name}-opaque`,
   };
 }
 
@@ -81,12 +81,12 @@ test("new authenticated identity receives one private Personal workspace and nev
       `SELECT m.workspace_key, m.workspace_id, m.role, w.name, w.workspace_type
        FROM workspace_memberships m
        JOIN workspaces w ON w.workspace_id = m.workspace_id
-       WHERE m.user_id = 'user:christa'
+       WHERE m.user_id = 'user:christa-opaque'
        ORDER BY m.workspace_key`,
     ).all().map((row) => ({ ...row })),
     [{
       workspace_key: "personal",
-      workspace_id: "personal:christa",
+      workspace_id: "personal:christa-opaque",
       role: "OWNER",
       name: "Personal",
       workspace_type: "PERSONAL",
@@ -94,7 +94,7 @@ test("new authenticated identity receives one private Personal workspace and nev
   );
   assert.equal(
     database.sqlite.prepare(
-      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id='user:christa' AND workspace_key='indelitech'",
+      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id='user:christa-opaque' AND workspace_key='indelitech'",
     ).get()!.count,
     0,
   );
@@ -128,8 +128,8 @@ test("provisioning is idempotent and separate principals receive separate physic
       "SELECT user_id, workspace_id FROM workspace_memberships WHERE workspace_key='personal' AND user_id LIKE 'user:%' ORDER BY user_id",
     ).all().map((row) => ({ ...row })),
     [
-      { user_id: "user:christa", workspace_id: "personal:christa" },
-      { user_id: "user:sister", workspace_id: "personal:sister" },
+      { user_id: "user:christa-opaque", workspace_id: "personal:christa-opaque" },
+      { user_id: "user:sister-opaque", workspace_id: "personal:sister-opaque" },
     ],
   );
   database.sqlite.close();
@@ -175,7 +175,7 @@ test("auto-provisioning resolver creates only the missing Personal boundary and 
   );
 
   const resolved = await auto.resolve(principal);
-  assert.equal(resolved.userId, "user:christa");
+  assert.equal(resolved.userId, "user:christa-opaque");
   assert.deepEqual(resolved.workspaces, [{
     workspaceId: "personal",
     displayName: "Personal",
@@ -186,7 +186,7 @@ test("auto-provisioning resolver creates only the missing Personal boundary and 
 
   assert.equal(
     database.sqlite.prepare(
-      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id='user:christa' AND workspace_key='indelitech'",
+      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id='user:christa-opaque' AND workspace_key='indelitech'",
     ).get()!.count,
     0,
   );
