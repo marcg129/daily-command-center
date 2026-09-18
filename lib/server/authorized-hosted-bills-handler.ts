@@ -4,10 +4,10 @@ import type { BillDefinitionCore } from "@/lib/runtime/bills";
 import type { BillOccurrenceResolutionInput } from "@/lib/runtime/hosted-bills";
 import type { Clock, IdGenerator } from "@/lib/runtime/primitives";
 import { requireAuthenticatedSession, type SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 import { D1BillRepository } from "@/lib/server/d1-bill-repository";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 function json(value: unknown, status = 200) {
@@ -32,9 +32,9 @@ async function authorize(
   workspaceResolver: WorkspaceResolver,
   clock: Clock,
 ): Promise<AuthorizationResult> {
-  const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-  if (!assertion) return { authorized: false, response: errorResponse("Authentication required.", 403) };
-  const session = await sessionProvider.getSession(assertion);
+  const sessionIdentity = readRequestSessionIdentity(request);
+  if (!sessionIdentity) return { authorized: false, response: errorResponse("Authentication required.", 403) };
+  const session = await sessionProvider.getSession(sessionIdentity);
   const principal = requireAuthenticatedSession(session, clock.now());
   const workspaceId = new URL(request.url).searchParams.get("workspaceId");
   if (!isProductWorkspaceId(workspaceId)) {
