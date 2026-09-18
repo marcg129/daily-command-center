@@ -67,10 +67,14 @@ context: Follow up with the vendor about the replacement shipment.
 
 Rules:
 
-- `workspace` is required and must be exactly `personal` or `indelitech`.
-- Unknown optional fields are omitted rather than invented.
+- A normal task created directly in `Daily Command Center Inbox` is a supported relay. When no structured DCC metadata is present, it defaults to `personal`.
+- For a normal task, Todoist's description becomes DCC context, native Todoist priority maps to DCC priority, and native due date/time maps to DCC due/reminder semantics.
+- Floating Todoist due times are interpreted using the authenticated Todoist user's timezone; the importer does not invent a timezone.
+- `workspace: indelitech` remains the explicit override for business tasks. Invalid explicit workspace metadata still fails closed.
+- Structured metadata remains available for richer capture fields. Unknown optional fields are omitted rather than invented.
+- Native Todoist recurring tasks require explicit compatible DCC recurrence metadata so closing a relay cannot silently create a recurrence/idempotency loop.
 - The Todoist task ID is the importer's authoritative external idempotency key regardless of the conversation-generated `requestId`.
-- The description is transport metadata, not a second canonical task schema.
+- When the description uses structured metadata, it remains transport metadata rather than a second canonical task schema.
 - DCC validation remains authoritative for accepted task values.
 
 ## Explicit user identity binding
@@ -194,7 +198,7 @@ The worker should:
 
 ## v0.1 acceptance criteria
 
-1. A structured task created by ChatGPT in the dedicated Todoist project appears in the correct DCC workspace without manual re-entry.
+1. A normal or structured task created by ChatGPT in the dedicated Todoist project appears in DCC without manual re-entry; unscoped normal tasks default to Personal and explicit Indelitech routing is preserved.
 2. Personal and Indelitech imports resolve to the configured user's exact physical workspace instances.
 3. Reprocessing the same Todoist task cannot duplicate the DCC task.
 4. Successful imports are removed from the active relay inbox only after DCC persistence succeeds.

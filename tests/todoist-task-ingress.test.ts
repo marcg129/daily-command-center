@@ -119,3 +119,79 @@ test("blank title and malformed metadata lines fail closed", () => {
     (error) => error instanceof TodoistTaskIngressValidationError && /key: value/i.test(error.message),
   );
 });
+
+
+test("plain Todoist tasks default to Personal and preserve native description, priority, and timed due data", () => {
+  const description = "Check updated injury news. Current plan: keep the insurance option until status is clear.";
+  const parsed = parseTodoistRelayTask({
+    id: "normal-task-1",
+    content: "Monitor TE decision",
+    description,
+    priority: 4,
+    due: {
+      date: "2026-09-20T11:00:00",
+      timezone: "America/New_York",
+      isRecurring: false,
+    },
+  });
+
+  assert.equal(parsed.workspaceId, "personal");
+  assert.equal(parsed.context, description);
+  assert.equal(parsed.priority, "HIGH");
+  assert.equal(parsed.due, "2026-09-20");
+  assert.equal(parsed.remindAt, "2026-09-20T15:00:00.000Z");
+});
+
+test("plain descriptions containing ordinary colons remain context instead of metadata", () => {
+  const description = "Review the matchup. Current plan: hold until the late injury report.";
+  const parsed = parseTodoistRelayTask({
+    id: "normal-task-2",
+    content: "Review matchup",
+    description,
+  });
+
+  assert.equal(parsed.workspaceId, "personal");
+  assert.equal(parsed.context, description);
+});
+
+test("explicit structured metadata overrides Personal/native defaults and still fails closed when malformed", () => {
+  const parsed = parseTodoistRelayTask({
+    id: "structured-task-1",
+    content: "Call vendor",
+    description: "workspace: indelitech\npriority: LOW\ndue: 2026-09-21",
+    priority: 4,
+    due: {
+      date: "2026-09-20T11:00:00",
+      timezone: "America/New_York",
+      isRecurring: false,
+    },
+  });
+
+  assert.equal(parsed.workspaceId, "indelitech");
+  assert.equal(parsed.priority, "LOW");
+  assert.equal(parsed.due, "2026-09-21");
+  assert.equal(parsed.remindAt, null);
+
+  assert.throws(
+    () => parseTodoistRelayTask({
+      id: "structured-task-2",
+      content: "Malformed relay",
+      description: "workspace personal",
+    }),
+    (error) => error instanceof TodoistTaskIngressValidationError && /key: value/i.test(error.message),
+  );
+});
+
+
+test("Todoist native priorities map into the three DCC priority levels", () => {
+  const expected = new Map([[4, "HIGH"], [3, "HIGH"], [2, "MEDIUM"], [1, "LOW"]]);
+  for (const [priority, mapped] of expected) {
+    const parsed = parseTodoistRelayTask({
+      id: `priority-${priority}`,
+      content: "Priority mapping",
+      description: "",
+      priority,
+    });
+    assert.equal(parsed.priority, mapped);
+  }
+});
