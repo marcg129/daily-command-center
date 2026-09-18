@@ -5,13 +5,13 @@ import {
 import type { HostedTaskRepository } from "@/lib/runtime/hosted-task-repository";
 import type { Clock } from "@/lib/runtime/primitives";
 import type { SessionProvider } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 import {
   TaskCaptureConflictError,
   TaskCaptureValidationError,
 } from "@/lib/runtime/task-capture";
 import type { WorkspaceResolver } from "@/lib/runtime/workspace-resolver";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -37,8 +37,8 @@ export function createAuthorizedHostedTaskCaptureHandler(
   );
 
   return async function POST(request: Request) {
-    const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-    if (!assertion) return jsonError("Authentication required.", 403);
+    const sessionIdentity = readRequestSessionIdentity(request);
+    if (!sessionIdentity) return jsonError("Authentication required.", 403);
 
     let body: unknown;
     try {
