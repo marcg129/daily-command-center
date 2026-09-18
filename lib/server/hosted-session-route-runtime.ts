@@ -25,6 +25,7 @@ export function createHostedSessionRouteRuntime(
       new D1ApplicationUserResolver(bindings.DB),
       new D1ApplicationUserProvisioner(bindings.DB),
       "CLOUDFLARE_ACCESS",
+      (principal) => principal.principalId.startsWith("cf-user:"),
     ),
     clock,
   );
