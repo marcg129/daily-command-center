@@ -315,3 +315,47 @@ test("existing owner identity keeps its current Personal and Indelitech membersh
   );
   database.sqlite.close();
 });
+
+
+test("provider-routed provisioning creates a private WorkOS user without Cloudflare grants", async () => {
+  const database = new TestD1();
+  const principal = { principalId: principalId("workos-user:user_01HBEQKA6K4QJAS93VPE39W1JT") };
+  const resolver = new D1ApplicationUserResolver(database);
+  const provisioner = new D1ApplicationUserProvisioner(database, () => idsFor("workos"));
+  const auto = new AutoProvisioningApplicationUserResolver(
+    resolver,
+    provisioner,
+    (candidate) =>
+      candidate.principalId.startsWith("workos-user:")
+        ? "WORKOS_AUTHKIT"
+        : candidate.principalId.startsWith("cf-user:")
+          ? "CLOUDFLARE_ACCESS"
+          : null,
+  );
+
+  const resolved = await auto.resolve(principal);
+  assert.equal(resolved.userId, "user:workos-opaque");
+  assert.deepEqual(resolved.workspaces, [{
+    workspaceId: "personal",
+    displayName: "Personal",
+    workspaceType: "PERSONAL",
+    themeKey: "personal-tech-blue",
+    role: "OWNER",
+  }]);
+  assert.deepEqual(
+    database.sqlite.prepare(
+      "SELECT principal_id, provider FROM user_principals WHERE user_id='user:workos-opaque'",
+    ).all().map((row) => ({ ...row })),
+    [{
+      principal_id: "workos-user:user_01HBEQKA6K4QJAS93VPE39W1JT",
+      provider: "WORKOS_AUTHKIT",
+    }],
+  );
+  assert.equal(
+    database.sqlite.prepare(
+      "SELECT COUNT(*) count FROM workspace_memberships WHERE user_id='user:workos-opaque' AND workspace_key='indelitech'",
+    ).get()!.count,
+    0,
+  );
+  database.sqlite.close();
+});
