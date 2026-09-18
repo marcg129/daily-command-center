@@ -66,3 +66,25 @@ test("Today event and Intake styles are responsive and keep their own component 
   assert.doesNotMatch(eventsCss, /outline:\s*none/);
   assert.doesNotMatch(intakeCss, /outline:\s*none/);
 });
+
+
+test("Today Intake and Calendar typography remains readable at a glance", () => {
+  const eventsCss = source("components/today-events.module.css");
+  const intakeCss = source("components/today-intake-summary.module.css");
+
+  assert.match(intakeCss, /\.header h2\s*\{[^}]*font-size:\s*21px/);
+  assert.match(intakeCss, /\.openButton\s*\{[^}]*font-size:\s*10px/);
+  assert.match(intakeCss, /\.countRow span\s*\{[^}]*font-size:\s*11px/);
+  assert.match(intakeCss, /\.countRow small\s*\{[^}]*font-size:\s*10px/);
+  assert.match(intakeCss, /\.warning\s*\{[^}]*font-size:\s*10px/);
+
+  assert.match(eventsCss, /\.header h2\s*\{[^}]*font-size:\s*21px/);
+  assert.match(eventsCss, /\.openButton\s*\{[^}]*font-size:\s*10px/);
+  assert.match(eventsCss, /\.eventRow strong\s*\{[^}]*font-size:\s*12px/);
+  assert.match(eventsCss, /\.eventRow span, \.eventRow small, \.status\s*\{[^}]*font-size:\s*10px/);
+  assert.match(eventsCss, /\.upcomingHeading strong\s*\{[^}]*font-size:\s*11px/);
+  assert.match(eventsCss, /\.upcomingHeading span\s*\{[^}]*font-size:\s*10px/);
+  assert.match(eventsCss, /\.compactRow time, \.compactRow small\s*\{[^}]*font:\s*10px var\(--mono\)/);
+  assert.match(eventsCss, /\.compactRow span\s*\{[^}]*font-size:\s*11px/);
+  assert.match(eventsCss, /\.warning\s*\{[^}]*font-size:\s*10px/);
+});

@@ -1,12 +1,12 @@
 .panel { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
 .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.header h2 { margin: 3px 0 0; font-family: var(--serif); font-size: 19px; font-weight: 500; }
-.openButton { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line-dark); border-radius: 7px; background: var(--paper); color: var(--coral-dark); font-size: 8px; font-weight: 700; cursor: pointer; }
-.countRow { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px; margin-top: 16px; padding: 14px; border-radius: 8px; background: var(--paper-deep); }
-.countRow > strong { min-width: 52px; font-family: var(--serif); font-size: 36px; font-weight: 500; line-height: 1; }
-.countRow span { display: block; font-size: 9px; font-weight: 700; }
-.countRow small { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; line-height: 1.45; }
-.warning { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--warning-border); border-radius: 7px; color: var(--warning); background: var(--warning-bg); font-size: 8px; line-height: 1.45; }
+.header h2 { margin: 3px 0 0; font-family: var(--serif); font-size: 21px; font-weight: 500; }
+.openButton { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line-dark); border-radius: 7px; background: var(--paper); color: var(--coral-dark); font-size: 10px; font-weight: 700; cursor: pointer; }
+.countRow { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 16px; margin-top: 16px; padding: 16px; border-radius: 8px; background: var(--paper-deep); }
+.countRow > strong { min-width: 52px; font-family: var(--serif); font-size: 40px; font-weight: 500; line-height: 1; }
+.countRow span { display: block; font-size: 11px; font-weight: 700; }
+.countRow small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.warning { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--warning-border); border-radius: 7px; color: var(--warning); background: var(--warning-bg); font-size: 10px; line-height: 1.45; }
 .warning svg { flex: 0 0 auto; margin-top: 1px; }
 @media (max-width: 620px) {
   .panel { padding: 15px; }
