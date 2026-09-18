@@ -142,8 +142,13 @@ export function validateIntakeProposalInput(value: IntakeProposalInput): void {
   if (value.sourceType === "gmail") {
     assertBoundedText(value.messageId, "Gmail message ID", 1024, true);
     assertOptionalBoundedText(value.threadId, "Gmail thread ID", 1024);
-    if (value.eventId !== undefined || value.seriesId !== undefined) {
-      throw new Error("Gmail sources cannot supply Calendar event identity");
+    if (
+      value.eventId !== undefined ||
+      value.seriesId !== undefined ||
+      value.chatItemId !== undefined ||
+      value.chatThreadId !== undefined
+    ) {
+      throw new Error("Gmail sources cannot supply Calendar or chat identity");
     }
   } else if (value.sourceType === "calendar") {
     assertBoundedText(value.eventId, "Calendar event ID", 1024, true);
