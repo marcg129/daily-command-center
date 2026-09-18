@@ -1,7 +1,7 @@
 import type { JWTVerifyGetKey } from "jose";
 import { systemClock, type Clock } from "@/lib/runtime/primitives";
 import { createAuthorizedHostedIntelHandler } from "@/lib/server/authorized-hosted-intel-handler";
-import { createHostedAuthenticationSessionProvider, type HostedAuthenticationBindings } from "@/lib/server/hosted-authentication-runtime";
+import { createHostedAuthenticationSessionProvider } from "@/lib/server/hosted-authentication-runtime";
 import { D1CollectorSnapshotRepository } from "@/lib/server/d1-collector-snapshot-repository";
 import { D1WorkspaceResolver } from "@/lib/server/d1-workspace-resolver";
 import type { HostedTaskRouteBindings } from "@/lib/server/hosted-task-route-runtime";
