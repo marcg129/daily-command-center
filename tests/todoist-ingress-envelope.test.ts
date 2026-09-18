@@ -148,3 +148,31 @@ test("validation failures use the existing permanent Todoist ingress error type"
     (error) => error instanceof TodoistTaskIngressValidationError,
   );
 });
+
+
+test("v1 intake envelopes accept strict ChatGPT history provenance", () => {
+  const chatPayload = {
+    scanRunId: "chat-history-2026-09-18",
+    workspaceId: "personal",
+    sourceKey: "chat_history",
+    sourceType: "chat",
+    chatItemId: "career-auraone-submit",
+    chatThreadId: "job-search-side-gigs",
+    proposalOrdinal: 1,
+    sourceTimestamp: "2026-09-07T15:57:58Z",
+    subject: "AuraOne application",
+    intakeType: "TASK",
+    title: "Finish and submit AuraOne application",
+    summary: "Prior chat context shows the application reached final review/submission.",
+    classificationReason: "A concrete application action remains unresolved.",
+    priority: "HIGH",
+  };
+  assert.deepEqual(parseTodoistIngressEnvelope(task("intake_proposal", chatPayload)), {
+    kind: "intake_proposal",
+    payload: chatPayload,
+  });
+  assert.throws(() => parseTodoistIngressEnvelope(task("intake_proposal", {
+    ...chatPayload,
+    conversationId: "unsupported",
+  })), /unsupported|field/i);
+});

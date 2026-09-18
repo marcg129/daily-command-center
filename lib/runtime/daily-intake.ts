@@ -11,6 +11,7 @@ export const DAILY_INTAKE_SOURCE_KEYS = [
   "family_calendar",
 ] as const;
 
+export const INTAKE_SOURCE_KEYS = [...DAILY_INTAKE_SOURCE_KEYS, "chat_history"] as const;
 export const GMAIL_INTAKE_SOURCE_KEYS = ["personal_gmail", "professional_gmail", "indelitech_gmail"] as const;
 export const CALENDAR_INTAKE_SOURCE_KEYS = ["primary_calendar", "family_calendar"] as const;
 export const INTAKE_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
@@ -19,19 +20,22 @@ export const SCAN_STATUS_STATES = ["SUCCESS", "FAILED"] as const;
 export type IntakeType = (typeof INTAKE_TYPES)[number];
 export type IntakeStatus = (typeof INTAKE_STATUSES)[number];
 export type DailyIntakeSourceKey = (typeof DAILY_INTAKE_SOURCE_KEYS)[number];
+export type IntakeSourceKey = (typeof INTAKE_SOURCE_KEYS)[number];
 export type GmailIntakeSourceKey = (typeof GMAIL_INTAKE_SOURCE_KEYS)[number];
 export type CalendarIntakeSourceKey = (typeof CALENDAR_INTAKE_SOURCE_KEYS)[number];
 export type IntakePriority = (typeof INTAKE_PRIORITIES)[number];
-export type IntakeSourceType = "gmail" | "calendar";
+export type IntakeSourceType = "gmail" | "calendar" | "chat";
 export type ScanStatusState = (typeof SCAN_STATUS_STATES)[number];
 export type BillProposalRecurrence = BillSchedule;
 
 export type IntakeProposalInput = Readonly<{
   scanRunId: string;
   workspaceId: ProductWorkspaceId;
-  sourceKey: DailyIntakeSourceKey;
+  sourceKey: IntakeSourceKey;
   sourceType: IntakeSourceType;
   messageId?: string;
+  chatItemId?: string;
+  chatThreadId?: string;
   threadId?: string;
   eventId?: string;
   seriesId?: string;
@@ -115,10 +119,10 @@ export function isGoogleSourceUrl(value: unknown): value is string {
   }
 }
 
-function sourceTypeMatches(sourceKey: DailyIntakeSourceKey, sourceType: IntakeSourceType): boolean {
-  return sourceType === "gmail"
-    ? includes(GMAIL_INTAKE_SOURCE_KEYS, sourceKey)
-    : includes(CALENDAR_INTAKE_SOURCE_KEYS, sourceKey);
+function sourceTypeMatches(sourceKey: IntakeSourceKey, sourceType: IntakeSourceType): boolean {
+  if (sourceType === "gmail") return includes(GMAIL_INTAKE_SOURCE_KEYS, sourceKey);
+  if (sourceType === "calendar") return includes(CALENDAR_INTAKE_SOURCE_KEYS, sourceKey);
+  return sourceKey === "chat_history";
 }
 
 export function validateIntakeProposalInput(value: IntakeProposalInput): void {
@@ -126,8 +130,8 @@ export function validateIntakeProposalInput(value: IntakeProposalInput): void {
 
   assertBoundedText(value.scanRunId, "Scan run ID", 200, true);
   if (!isProductWorkspaceId(value.workspaceId)) throw new Error("Intake workspace must be personal or indelitech");
-  if (!includes(DAILY_INTAKE_SOURCE_KEYS, value.sourceKey)) throw new Error("Intake source key is not supported");
-  if (value.sourceType !== "gmail" && value.sourceType !== "calendar") throw new Error("Intake source type is not supported");
+  if (!includes(INTAKE_SOURCE_KEYS, value.sourceKey)) throw new Error("Intake source key is not supported");
+  if (value.sourceType !== "gmail" && value.sourceType !== "calendar" && value.sourceType !== "chat") throw new Error("Intake source type is not supported");
   if (!sourceTypeMatches(value.sourceKey, value.sourceType)) throw new Error("Intake source type does not match its source key");
 
   if (!Number.isSafeInteger(value.proposalOrdinal) || value.proposalOrdinal < 1 || value.proposalOrdinal > 10_000) {
@@ -138,15 +142,27 @@ export function validateIntakeProposalInput(value: IntakeProposalInput): void {
   if (value.sourceType === "gmail") {
     assertBoundedText(value.messageId, "Gmail message ID", 1024, true);
     assertOptionalBoundedText(value.threadId, "Gmail thread ID", 1024);
-    if (value.eventId !== undefined || value.seriesId !== undefined) {
-      throw new Error("Gmail sources cannot supply Calendar event identity");
+    if (
+      value.eventId !== undefined ||
+      value.seriesId !== undefined ||
+      value.chatItemId !== undefined ||
+      value.chatThreadId !== undefined
+    ) {
+      throw new Error("Gmail sources cannot supply Calendar or chat identity");
     }
-  } else {
+  } else if (value.sourceType === "calendar") {
     assertBoundedText(value.eventId, "Calendar event ID", 1024, true);
     assertOptionalBoundedText(value.seriesId, "Calendar series ID", 1024);
-    if (value.messageId !== undefined || value.threadId !== undefined) {
-      throw new Error("Calendar sources cannot supply Gmail message identity");
+    if (value.messageId !== undefined || value.threadId !== undefined || value.chatItemId !== undefined || value.chatThreadId !== undefined) {
+      throw new Error("Calendar sources cannot supply Gmail or chat identity");
     }
+  } else {
+    assertBoundedText(value.chatItemId, "Chat source item ID", 1024, true);
+    assertOptionalBoundedText(value.chatThreadId, "Chat thread ID", 1024);
+    if (value.messageId !== undefined || value.threadId !== undefined || value.eventId !== undefined || value.seriesId !== undefined) {
+      throw new Error("Chat sources cannot supply Gmail or Calendar identity");
+    }
+    if (value.sourceUrl !== undefined) throw new Error("Chat source URL is not supported");
   }
 
   assertOptionalBoundedText(value.sender, "Source sender", 500);

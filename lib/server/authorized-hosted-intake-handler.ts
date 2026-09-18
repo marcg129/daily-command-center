@@ -1,5 +1,5 @@
 import {
-  DAILY_INTAKE_SOURCE_KEYS,
+  INTAKE_SOURCE_KEYS,
   INTAKE_STATUSES,
   INTAKE_TYPES,
   type IntakeEditablePatch,
@@ -177,14 +177,14 @@ export function createAuthorizedHostedIntakeHandler(
           if (typeValue !== null && !includes(INTAKE_TYPES, typeValue)) {
             return errorResponse("type is invalid.", 400);
           }
-          if (sourceKeyValue !== null && !includes(DAILY_INTAKE_SOURCE_KEYS, sourceKeyValue)) {
+          if (sourceKeyValue !== null && !includes(INTAKE_SOURCE_KEYS, sourceKeyValue)) {
             return errorResponse("sourceKey is invalid.", 400);
           }
           const { intakeRepository } = services();
           const items = await intakeRepository.list(authorization.context, {
             status: (statusValue ?? undefined) as IntakeStatus | undefined,
             type: (typeValue ?? undefined) as IntakeType | undefined,
-            sourceKey: (sourceKeyValue ?? undefined) as (typeof DAILY_INTAKE_SOURCE_KEYS)[number] | undefined,
+            sourceKey: (sourceKeyValue ?? undefined) as (typeof INTAKE_SOURCE_KEYS)[number] | undefined,
           });
           return json({ items });
         } catch (error) {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   DAILY_INTAKE_SOURCE_KEYS,
+  INTAKE_SOURCE_KEYS,
   INTAKE_STATUSES,
   INTAKE_TYPES,
   SCAN_STATUS_STATES,
@@ -87,6 +88,14 @@ test("1G-H domain constants expose only the approved v1 values", () => {
     "indelitech_gmail",
     "primary_calendar",
     "family_calendar",
+  ]);
+  assert.deepEqual(INTAKE_SOURCE_KEYS, [
+    "personal_gmail",
+    "professional_gmail",
+    "indelitech_gmail",
+    "primary_calendar",
+    "family_calendar",
+    "chat_history",
   ]);
   assert.deepEqual(SCAN_STATUS_STATES, ["SUCCESS", "FAILED"]);
   assert.deepEqual(CALENDAR_OVERRIDE_SCOPES, ["SERIES", "OCCURRENCE"]);
@@ -254,4 +263,52 @@ test("calendar workspace override contract permits only logical workspaces and s
   assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, scope: "EVENT" as "SERIES" }), /scope/i);
   assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, workspaceId: "personal:marc" as "personal" }), /workspace/i);
   assert.throws(() => validateCalendarWorkspaceOverrideInput({ ...valid, identityKey: "   " }), /identity/i);
+});
+
+
+test("one-time ChatGPT history proposals use honest chat provenance without joining daily freshness", () => {
+  const chatProposal: IntakeProposalInput = {
+    scanRunId: "chat-history-2026-09-18",
+    workspaceId: "personal",
+    sourceKey: "chat_history",
+    sourceType: "chat",
+    chatItemId: "career-auraone-submit",
+    chatThreadId: "job-search-side-gigs",
+    proposalOrdinal: 1,
+    sourceTimestamp: "2026-09-07T15:57:58Z",
+    subject: "AuraOne application",
+    intakeType: "TASK",
+    title: "Finish and submit AuraOne application",
+    summary: "Prior chat context shows the application reached the final review/submission step.",
+    classificationReason: "The application was still open and requires a concrete submission action.",
+    priority: "HIGH",
+  };
+
+  assert.doesNotThrow(() => validateIntakeProposalInput(chatProposal));
+  assert.equal(DAILY_INTAKE_SOURCE_KEYS.includes("chat_history" as never), false);
+
+  assert.throws(() => validateIntakeProposalInput({
+    ...chatProposal,
+    chatItemId: undefined,
+  }), /chat|identity/i);
+  assert.throws(() => validateIntakeProposalInput({
+    ...chatProposal,
+    messageId: "fake-gmail-id",
+  }), /chat|gmail|identity/i);
+  assert.throws(() => validateIntakeProposalInput({
+    ...chatProposal,
+    sourceUrl: "https://chatgpt.com/c/example",
+  }), /source url|chat/i);
+});
+
+
+test("Gmail Intake rejects contradictory chat identity fields", () => {
+  assert.throws(() => validateIntakeProposalInput({
+    ...validIntake,
+    chatItemId: "should-not-be-here",
+  }), /gmail|chat|identity/i);
+  assert.throws(() => validateIntakeProposalInput({
+    ...validIntake,
+    chatThreadId: "should-not-be-here",
+  }), /gmail|chat|identity/i);
 });

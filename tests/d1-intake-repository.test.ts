@@ -35,6 +35,7 @@ class TestD1 implements D1Database {
       "0010_income_and_cashflow.sql",
       "0011_todoist_ingress_control.sql",
       "0012_daily_intake_events.sql",
+      "0013_chat_history_intake.sql",
     ]) this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
@@ -336,5 +337,37 @@ test("approval target kind must match Intake type and terminal mutations fail cl
   await repo.dismiss(marc.personal, task.item.intakeId);
   await assert.rejects(repo.edit(marc.personal, task.item.intakeId, { title: "Too late" }), /terminal|state|resolved/i);
   await assert.rejects(repo.defer(marc.personal, task.item.intakeId, "2026-09-20T12:00:00-04:00"), /terminal|state|resolved/i);
+  database.sqlite.close();
+});
+
+test("chat-history semantic replay deduplicates one historical candidate without pretending it is Gmail", async () => {
+  const { database, repo, marc } = setup();
+  const base: IntakeProposalInput = {
+    scanRunId: "chat-history-2026-09-18",
+    workspaceId: "personal",
+    sourceKey: "chat_history",
+    sourceType: "chat",
+    chatItemId: "career-auraone-submit",
+    chatThreadId: "job-search-side-gigs",
+    proposalOrdinal: 1,
+    sourceTimestamp: "2026-09-07T15:57:58Z",
+    subject: "AuraOne application",
+    intakeType: "TASK",
+    title: "Finish and submit AuraOne application",
+    summary: "The application was at final review/submission.",
+    classificationReason: "A concrete unresolved application action remains.",
+    priority: "HIGH",
+  };
+  const first = await repo.ingest(marc.personal, base);
+  const replay = await repo.ingest(marc.personal, { ...base, summary: "Updated historical evidence." });
+
+  assert.equal(first.status, "created");
+  assert.equal(replay.status, "reused");
+  assert.equal(replay.item.intakeId, first.item.intakeId);
+  assert.equal(replay.item.sourceType, "chat");
+  assert.equal(replay.item.sourceKey, "chat_history");
+  assert.equal(replay.item.semanticKey, "chat_history:chat:career-auraone-submit:1");
+  assert.equal(replay.item.sourceMessageId, "career-auraone-submit");
+  assert.equal(replay.item.sourceThreadId, "job-search-side-gigs");
   database.sqlite.close();
 });

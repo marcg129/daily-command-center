@@ -39,7 +39,10 @@ function semanticKey(input: IntakeProposalInput): string {
   if (input.sourceType === "gmail") {
     return `${input.sourceKey}:message:${input.messageId}:${input.proposalOrdinal}`;
   }
-  return `${input.sourceKey}:event:${input.eventId}:${input.proposalOrdinal}`;
+  if (input.sourceType === "calendar") {
+    return `${input.sourceKey}:event:${input.eventId}:${input.proposalOrdinal}`;
+  }
+  return `${input.sourceKey}:chat:${input.chatItemId}:${input.proposalOrdinal}`;
 }
 
 function payloadForProposal(input: IntakeProposalInput): string {
@@ -196,8 +199,8 @@ export class D1IntakeRepository implements IntakeRepository {
       "PENDING",
       input.sourceType,
       input.sourceKey,
-      input.messageId ?? null,
-      input.threadId ?? null,
+      input.sourceType === "chat" ? input.chatItemId ?? null : input.messageId ?? null,
+      input.sourceType === "chat" ? input.chatThreadId ?? null : input.threadId ?? null,
       input.eventId ?? null,
       input.seriesId ?? null,
       input.proposalOrdinal,

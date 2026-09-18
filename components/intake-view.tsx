@@ -36,6 +36,7 @@ const SOURCE_LABELS: Record<HostedIntakeItem["sourceKey"], string> = {
   indelitech_gmail: "Indelitech Gmail",
   primary_calendar: "Primary Calendar",
   family_calendar: "Family Calendar",
+  chat_history: "Chat History",
 };
 
 function formatTimestamp(value: string): string {
@@ -315,7 +316,7 @@ export function IntakeView({
         {intake.items.map((item) => {
           const workspaceLabel = WORKSPACES[item.workspaceKey].displayName;
           const sourceFreshness = freshnessFor(item, intake.sources);
-          const staleMessage = freshnessMessage(sourceFreshness);
+          const staleMessage = item.sourceType === "chat" ? null : freshnessMessage(sourceFreshness);
           const canReview = viewMode !== "HISTORY";
           const canBulkSelect = canReview && item.intakeType !== "AWARENESS" && item.intakeType !== "BILL";
           const billNeedsEdit = item.intakeType === "BILL" && (!item.dueDate || item.amountMinor === null || !item.currency);
