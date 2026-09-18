@@ -24,6 +24,18 @@ type TodoistTaskPayload = Readonly<{
   description?: string | null;
   labels?: unknown;
   added_at?: unknown;
+  priority?: unknown;
+  due?: unknown;
+}>;
+
+type TodoistDuePayload = Readonly<{
+  date?: unknown;
+  timezone?: unknown;
+  is_recurring?: unknown;
+}>;
+
+type TodoistUserPayload = Readonly<{
+  tz_info?: unknown;
 }>;
 
 type TodoistCommentPayload = Readonly<{
@@ -102,6 +114,36 @@ function apiUrl(pathname: string, search?: URLSearchParams): string {
   return url.toString();
 }
 
+function priorityFromPayload(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 4) {
+    throw new TodoistApiError("Todoist returned an invalid task priority.", { transient: true });
+  }
+  return value as number;
+}
+
+function dueFromPayload(value: unknown): TodoistRelayTask["due"] {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TodoistApiError("Todoist returned an invalid task due date.", { transient: true });
+  }
+  const due = value as TodoistDuePayload;
+  if (typeof due.date !== "string" || !due.date.trim()) {
+    throw new TodoistApiError("Todoist returned an invalid task due date.", { transient: true });
+  }
+  if (due.timezone !== undefined && due.timezone !== null && typeof due.timezone !== "string") {
+    throw new TodoistApiError("Todoist returned an invalid task due timezone.", { transient: true });
+  }
+  if (due.is_recurring !== undefined && typeof due.is_recurring !== "boolean") {
+    throw new TodoistApiError("Todoist returned an invalid task recurrence flag.", { transient: true });
+  }
+  return {
+    date: due.date,
+    timezone: typeof due.timezone === "string" ? due.timezone : null,
+    isRecurring: due.is_recurring === true,
+  };
+}
+
 function taskFromPayload(value: unknown): TodoistRelayTask {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TodoistApiError("Todoist returned an invalid task payload.", { transient: true });
@@ -120,6 +162,8 @@ function taskFromPayload(value: unknown): TodoistRelayTask {
     content: task.content,
     description: typeof task.description === "string" ? task.description : "",
     addedAt: task.added_at,
+    priority: priorityFromPayload(task.priority),
+    due: dueFromPayload(task.due),
   };
 }
 
@@ -232,8 +276,44 @@ export function createTodoistApiClient(options: ClientOptions) {
     throw new TodoistApiError("Todoist pagination exceeded the configured page bound.", { transient: true });
   }
 
+  async function getUserTimezone(): Promise<string> {
+    const payload = await json("/api/v1/user");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new TodoistApiError("Todoist returned an invalid user payload.", { transient: true });
+    }
+    const tzInfo = (payload as TodoistUserPayload).tz_info;
+    if (!tzInfo || typeof tzInfo !== "object" || Array.isArray(tzInfo)) {
+      throw new TodoistApiError("Todoist returned an invalid user timezone.", { transient: true });
+    }
+    const timezone = (tzInfo as { timezone?: unknown }).timezone;
+    if (typeof timezone !== "string" || !timezone.trim()) {
+      throw new TodoistApiError("Todoist returned an invalid user timezone.", { transient: true });
+    }
+    return timezone.trim();
+  }
+
   async function listRelayTasks(): Promise<TodoistRelayTask[]> {
-    return paginated("/api/v1/tasks", { project_id: projectId }, taskFromPayload);
+    const tasks = await paginated("/api/v1/tasks", { project_id: projectId }, taskFromPayload);
+    const needsTimezone = tasks.some((task) =>
+      task.due?.date.includes("T") &&
+      !/(?:Z|[+-]\\d{2}:\\d{2})$/i.test(task.due.date) &&
+      !task.due.timezone,
+    );
+    if (!needsTimezone) return tasks;
+
+    const timezone = await getUserTimezone();
+    return tasks.map((task) => {
+      if (
+        !task.due ||
+        !task.due.date.includes("T") ||
+        /(?:Z|[+-]\\d{2}:\\d{2})$/i.test(task.due.date) ||
+        task.due.timezone
+      ) return task;
+      return {
+        ...task,
+        due: { ...task.due, timezone },
+      };
+    });
   }
 
   async function closeTask(taskId: string): Promise<void> {
