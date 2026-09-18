@@ -7,8 +7,8 @@ import {
   requireAuthenticatedSession,
   type SessionProvider,
 } from "@/lib/runtime/session";
+import { readRequestSessionIdentity } from "@/lib/server/request-session-identity";
 
-const ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 
 function errorResponse(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -27,9 +27,9 @@ export function createAuthorizedHostedSessionHandler(
   return {
     async GET(request: Request) {
       try {
-        const assertion = request.headers.get(ACCESS_ASSERTION_HEADER)?.trim();
-        if (!assertion) return errorResponse("Authentication required.", 403);
-        const session = await sessionProvider.getSession(assertion);
+        const sessionIdentity = readRequestSessionIdentity(request);
+        if (!sessionIdentity) return errorResponse("Authentication required.", 403);
+        const session = await sessionProvider.getSession(sessionIdentity);
         const principal = requireAuthenticatedSession(session, clock.now());
         const applicationUser = await applicationUsers.resolve(principal);
         return Response.json({
