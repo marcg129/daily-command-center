@@ -213,3 +213,55 @@ test("auto-provisioning policy can reject non-human authenticated principals wit
   );
   database.sqlite.close();
 });
+
+
+test("existing owner identity keeps its current Personal and Indelitech memberships without reprovisioning", async () => {
+  const database = new TestD1();
+  database.sqlite.prepare(
+    "INSERT INTO users (user_id,status,created_at,updated_at) VALUES ('user:marc-existing','ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO user_principals (principal_id,user_id,provider,created_at) VALUES ('cf-user:marc','user:marc-existing','CLOUDFLARE_ACCESS',CURRENT_TIMESTAMP)",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO workspace_memberships (user_id,workspace_id,workspace_key,role) VALUES ('user:marc-existing','personal','personal','OWNER')",
+  ).run();
+  database.sqlite.prepare(
+    "INSERT INTO workspace_memberships (user_id,workspace_id,workspace_key,role) VALUES ('user:marc-existing','indelitech','indelitech','OWNER')",
+  ).run();
+
+  let generated = false;
+  const provisioner = new D1ApplicationUserProvisioner(database, () => {
+    generated = true;
+    return idsFor("should-not-run");
+  });
+  const before = {
+    users: count(database, "users"),
+    workspaces: count(database, "workspaces"),
+    principals: count(database, "user_principals"),
+    memberships: count(database, "workspace_memberships"),
+  };
+
+  await provisioner.provision({
+    principalId: principalId("cf-user:marc"),
+    provider: "CLOUDFLARE_ACCESS",
+  });
+
+  assert.equal(generated, false);
+  assert.deepEqual({
+    users: count(database, "users"),
+    workspaces: count(database, "workspaces"),
+    principals: count(database, "user_principals"),
+    memberships: count(database, "workspace_memberships"),
+  }, before);
+  assert.deepEqual(
+    database.sqlite.prepare(
+      "SELECT workspace_key, workspace_id, role FROM workspace_memberships WHERE user_id='user:marc-existing' ORDER BY workspace_key",
+    ).all().map((row) => ({ ...row })),
+    [
+      { workspace_key: "indelitech", workspace_id: "indelitech", role: "OWNER" },
+      { workspace_key: "personal", workspace_id: "personal", role: "OWNER" },
+    ],
+  );
+  database.sqlite.close();
+});
