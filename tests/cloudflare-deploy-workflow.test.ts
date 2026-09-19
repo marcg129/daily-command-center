@@ -33,7 +33,9 @@ test("protected Cloudflare deployment accepts only the current merged PR revisio
 
 test("production deploys serialize and retain the protected custom-domain posture checks", async () => {
   const workflow = await readDeploy();
-  assert.match(workflow, /group: cloudflare-production\s+cancel-in-progress: false/);
+  assert.match(workflow, /'cloudflare-production' \|\| format\('cloudflare-noop-\{0\}', github\.run_id\)/);
+  assert.match(workflow, /startsWith\(github\.event\.comment\.body, '\/deploy-current-main '\)/);
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /permissions:\s+actions: read\s+contents: read\s+issues: read\s+pull-requests: read/);
   assert.match(workflow, /deploy:\s+name: deploy Access-protected web Worker[\s\S]+env:\s+CLOUDFLARE_API_TOKEN:[\s\S]+CLOUDFLARE_ACCOUNT_ID:/);
   assert.match(workflow, /command\.coreyg\.dev/);
@@ -53,6 +55,9 @@ test("production deploys serialize and retain the protected custom-domain postur
   assert.match(workflow, /needs: \[resolve-deploy-target, deploy\]/);
   assert.match(workflow, /if: always\(\) && github\.event_name == 'issue_comment'/);
   assert.match(workflow, /github\.rest\.issues\.createComment/);
+  assert.match(workflow, /needs\.resolve-deploy-target\.result/);
+  assert.match(workflow, /resolveResult !== 'success'/);
+  assert.match(workflow, /validation \*\*\$\{resolveResult \|\| 'failed'\}\*\*/);
   assert.match(workflow, /Protected production deploy \*\*succeeded\*\*/);
   assert.match(workflow, /Protected production deploy was \*\*not started\*\*/);
   assert.match(workflow, /actions\/runs\/\$\{context\.runId\}/);
