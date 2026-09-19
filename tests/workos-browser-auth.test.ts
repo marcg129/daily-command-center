@@ -126,7 +126,7 @@ test("callback fails closed on state mismatch without exchanging a code", async 
   assert.match(setCookies(response).join("\n"), /dcc-workos-state=;.*Max-Age=0/);
 });
 
-test("refresh rotates both WorkOS tokens and never lets a failed rotation erase browser-wide cookies", async () => {
+test("refresh rotates WorkOS tokens, preserves transient failures, and clears confirmed-invalid credentials", async () => {
   let failureStatus: number | null = null;
   const bodies: Record<string, unknown>[] = [];
   const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
@@ -163,9 +163,9 @@ test("refresh rotates both WorkOS tokens and never lets a failed rotation erase 
     { method: "POST", headers: { Cookie: "dcc-workos-refresh=bad_refresh_token" } },
   ));
   assert.equal(failure.status, 401);
-  const preserved = setCookies(failure).join("\n");
-  assert.doesNotMatch(preserved, /dcc-workos-access=;.*Max-Age=0/);
-  assert.doesNotMatch(preserved, /dcc-workos-refresh=;.*Max-Age=0/);
+  const cleared = setCookies(failure).join("\n");
+  assert.match(cleared, /dcc-workos-access=;.*Max-Age=0/);
+  assert.match(cleared, /dcc-workos-refresh=;.*Max-Age=0/);
 });
 
 test("refresh preserves session cookies when a successful WorkOS response body is interrupted", async () => {
