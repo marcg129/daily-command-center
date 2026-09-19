@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   hostedWorkspaceEndpoint,
   isLoopbackHostname,
   loadHostedApplicationSession,
@@ -107,6 +108,44 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
     "/api/hosted/tasks/mutations?workspaceId=personal",
     "/api/hosted/tasks/mutations?workspaceId=indelitech",
   ]);
+});
+
+test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", async () => {
+  const attempts = new Map<string, number>();
+  let refreshCalls = 0;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+
+  const fetcher = async (url: string, init?: RequestInit) => {
+    if (url === "/api/auth/workos/refresh") {
+      refreshCalls += 1;
+      assert.equal(init?.method, "POST");
+      await refreshGate;
+      return new Response(null, { status: 204 });
+    }
+
+    const attempt = (attempts.get(url) ?? 0) + 1;
+    attempts.set(url, attempt);
+    return new Response(null, { status: attempt === 1 ? 403 : 200 });
+  };
+
+  const first = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/workspace?workspaceId=personal");
+  const second = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/events?workspaceId=personal");
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(refreshCalls, 1);
+
+  releaseRefresh();
+  const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  assert.equal(refreshCalls, 1);
+  assert.equal(attempts.get("/api/hosted/workspace?workspaceId=personal"), 2);
+  assert.equal(attempts.get("/api/hosted/events?workspaceId=personal"), 2);
 });
 
 test("hosted identity bootstrap accepts only authorized workspace metadata", async () => {
