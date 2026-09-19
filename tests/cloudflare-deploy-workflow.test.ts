@@ -34,7 +34,7 @@ test("protected Cloudflare deployment accepts only the current merged PR revisio
 test("production deploys serialize and retain the protected custom-domain posture checks", async () => {
   const workflow = await readDeploy();
   assert.match(workflow, /group: cloudflare-production\s+cancel-in-progress: false/);
-  assert.match(workflow, /permissions:\s+actions: read\s+contents: read\s+issues: write\s+pull-requests: read/);
+  assert.match(workflow, /permissions:\s+actions: read\s+contents: read\s+issues: read\s+pull-requests: read/);
   assert.match(workflow, /deploy:\s+name: deploy Access-protected web Worker[\s\S]+env:\s+CLOUDFLARE_API_TOKEN:[\s\S]+CLOUDFLARE_ACCOUNT_ID:/);
   assert.match(workflow, /command\.coreyg\.dev/);
   assert.match(workflow, /Unexpected web Worker Custom Domain/);
@@ -49,6 +49,7 @@ test("production deploys serialize and retain the protected custom-domain postur
   assert.match(workflow, /npm run deploy:mcp/);
   assert.match(workflow, /Task-capture MCP remains on its separate hostname/);
   assert.match(workflow, /report-deploy-result:\s+name: report protected deploy result/);
+  assert.match(workflow, /report-deploy-result:[\s\S]+permissions:\s+issues: write[\s\S]+runs-on: ubuntu-latest/);
   assert.match(workflow, /needs: \[resolve-deploy-target, deploy\]/);
   assert.match(workflow, /if: always\(\) && github\.event_name == 'issue_comment'/);
   assert.match(workflow, /github\.rest\.issues\.createComment/);
