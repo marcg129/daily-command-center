@@ -169,13 +169,11 @@ test("refresh rotates both WorkOS tokens, preserves transient failures, and clea
 });
 
 test("refresh preserves session cookies when a successful WorkOS response body is interrupted", async () => {
-  const fetchImpl = (async () => ({
-    ok: true,
-    status: 200,
-    json: async () => {
-      throw new Error("response stream interrupted");
-    },
-  }) as Response) as typeof fetch;
+  const fetchImpl = (async () =>
+    new Response("{", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
 
   const handlers = createWorkOSBrowserAuthHandlers(bindings, { fetchImpl });
   const response = await handlers.refresh(new Request(
