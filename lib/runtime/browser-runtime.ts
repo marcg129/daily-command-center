@@ -21,6 +21,22 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 let productRefreshInFlight: Promise<boolean> | null = null;
 
+const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh";
+
+async function withProductRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  const manager =
+    typeof navigator !== "undefined" && navigator.locks
+      ? navigator.locks
+      : null;
+
+  // Production is HTTPS and modern browsers coordinate this lock across every
+  // same-origin tab/worker. The fallback keeps non-browser tests and older
+  // runtimes functional, while same-document requests are still deduplicated.
+  return manager
+    ? manager.request(PRODUCT_REFRESH_LOCK, task)
+    : task();
+}
+
 async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
   if (!productRefreshInFlight) {
     productRefreshInFlight = (async () => {
@@ -44,11 +60,11 @@ async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
  * Browser fetch for DCC-hosted protected APIs.
  *
  * AuthKit uses short-lived access tokens plus rotating refresh tokens. A 403
- * may mean the product access cookie expired, so perform one same-document
- * serialized refresh and retry once. Separate browser tabs can still race; the
- * refresh endpoint therefore never clears cookies on a terminal refresh failure,
- * and a failed refresher probes the protected request once more in case another
- * tab already installed the rotated session.
+ * may mean the product access cookie expired. Recovery is serialized behind one
+ * same-origin Web Lock, so separate tabs cannot rotate the same refresh token at
+ * the same time. After acquiring the lock, re-check the protected request first:
+ * a tab that waited for another tab's successful rotation observes the new
+ * browser-wide cookies and skips its own refresh.
  */
 export async function fetchHostedWithSessionRefresh(
   fetcher: BrowserFetch,
@@ -58,19 +74,20 @@ export async function fetchHostedWithSessionRefresh(
   const response = await fetcher(input, init);
   if (response.status !== 403) return response;
 
-  const refreshed = await refreshProductSession(fetcher);
-  if (refreshed) return fetcher(input, init);
+  return withProductRefreshLock(async () => {
+    // A different tab may have refreshed while this caller waited for the lock.
+    // Re-check before rotating a single-use refresh token.
+    try {
+      const recheck = await fetcher(input, init);
+      if (recheck.status !== 403) return recheck;
+    } catch {
+      return response;
+    }
 
-  // A failed refresh can be the stale loser of a cross-tab rotation. Because
-  // cookies are browser-wide, retry the protected request once before surfacing
-  // the original 403. If another tab won the rotation, this observes its new
-  // access cookie without issuing another refresh request.
-  try {
-    const retry = await fetcher(input, init);
-    return retry.status === 403 ? response : retry;
-  } catch {
-    return response;
-  }
+    const refreshed = await refreshProductSession(fetcher);
+    if (!refreshed) return response;
+    return fetcher(input, init);
+  });
 }
 
 export function isLoopbackHostname(hostname: string) {
