@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { OrderedSaveQueue } from "@/lib/runtime/ordered-save-queue";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   loadHostedApplicationSession,
   loadBrowserWorkspace,
   selectAuthorizedWorkspace,
@@ -3330,11 +3331,18 @@ export function ControlCenter() {
     const mutationWorkspaceId = activeWorkspaceId;
     const scheduledTasks = tasks;
     const save = async () => {
-      const response = await fetch(taskMutationEndpoint(runtimeMode, mutationWorkspaceId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mutations }),
-      });
+      const mutationEndpoint = taskMutationEndpoint(runtimeMode, mutationWorkspaceId);
+      const response = runtimeMode === "hosted"
+        ? await fetchHostedWithSessionRefresh(fetch, mutationEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mutations }),
+          })
+        : await fetch(mutationEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mutations }),
+          });
       if (!response.ok) throw new Error(runtimeMode === "local"
         ? "Tasks could not be saved to SQLite. Keep this page open and retry."
         : "Hosted tasks could not be saved. Keep this page open and retry.");
