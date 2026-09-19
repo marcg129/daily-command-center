@@ -102,7 +102,7 @@ Add a WorkOS-backed `SessionProvider` using DCC's existing `jose` dependency and
 
 Merged and deployed. DCC now has sign-in, callback, rotating refresh/session-cookie, sign-out, exact hosted proxy routing, and refresh-aware protected browser requests. WorkOS remains dormant until bindings are configured.
 
-Refresh-token rotation has one additional safety invariant: a failed refresh response must never clear browser-wide session cookies that may already have been replaced by a concurrent successful refresh in another tab. Same-document callers share one in-flight refresh; a losing cross-tab refresher preserves cookies and retries the protected request once so it can observe the winning tab's session.
+Refresh-token rotation has one additional safety invariant: only one same-origin browser context may rotate the AuthKit refresh token at a time. DCC uses the Web Locks API for cross-tab/worker coordination. After a caller acquires the lock it re-checks the protected request before refreshing, so a tab that waited for another tab's successful rotation observes the new browser-wide cookies and skips its own refresh. Confirmed terminal refresh failures may therefore clear invalid credentials without allowing a stale losing tab to erase a newer session.
 
 ### 2A2d — Dual-provider acceptance and cutover
 
