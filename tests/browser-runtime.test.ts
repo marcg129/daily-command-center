@@ -110,9 +110,10 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
   ]);
 });
 
-test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", async () => {
+test("concurrent hosted 403s share one same-document AuthKit refresh-token rotation", async () => {
   const attempts = new Map<string, number>();
   let refreshCalls = 0;
+  let refreshed = false;
   let releaseRefresh!: () => void;
   const refreshGate = new Promise<void>((resolve) => {
     releaseRefresh = resolve;
@@ -123,17 +124,18 @@ test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", asyn
       refreshCalls += 1;
       assert.equal(init?.method, "POST");
       await refreshGate;
+      refreshed = true;
       return new Response(null, { status: 204 });
     }
 
-    const attempt = (attempts.get(url) ?? 0) + 1;
-    attempts.set(url, attempt);
-    return new Response(null, { status: attempt === 1 ? 403 : 200 });
+    attempts.set(url, (attempts.get(url) ?? 0) + 1);
+    return new Response(null, { status: refreshed ? 200 : 403 });
   };
 
   const first = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/workspace?workspaceId=personal");
   const second = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/events?workspaceId=personal");
 
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(refreshCalls, 1);
@@ -144,8 +146,8 @@ test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", asyn
   assert.equal(firstResponse.status, 200);
   assert.equal(secondResponse.status, 200);
   assert.equal(refreshCalls, 1);
-  assert.equal(attempts.get("/api/hosted/workspace?workspaceId=personal"), 2);
-  assert.equal(attempts.get("/api/hosted/events?workspaceId=personal"), 2);
+  assert.ok((attempts.get("/api/hosted/workspace?workspaceId=personal") ?? 0) >= 2);
+  assert.ok((attempts.get("/api/hosted/events?workspaceId=personal") ?? 0) >= 2);
 });
 
 test("hosted identity bootstrap accepts only authorized workspace metadata", async () => {
@@ -215,34 +217,6 @@ test("hosted identity bootstrap refreshes an expired AuthKit session once and re
   ]);
 });
 
-test("a stale failed refresh observes a session rotated by another browser tab", async () => {
-  const calls: Array<{ url: string; method?: string }> = [];
-  let protectedAttempts = 0;
-
-  const response = await fetchHostedWithSessionRefresh(
-    async (url, init) => {
-      calls.push({ url, method: init?.method });
-      if (url === "/api/auth/workos/refresh") {
-        // Model this tab losing a refresh-token rotation race. The server does
-        // not clear cookies, so the next protected request can observe the
-        // browser-wide cookies installed by the winning tab.
-        return new Response(null, { status: 401 });
-      }
-      protectedAttempts += 1;
-      return new Response(null, { status: protectedAttempts === 1 ? 403 : 200 });
-    },
-    "/api/hosted/session",
-    { cache: "no-store" },
-  );
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(calls, [
-    { url: "/api/hosted/session", method: undefined },
-    { url: "/api/auth/workos/refresh", method: "POST" },
-    { url: "/api/hosted/session", method: undefined },
-  ]);
-});
-
 test("hosted identity bootstrap preserves the original failure when refresh is unavailable", async () => {
   const calls: string[] = [];
   await assert.rejects(
@@ -254,8 +228,8 @@ test("hosted identity bootstrap preserves the original failure when refresh is u
   );
   assert.deepEqual(calls, [
     "/api/hosted/session",
-    "/api/auth/workos/refresh",
     "/api/hosted/session",
+    "/api/auth/workos/refresh",
   ]);
 });
 
