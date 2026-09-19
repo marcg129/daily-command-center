@@ -43,7 +43,22 @@ export function taskMutationEndpoint(
 export async function loadHostedApplicationSession(
   fetcher: BrowserFetch,
 ): Promise<HostedApplicationSession> {
-  const response = await fetcher("/api/hosted/session", { cache: "no-store" });
+  let response = await fetcher("/api/hosted/session", { cache: "no-store" });
+
+  // AuthKit access tokens are intentionally short-lived. If the browser still
+  // has a rotating refresh cookie, recover the product session once before
+  // surfacing an identity failure. Cloudflare-only sessions simply receive a
+  // failed refresh and preserve the original behavior.
+  if (response.status === 403) {
+    const refresh = await fetcher("/api/auth/workos/refresh", {
+      method: "POST",
+      cache: "no-store",
+    });
+    if (refresh.ok) {
+      response = await fetcher("/api/hosted/session", { cache: "no-store" });
+    }
+  }
+
   if (!response.ok)
     throw new Error("Your Command Center identity could not be resolved.");
   const value = (await response.json()) as Record<string, unknown>;
