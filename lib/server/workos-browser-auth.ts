@@ -134,18 +134,31 @@ function safeReturnTo(value: string | null): string {
   }
 }
 
+class WorkOSExchangeError extends Error {
+  constructor(readonly terminal: boolean) {
+    super("WorkOS authentication exchange failed.");
+    this.name = "WorkOSExchangeError";
+  }
+}
+
 async function exchange(
   body: Record<string, string>,
   apiKey: string,
   fetchImpl: FetchLike,
 ): Promise<TokenResponse> {
-  const response = await fetchImpl(AUTHENTICATE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, client_secret: apiKey }),
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(AUTHENTICATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, client_secret: apiKey }),
+    });
+  } catch {
+    throw new WorkOSExchangeError(false);
+  }
   if (!response.ok) {
-    throw new Error("WorkOS authentication exchange failed.");
+    const terminal = response.status >= 400 && response.status < 500 && response.status !== 429;
+    throw new WorkOSExchangeError(terminal);
   }
   return await response.json() as TokenResponse;
 }
@@ -282,8 +295,14 @@ export function createWorkOSBrowserAuthHandlers(
         const headers = new Headers({ "Cache-Control": "no-store" });
         setSessionCookies(headers, tokens, secure);
         return new Response(null, { status: 204, headers });
-      } catch {
+      } catch (error) {
         const headers = new Headers({ "Cache-Control": "no-store" });
+        if (error instanceof WorkOSExchangeError && !error.terminal) {
+          return Response.json(
+            { error: "Session refresh is temporarily unavailable." },
+            { status: 503, headers },
+          );
+        }
         appendCookie(headers, clearCookie(ACCESS_COOKIE, secure));
         appendCookie(headers, clearCookie(REFRESH_COOKIE, secure));
         return Response.json({ error: "Session refresh failed." }, { status: 401, headers });
