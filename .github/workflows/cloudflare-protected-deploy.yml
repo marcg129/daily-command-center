@@ -8,7 +8,7 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: write
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -205,6 +205,8 @@ jobs:
     name: report protected deploy result
     needs: [resolve-deploy-target, deploy]
     if: always() && github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main ')
+    permissions:
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - name: Comment deployment result on the triggering PR
