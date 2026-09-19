@@ -19,6 +19,48 @@ export type HostedApplicationSession = Readonly<{
 
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+let productRefreshInFlight: Promise<boolean> | null = null;
+
+async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
+  if (!productRefreshInFlight) {
+    productRefreshInFlight = (async () => {
+      try {
+        const response = await fetcher("/api/auth/workos/refresh", {
+          method: "POST",
+          cache: "no-store",
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    })().finally(() => {
+      productRefreshInFlight = null;
+    });
+  }
+  return productRefreshInFlight;
+}
+
+/**
+ * Browser fetch for DCC-hosted protected APIs.
+ *
+ * AuthKit uses short-lived access tokens plus rotating refresh tokens. A 403
+ * may mean the product access cookie expired, so perform one serialized refresh
+ * and retry once. Concurrent callers share the same refresh request, preventing
+ * two consumers from rotating the same refresh token.
+ */
+export async function fetchHostedWithSessionRefresh(
+  fetcher: BrowserFetch,
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const response = await fetcher(input, init);
+  if (response.status !== 403) return response;
+
+  const refreshed = await refreshProductSession(fetcher);
+  if (!refreshed) return response;
+  return fetcher(input, init);
+}
+
 export function isLoopbackHostname(hostname: string) {
   return LOOPBACK_HOSTNAMES.has(hostname.trim().toLowerCase());
 }
@@ -43,21 +85,11 @@ export function taskMutationEndpoint(
 export async function loadHostedApplicationSession(
   fetcher: BrowserFetch,
 ): Promise<HostedApplicationSession> {
-  let response = await fetcher("/api/hosted/session", { cache: "no-store" });
-
-  // AuthKit access tokens are intentionally short-lived. If the browser still
-  // has a rotating refresh cookie, recover the product session once before
-  // surfacing an identity failure. Cloudflare-only sessions simply receive a
-  // failed refresh and preserve the original behavior.
-  if (response.status === 403) {
-    const refresh = await fetcher("/api/auth/workos/refresh", {
-      method: "POST",
-      cache: "no-store",
-    });
-    if (refresh.ok) {
-      response = await fetcher("/api/hosted/session", { cache: "no-store" });
-    }
-  }
+  const response = await fetchHostedWithSessionRefresh(
+    fetcher,
+    "/api/hosted/session",
+    { cache: "no-store" },
+  );
 
   if (!response.ok)
     throw new Error("Your Command Center identity could not be resolved.");
@@ -101,9 +133,11 @@ export async function loadBrowserWorkspace(
   workspaceId: ProductWorkspaceId,
 ): Promise<{ settings?: PublicSettings; workspace: WorkspaceStateResponse }> {
   if (mode === "hosted") {
-    const response = await fetcher(hostedWorkspaceEndpoint(workspaceId), {
-      cache: "no-store",
-    });
+    const response = await fetchHostedWithSessionRefresh(
+      fetcher,
+      hostedWorkspaceEndpoint(workspaceId),
+      { cache: "no-store" },
+    );
     if (!response.ok)
       throw new Error(
         "Hosted tasks could not be read. No local data was used.",
