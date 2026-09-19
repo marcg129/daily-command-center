@@ -102,6 +102,8 @@ Add a WorkOS-backed `SessionProvider` using DCC's existing `jose` dependency and
 
 Merged and deployed. DCC now has sign-in, callback, rotating refresh/session-cookie, sign-out, exact hosted proxy routing, and refresh-aware protected browser requests. WorkOS remains dormant until bindings are configured.
 
+Refresh-token rotation has one additional safety invariant: a failed refresh response must never clear browser-wide session cookies that may already have been replaced by a concurrent successful refresh in another tab. Same-document callers share one in-flight refresh; a losing cross-tab refresher preserves cookies and retries the protected request once so it can observe the winning tab's session.
+
 ### 2A2d — Dual-provider acceptance and cutover
 
 Before enabling WorkOS credentials, add a dual-proof identity-link operation. An existing Cloudflare-authenticated DCC user must explicitly link a separately verified WorkOS human principal to the same durable `user_id`. The link operation never auto-provisions, creates workspaces, or changes memberships; conflicts fail closed.
@@ -109,8 +111,6 @@ Before enabling WorkOS credentials, add a dual-proof identity-link operation. An
 This prevents Marc's first WorkOS login from creating a second DCC user/Personal workspace and provides a provider-migration path without manual D1 edits.
 
 Then run Cloudflare + WorkOS in parallel long enough to prove:
-
-Run Cloudflare + WorkOS in parallel long enough to prove:
 
 - Marc retains Personal + Indelitech;
 - a new WorkOS identity gets only its private Personal workspace;
