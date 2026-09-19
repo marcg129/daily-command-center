@@ -110,6 +110,24 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
   ]);
 });
 
+test("hosted AuthKit refresh uses a same-origin Web Lock and re-checks access before rotating", async () => {
+  const source = await readFile(
+    new URL("../lib/runtime/browser-runtime.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh"/);
+  assert.match(source, /navigator\.locks/);
+  assert.match(source, /manager\.request\(PRODUCT_REFRESH_LOCK, task\)/);
+
+  const lockIndex = source.indexOf("withProductRefreshLock(async () =>");
+  const recheckIndex = source.indexOf("const recheck = await fetcher(input, init)", lockIndex);
+  const refreshIndex = source.indexOf("const refreshed = await refreshProductSession(fetcher)", lockIndex);
+  assert.ok(lockIndex >= 0);
+  assert.ok(recheckIndex > lockIndex);
+  assert.ok(refreshIndex > recheckIndex);
+});
+
 test("concurrent hosted 403s share one same-document AuthKit refresh-token rotation", async () => {
   const attempts = new Map<string, number>();
   let refreshCalls = 0;
