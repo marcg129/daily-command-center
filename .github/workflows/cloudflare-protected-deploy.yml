@@ -12,7 +12,10 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: cloudflare-production
+  # Only real deploy commands/manual dispatches share the production queue.
+  # Reporter comments and unrelated PR comments get an isolated no-op group so
+  # they can never evict a legitimate pending production deploy.
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main '))) && 'cloudflare-production' || format('cloudflare-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
@@ -214,12 +217,15 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
+            const resolveResult = `${{ needs.resolve-deploy-target.result }}`.trim();
             const deploySha = `${{ needs.resolve-deploy-target.outputs.deploy_sha }}`.trim();
             const deployResult = `${{ needs.deploy.result }}`.trim();
             const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
 
             let body;
-            if (!deploySha) {
+            if (resolveResult !== 'success') {
+              body = `Protected production deploy validation **${resolveResult || 'failed'}** before the command could be approved or rejected. [Workflow run](${runUrl})`;
+            } else if (!deploySha) {
               body = `Protected production deploy was **not started** because the command did not resolve to an approved current-main revision. [Workflow run](${runUrl})`;
             } else if (deployResult === 'success') {
               body = `Protected production deploy **succeeded** for \`${deploySha}\`. [Workflow run](${runUrl})`;
