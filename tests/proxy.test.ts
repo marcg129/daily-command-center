@@ -44,6 +44,10 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/hosted/intake?workspaceId=personal&view=PENDING",
     "/api/hosted/intake/status?workspaceId=personal",
     "/api/hosted/events?workspaceId=personal&fromDate=2026-09-17&throughDate=2026-10-31",
+    "/api/auth/workos/start?returnTo=%2F",
+    "/api/auth/workos/callback?code=test&state=test",
+    "/api/auth/workos/refresh",
+    "/api/auth/workos/signout",
   ]) assert.equal(proxy(hostedRequest(path)).status, 200);
   for (const path of [
     "/api/settings",
@@ -60,6 +64,11 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/hosted/intake/extra",
     "/api/hosted/intake/status/extra",
     "/api/hosted/events/extra",
+    "/api/auth/workos",
+    "/api/auth/workos/start/extra",
+    "/api/auth/workos/callback/extra",
+    "/api/auth/workos/refresh/extra",
+    "/api/auth/workos/signout/extra",
   ]) assert.equal(proxy(hostedRequest(path)).status, 403);
 });
 
