@@ -168,6 +168,27 @@ test("refresh rotates both WorkOS tokens, preserves transient failures, and clea
   assert.match(cleared, /dcc-workos-refresh=;.*Max-Age=0/);
 });
 
+test("refresh preserves session cookies when a successful WorkOS response body is interrupted", async () => {
+  const fetchImpl = (async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new Error("response stream interrupted");
+    },
+  }) as Response) as typeof fetch;
+
+  const handlers = createWorkOSBrowserAuthHandlers(bindings, { fetchImpl });
+  const response = await handlers.refresh(new Request(
+    "https://command.example/api/auth/workos/refresh",
+    { method: "POST", headers: { Cookie: "dcc-workos-refresh=still_valid_refresh" } },
+  ));
+
+  assert.equal(response.status, 503);
+  const values = setCookies(response).join("\n");
+  assert.doesNotMatch(values, /dcc-workos-access=;.*Max-Age=0/);
+  assert.doesNotMatch(values, /dcc-workos-refresh=;.*Max-Age=0/);
+});
+
 test("sign-out clears product session cookies", async () => {
   const handlers = createWorkOSBrowserAuthHandlers(bindings);
   const response = await handlers.signOut(new Request(
