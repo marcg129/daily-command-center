@@ -9,7 +9,7 @@ import {
 } from "@/lib/runtime/session";
 import {
   ApplicationPrincipalLinkError,
-  type D1ApplicationPrincipalLinker,
+  type ApplicationPrincipalLinker,
 } from "@/lib/server/d1-application-principal-linker";
 import { readWorkOSAccessCookie } from "@/lib/server/workos-browser-auth";
 
@@ -26,7 +26,7 @@ export function createAuthorizedWorkOSPrincipalLinkHandler(
   cloudflareSessions: SessionProvider,
   workosSessions: SessionProvider,
   applicationUsers: ApplicationUserResolver,
-  principalLinker: D1ApplicationPrincipalLinker,
+  principalLinker: ApplicationPrincipalLinker,
   clock: Clock,
 ) {
   return {
