@@ -34,7 +34,15 @@ function normalizeProvider(value: string): string {
  * Attaches an independently verified authentication principal to an existing
  * durable DCC user. This class never creates users, workspaces, or memberships.
  */
-export class D1ApplicationPrincipalLinker {
+export interface ApplicationPrincipalLinker {
+  link(input: Readonly<{
+    userId: ApplicationUserId;
+    principalId: PrincipalId;
+    provider: string;
+  }>): Promise<void>;
+}
+
+export class D1ApplicationPrincipalLinker implements ApplicationPrincipalLinker {
   constructor(private readonly database: D1Database) {}
 
   private async validateTargetUser(userId: string): Promise<void> {
