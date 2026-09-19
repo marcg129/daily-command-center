@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   loadHostedApplicationSession,
   selectAuthorizedWorkspace,
 } from "@/lib/runtime/browser-runtime";
@@ -296,9 +297,9 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       setError("");
       try {
         const [incomeResponse, billsResponse, baselineResponse] = await Promise.all([
-          fetch(`/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=${includeArchived ? "true" : "false"}`, { cache: "no-store", signal: controller.signal }),
-          fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=false`, { cache: "no-store", signal: controller.signal }),
-          fetch(`/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store", signal: controller.signal }),
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=${includeArchived ? "true" : "false"}`, { cache: "no-store", signal: controller.signal }),
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=false`, { cache: "no-store", signal: controller.signal }),
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store", signal: controller.signal }),
         ]);
         const [incomePayload, billsPayload, baselinePayload] = await Promise.all([
           incomeResponse.json(), billsResponse.json(), baselineResponse.json(),
@@ -433,7 +434,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
       const core = coreFromDraft(draft, editingIncome?.status ?? "ACTIVE", editingIncome?.currency ?? "USD");
       const changed = editingIncome ? incomeOccurrenceShapeChanged(editingIncome, core) : false;
       if (changed && !effectiveDate) throw new Error("Choose when schedule or amount changes should take effect.");
-      const response = await fetch(`/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: editingIncome ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingIncome
@@ -459,7 +460,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     setStatusPending(source.incomeSourceId);
     setError("");
     try {
-      const response = await fetch(`/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/income?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ incomeSourceId: source.incomeSourceId, incomeSource: { ...coreFromSource(source), status } }),
@@ -493,7 +494,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     setResolutionError("");
     try {
       const receivedAmountMinor = resolution.action === "RECEIVED" ? dollarsInputToMinor(resolution.receivedAmount) : null;
-      const response = await fetch(`/api/hosted/income/occurrences?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/income/occurrences?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -523,7 +524,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     setBaselineError("");
     try {
       const amountMinor = signedDollarsToMinor(baselineAmount);
-      const response = await fetch(`/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseline: { amountMinor, currency: "USD", asOfDate: baselineDate } }),
@@ -549,7 +550,7 @@ export function CashFlowView({ initialWorkspaceId }: { initialWorkspaceId: Produ
     setBaselineSaving(true);
     setBaselineError("");
     try {
-      const response = await fetch(`/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(responseError(payload, "Manual cash position could not be cleared."));
       if (workspaceIdRef.current === requestWorkspaceId) {
