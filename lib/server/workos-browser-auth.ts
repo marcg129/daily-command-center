@@ -157,10 +157,15 @@ async function exchange(
     throw new WorkOSExchangeError(false);
   }
   if (!response.ok) {
-    const terminal = response.status >= 400 && response.status < 500 && response.status !== 429;
+    const terminal =
+      response.status >= 400 && response.status < 500 && response.status !== 429;
     throw new WorkOSExchangeError(terminal);
   }
-  return await response.json() as TokenResponse;
+  try {
+    return await response.json() as TokenResponse;
+  } catch {
+    throw new WorkOSExchangeError(false);
+  }
 }
 
 function validatedTokens(result: TokenResponse) {
