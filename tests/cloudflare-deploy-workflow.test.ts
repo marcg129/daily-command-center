@@ -13,7 +13,7 @@ const readSmoke = () => readFile(new URL("../scripts/smoke.mjs", import.meta.url
 test("protected Cloudflare deployment accepts only the current merged PR revision", async () => {
   const deploy = await readDeploy();
   assert.match(deploy, /issue_comment:\s+types: \[created\]/);
-  assert.match(deploy, /startsWith\(github\.event\.comment\.body, '\/deploy-current-main '\)/);
+  assert.match(deploy, /resolve-deploy-target:[\s\S]+if: github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.issue\.pull_request && github\.event\.comment\.user\.login == github\.repository_owner && github\.event\.comment\.author_association == 'OWNER' && startsWith\(github\.event\.comment\.body, '\/deploy-current-main '\)\)/);
   assert.match(deploy, /\^\\\/deploy-current-main \(\[0-9a-f\]\{40\}\) \(\[0-9\]\+\)\$/);
   assert.match(deploy, /comment\.user\.login !== owner/);
   assert.match(deploy, /comment\.author_association !== 'OWNER'/);
@@ -62,7 +62,7 @@ test("Todoist deploy queues only owner-authorized deploy commands with productio
   assert.match(workflow, /'cloudflare-production' \|\| format\('cloudflare-noop-\{0\}', github\.run_id\)/);
   assert.match(workflow, /github\.event\.comment\.user\.login == github\.repository_owner/);
   assert.match(workflow, /github\.event\.comment\.author_association == 'OWNER'/);
-  assert.match(workflow, /startsWith\(github\.event\.comment\.body, '\/deploy-todoist-current-main '\)/);
+  assert.match(workflow, /resolve-deploy-target:[\s\S]+if: github\.event_name == 'workflow_dispatch' \|\| \(github\.event\.issue\.pull_request && github\.event\.comment\.user\.login == github\.repository_owner && github\.event\.comment\.author_association == 'OWNER' && startsWith\(github\.event\.comment\.body, '\/deploy-todoist-current-main '\)\)/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /\^\\\/deploy-todoist-current-main \(\[0-9a-f\]\{40\}\) \(\[0-9\]\+\)\$/);
   assert.match(workflow, /pullRequest\.merge_commit_sha === requestedSha/);
