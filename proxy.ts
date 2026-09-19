@@ -38,6 +38,10 @@ export function proxy(request: NextRequest) {
     "/api/hosted/intake",
     "/api/hosted/intake/status",
     "/api/hosted/events",
+    "/api/auth/workos/start",
+    "/api/auth/workos/callback",
+    "/api/auth/workos/refresh",
+    "/api/auth/workos/signout",
   ]);
   if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
