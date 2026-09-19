@@ -8,7 +8,7 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
 
 concurrency:
@@ -200,3 +200,34 @@ jobs:
           echo 'Hosted Intel collector has no public workers.dev or preview URL and runs only from its fixed six-hour Cron Trigger.'
           echo 'Task-capture MCP remains on its separate hostname and rejects every request unless its separate Access audience secret verifies.'
           echo 'Deployment targeted the current main SHA after an owner-authorized merged-PR command or an explicit manual dispatch.'
+
+  report-deploy-result:
+    name: report protected deploy result
+    needs: [resolve-deploy-target, deploy]
+    if: always() && github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment deployment result on the triggering PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const deploySha = `${{ needs.resolve-deploy-target.outputs.deploy_sha }}`.trim();
+            const deployResult = `${{ needs.deploy.result }}`.trim();
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            let body;
+            if (!deploySha) {
+              body = `Protected production deploy was **not started** because the command did not resolve to an approved current-main revision. [Workflow run](${runUrl})`;
+            } else if (deployResult === 'success') {
+              body = `Protected production deploy **succeeded** for \`${deploySha}\`. [Workflow run](${runUrl})`;
+            } else {
+              body = `Protected production deploy **${deployResult || 'did not complete'}** for \`${deploySha}\`. [Workflow run](${runUrl})`;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              body,
+            });
