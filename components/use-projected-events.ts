@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { billProjectionToday } from "@/lib/bill-projections";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   loadHostedApplicationSession,
 } from "@/lib/runtime/browser-runtime";
 import type { CalendarOverrideScope } from "@/lib/runtime/calendar-projections";
@@ -86,7 +87,7 @@ export function useProjectedEvents(scope: ProjectedEventScope) {
         // Inclusive 45-day window: today plus 44 calendar days.
         const throughDate = addCalendarDays(fromDate, 44);
         const batches = await Promise.all(targetWorkspaceIds.map(async (workspaceId) => {
-          const response = await fetch(`/api/hosted/events?workspaceId=${encodeURIComponent(workspaceId)}&fromDate=${encodeURIComponent(fromDate)}&throughDate=${encodeURIComponent(throughDate)}`, {
+          const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/events?workspaceId=${encodeURIComponent(workspaceId)}&fromDate=${encodeURIComponent(fromDate)}&throughDate=${encodeURIComponent(throughDate)}`, {
             cache: "no-store",
             signal: controller.signal,
           });
@@ -134,7 +135,7 @@ export function useProjectedEvents(scope: ProjectedEventScope) {
     setMutationError("");
     setUpdatingEventId(event.eventProjectionId);
     try {
-      const response = await fetch("/api/hosted/events", {
+      const response = await fetchHostedWithSessionRefresh(fetch, "/api/hosted/events", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
