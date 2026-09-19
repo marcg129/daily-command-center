@@ -23,15 +23,20 @@ let productRefreshInFlight: Promise<boolean> | null = null;
 
 const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh";
 
-async function withProductRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+async function withProductRefreshLock<T>(
+  task: () => Promise<T>,
+): Promise<T | null> {
+  const browser = typeof window !== "undefined";
   const manager =
     typeof navigator !== "undefined" && navigator.locks
       ? navigator.locks
       : null;
 
-  // Production is HTTPS and modern browsers coordinate this lock across every
-  // same-origin tab/worker. The fallback keeps non-browser tests and older
-  // runtimes functional, while same-document requests are still deduplicated.
+  // Product browsers must have an origin-wide lock before rotating a single-use
+  // refresh token. If a browser lacks Web Locks, fail closed instead of falling
+  // back to tab-local coordination. Non-browser tests/server evaluation can use
+  // the direct path because there is no cross-tab cookie race there.
+  if (browser && !manager) return null;
   return manager
     ? manager.request(PRODUCT_REFRESH_LOCK, task)
     : task();
@@ -74,7 +79,7 @@ export async function fetchHostedWithSessionRefresh(
   const response = await fetcher(input, init);
   if (response.status !== 403) return response;
 
-  return withProductRefreshLock(async () => {
+  const recovered = await withProductRefreshLock(async () => {
     // A different tab may have refreshed while this caller waited for the lock.
     // Re-check before rotating a single-use refresh token.
     try {
@@ -88,6 +93,7 @@ export async function fetchHostedWithSessionRefresh(
     if (!refreshed) return response;
     return fetcher(input, init);
   });
+  return recovered ?? response;
 }
 
 export function isLoopbackHostname(hostname: string) {
