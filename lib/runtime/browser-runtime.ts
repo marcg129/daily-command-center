@@ -44,9 +44,11 @@ async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
  * Browser fetch for DCC-hosted protected APIs.
  *
  * AuthKit uses short-lived access tokens plus rotating refresh tokens. A 403
- * may mean the product access cookie expired, so perform one serialized refresh
- * and retry once. Concurrent callers share the same refresh request, preventing
- * two consumers from rotating the same refresh token.
+ * may mean the product access cookie expired, so perform one same-document
+ * serialized refresh and retry once. Separate browser tabs can still race; the
+ * refresh endpoint therefore never clears cookies on a terminal refresh failure,
+ * and a failed refresher probes the protected request once more in case another
+ * tab already installed the rotated session.
  */
 export async function fetchHostedWithSessionRefresh(
   fetcher: BrowserFetch,
@@ -57,8 +59,18 @@ export async function fetchHostedWithSessionRefresh(
   if (response.status !== 403) return response;
 
   const refreshed = await refreshProductSession(fetcher);
-  if (!refreshed) return response;
-  return fetcher(input, init);
+  if (refreshed) return fetcher(input, init);
+
+  // A failed refresh can be the stale loser of a cross-tab rotation. Because
+  // cookies are browser-wide, retry the protected request once before surfacing
+  // the original 403. If another tab won the rotation, this observes its new
+  // access cookie without issuing another refresh request.
+  try {
+    const retry = await fetcher(input, init);
+    return retry.status === 403 ? response : retry;
+  } catch {
+    return response;
+  }
 }
 
 export function isLoopbackHostname(hostname: string) {
