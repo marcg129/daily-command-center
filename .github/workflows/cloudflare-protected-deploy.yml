@@ -21,7 +21,7 @@ concurrency:
 jobs:
   resolve-deploy-target:
     name: resolve a validated current-main revision
-    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main '))
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && github.event.comment.user.login == github.repository_owner && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/deploy-current-main '))
     runs-on: ubuntu-latest
     outputs:
       deploy_sha: ${{ steps.target.outputs.deploy_sha }}
