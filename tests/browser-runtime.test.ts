@@ -119,6 +119,7 @@ test("hosted AuthKit refresh uses a same-origin Web Lock and re-checks access be
   assert.match(source, /const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh"/);
   assert.match(source, /navigator\.locks/);
   assert.match(source, /manager\.request\(PRODUCT_REFRESH_LOCK, task\)/);
+  assert.match(source, /if \(browser && !manager\) return null/);
 
   const lockIndex = source.indexOf("withProductRefreshLock(async () =>");
   const recheckIndex = source.indexOf("const recheck = await fetcher(input, init)", lockIndex);
