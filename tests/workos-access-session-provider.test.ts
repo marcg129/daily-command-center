@@ -12,6 +12,7 @@ import { WorkOSAccessSessionProvider } from "@/lib/server/workos-access-session-
 const now = new Date("2026-09-18T20:00:00.000Z");
 const issuer = "https://api.workos.com";
 const clientId = "client_01ABCDEF1234567890";
+const scopedIssuer = `${issuer}/user_management/${clientId}`;
 const jwksUrl = "https://api.workos.com/sso/jwks/client_01ABCDEF1234567890";
 
 async function fixture() {
@@ -27,14 +28,16 @@ async function fixture() {
 async function sign(
   privateKey: CryptoKey,
   claims: Record<string, unknown> = {},
-  overrides: { issuer?: string; client?: string; expiration?: number } = {},
+  overrides: { issuer?: string; client?: string; expiration?: number; omitClient?: boolean } = {},
 ) {
-  return new SignJWT({
-    client_id: overrides.client ?? clientId,
+  const payload: Record<string, unknown> = {
     sub: "user_01HBEQKA6K4QJAS93VPE39W1JT",
     sid: "session_01HQSXZGF8FHF7A9ZZFCW4387R",
     ...claims,
-  })
+  };
+  if (!overrides.omitClient) payload.client_id = overrides.client ?? clientId;
+
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: "RS256", kid: "workos-test-key" })
     .setIssuer(overrides.issuer ?? issuer)
     .setIssuedAt(Math.floor(now.getTime() / 1_000))
@@ -74,6 +77,30 @@ test("verified AuthKit user token maps only the stable WorkOS user subject", asy
   assert.equal(session?.expiresAt, "2026-09-18T21:00:00.000Z");
 });
 
+test("client-scoped AuthKit issuer validates the application even when client_id is absent", async () => {
+  const { privateKey, resolver } = await fixture();
+  const token = await sign(
+    privateKey,
+    {},
+    { issuer: scopedIssuer, omitClient: true },
+  );
+
+  const session = await provider(resolver).getSession(`product-bearer:${token}`);
+  assert.equal(
+    session?.principal.principalId,
+    "workos-user:user_01HBEQKA6K4QJAS93VPE39W1JT",
+  );
+});
+
+test("bare WorkOS issuer still requires the expected client_id claim", async () => {
+  const { privateKey, resolver } = await fixture();
+  const token = await sign(privateKey, {}, { omitClient: true });
+  assert.equal(
+    await provider(resolver).getSession(`product-bearer:${token}`),
+    null,
+  );
+});
+
 test("untagged, wrong-client, wrong-issuer, expired, and agent tokens fail closed", async () => {
   const { privateKey, resolver } = await fixture();
   const epoch = Math.floor(now.getTime() / 1_000);
@@ -108,6 +135,9 @@ test("provider configuration rejects unsafe issuer, JWKS, and client values", as
   assert.throws(
     () => new WorkOSAccessSessionProvider({ ...base, issuer: "http://api.workos.com" }),
     /issuer/i,
+  );
+  assert.doesNotThrow(
+    () => new WorkOSAccessSessionProvider({ ...base, issuer: scopedIssuer }),
   );
   assert.throws(
     () => new WorkOSAccessSessionProvider({ ...base, issuer: "https://api.workos.com/path" }),

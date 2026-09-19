@@ -46,12 +46,33 @@ function httpsUrl(value: string, label: string): URL {
   return url;
 }
 
-function issuerVariants(value: string): readonly string[] {
+function issuerVariants(value: string, expectedClientId: string): readonly string[] {
   const url = httpsUrl(value, "issuer");
-  if (url.search !== "" || (url.pathname !== "/" && url.pathname !== "")) {
+  if (url.search !== "") {
     throw new Error("A valid WorkOS issuer is required.");
   }
-  return [url.origin, `${url.origin}/`];
+
+  const root = url.origin;
+  const scopedPath = `/user_management/${expectedClientId}`;
+  const pathname = url.pathname.replace(/\/$/, "");
+
+  if (pathname === "") {
+    return [root, `${root}/`, `${root}${scopedPath}`];
+  }
+  if (pathname === scopedPath) {
+    return [`${root}${scopedPath}`];
+  }
+  throw new Error("A valid WorkOS issuer is required.");
+}
+
+function tokenMatchesClient(payload: Record<string, unknown>, expectedClientId: string): boolean {
+  const issuer = typeof payload.iss === "string" ? payload.iss.replace(/\/$/, "") : "";
+  const clientScopedSuffix = `/user_management/${expectedClientId}`;
+
+  if (issuer.endsWith(clientScopedSuffix)) {
+    return payload.client_id === undefined || payload.client_id === expectedClientId;
+  }
+  return payload.client_id === expectedClientId;
 }
 
 /**
@@ -65,7 +86,7 @@ export class WorkOSAccessSessionProvider implements SessionProvider {
 
   constructor(private readonly options: WorkOSAccessSessionProviderOptions) {
     this.expectedClientId = clientId(options.clientId);
-    this.issuers = issuerVariants(options.issuer);
+    this.issuers = issuerVariants(options.issuer, this.expectedClientId);
     const jwks = httpsUrl(options.jwksUrl, "JWKS URL");
     this.keyResolver = options.keyResolver ?? createRemoteJWKSet(jwks);
   }
@@ -84,7 +105,7 @@ export class WorkOSAccessSessionProvider implements SessionProvider {
       });
 
       if (
-        payload.client_id !== this.expectedClientId ||
+        !tokenMatchesClient(payload, this.expectedClientId) ||
         typeof payload.sub !== "string" ||
         !/^user_[A-Za-z0-9_-]{8,120}$/.test(payload.sub) ||
         typeof payload.sid !== "string" ||
