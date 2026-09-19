@@ -308,8 +308,10 @@ export function createWorkOSBrowserAuthHandlers(
             { status: 503, headers },
           );
         }
-        appendCookie(headers, clearCookie(ACCESS_COOKIE, secure));
-        appendCookie(headers, clearCookie(REFRESH_COOKIE, secure));
+        // A terminal failure may be the stale loser of a cross-tab refresh race.
+        // Do not clear cookies here: another tab may already have rotated them.
+        // The failed request remains unauthorized, while explicit sign-out or a
+        // successful authentication flow remains responsible for cookie removal/replacement.
         return Response.json({ error: "Session refresh failed." }, { status: 401, headers });
       }
     },
