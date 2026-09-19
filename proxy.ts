@@ -42,6 +42,7 @@ export function proxy(request: NextRequest) {
     "/api/auth/workos/callback",
     "/api/auth/workos/refresh",
     "/api/auth/workos/signout",
+    "/api/auth/workos/link",
   ]);
   if (!local && !allowedHostedPaths.has(request.nextUrl.pathname)) {
     return NextResponse.json(
