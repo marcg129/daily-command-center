@@ -11,6 +11,8 @@ export type HostedAuthenticationBindings = Readonly<{
   WORKOS_CLIENT_ID?: string;
   WORKOS_ISSUER?: string;
   WORKOS_JWKS_URL?: string;
+  WORKOS_API_KEY?: string;
+  WORKOS_REDIRECT_URI?: string;
 }>;
 
 export type HostedAuthenticationKeyResolvers = Readonly<{
