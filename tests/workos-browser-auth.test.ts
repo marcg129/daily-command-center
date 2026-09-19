@@ -126,12 +126,12 @@ test("callback fails closed on state mismatch without exchanging a code", async 
   assert.match(setCookies(response).join("\n"), /dcc-workos-state=;.*Max-Age=0/);
 });
 
-test("refresh rotates both WorkOS tokens and clears them on exchange failure", async () => {
-  let shouldFail = false;
+test("refresh rotates both WorkOS tokens, preserves transient failures, and clears terminal failures", async () => {
+  let failureStatus: number | null = null;
   const bodies: Record<string, unknown>[] = [];
   const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
     bodies.push(JSON.parse(String(init?.body)));
-    if (shouldFail) return new Response("invalid", { status: 400 });
+    if (failureStatus !== null) return new Response("invalid", { status: failureStatus });
     return Response.json({
       access_token: "rotated.access.token",
       refresh_token: "rotated_refresh_token",
@@ -149,7 +149,15 @@ test("refresh rotates both WorkOS tokens and clears them on exchange failure", a
   assert.equal(bodies[0].refresh_token, "old_refresh_token");
   assert.match(setCookies(success).join("\n"), /dcc-workos-refresh=rotated_refresh_token/);
 
-  shouldFail = true;
+  failureStatus = 503;
+  const transient = await handlers.refresh(new Request(
+    "https://command.example/api/auth/workos/refresh",
+    { method: "POST", headers: { Cookie: "dcc-workos-refresh=retry_refresh_token" } },
+  ));
+  assert.equal(transient.status, 503);
+  assert.doesNotMatch(setCookies(transient).join("\n"), /dcc-workos-refresh=;.*Max-Age=0/);
+
+  failureStatus = 400;
   const failure = await handlers.refresh(new Request(
     "https://command.example/api/auth/workos/refresh",
     { method: "POST", headers: { Cookie: "dcc-workos-refresh=bad_refresh_token" } },
