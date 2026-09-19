@@ -27,6 +27,33 @@ test("product bearer tokens are tagged before reaching a session provider", () =
   assert.equal(readProductBearerToken(identity), "workos-access-token");
 });
 
+
+test("AuthKit HttpOnly access cookie becomes product identity only when no Cloudflare assertion or bearer token is present", () => {
+  assert.equal(
+    readRequestSessionIdentity(request({
+      cookie: "dcc-workos-access=cookie-token",
+    })),
+    "product-bearer:cookie-token",
+  );
+
+  assert.equal(
+    readRequestSessionIdentity(request({
+      authorization: "Bearer header-token",
+      cookie: "dcc-workos-access=cookie-token",
+    })),
+    "product-bearer:header-token",
+  );
+
+  assert.equal(
+    readRequestSessionIdentity(request({
+      "cf-access-jwt-assertion": "access-assertion",
+      authorization: "Bearer header-token",
+      cookie: "dcc-workos-access=cookie-token",
+    })),
+    "access-assertion",
+  );
+});
+
 test("missing or malformed authorization never becomes a session identity", () => {
   for (const authorization of [
     "",
