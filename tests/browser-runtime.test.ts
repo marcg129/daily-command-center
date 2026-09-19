@@ -202,17 +202,17 @@ test("hosted identity bootstrap accepts only authorized workspace metadata", asy
   );
 });
 
-test("hosted identity bootstrap refreshes an expired AuthKit session once and retries", async () => {
+test("hosted identity bootstrap re-checks under the lock, refreshes once, and retries", async () => {
   const calls: Array<{ url: string; method?: string }> = [];
-  let sessionAttempts = 0;
+  let refreshed = false;
 
   const session = await loadHostedApplicationSession(async (url, init) => {
     calls.push({ url, method: init?.method });
     if (url === "/api/auth/workos/refresh") {
+      refreshed = true;
       return new Response(null, { status: 204 });
     }
-    sessionAttempts += 1;
-    if (sessionAttempts === 1) return new Response(null, { status: 403 });
+    if (!refreshed) return new Response(null, { status: 403 });
     return Response.json({
       userId: "user:workos",
       expiresAt: "2026-09-20T00:00:00.000Z",
@@ -230,6 +230,7 @@ test("hosted identity bootstrap refreshes an expired AuthKit session once and re
 
   assert.equal(session.userId, "user:workos");
   assert.deepEqual(calls, [
+    { url: "/api/hosted/session", method: undefined },
     { url: "/api/hosted/session", method: undefined },
     { url: "/api/auth/workos/refresh", method: "POST" },
     { url: "/api/hosted/session", method: undefined },
