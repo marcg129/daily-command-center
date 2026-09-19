@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { HostedIntelSnapshotResponse } from "@/lib/runtime/hosted-intel";
+import { fetchHostedWithSessionRefresh } from "@/lib/runtime/browser-runtime";
 import { PRODUCT_TIME_ZONE } from "@/lib/product-time";
 import styles from "./hosted-intel-snapshot.module.css";
 
@@ -42,7 +43,7 @@ export function HostedIntelSnapshotView({ icon }: { icon: ReactNode }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/hosted/intel?workspaceId=indelitech", {
+    fetchHostedWithSessionRefresh(fetch, "/api/hosted/intel?workspaceId=indelitech", {
       signal: controller.signal,
       credentials: "same-origin",
       headers: { Accept: "application/json" },
