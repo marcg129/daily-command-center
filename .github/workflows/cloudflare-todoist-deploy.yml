@@ -12,13 +12,16 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: cloudflare-production
+  # Only real Todoist deploy commands/manual dispatches share the production
+  # queue. Unrelated PR comments get a unique no-op group so they cannot evict
+  # a legitimate pending web or Todoist production deployment.
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && github.event.comment.user.login == github.repository_owner && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/deploy-todoist-current-main '))) && 'cloudflare-production' || format('cloudflare-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
   resolve-deploy-target:
     name: resolve a validated current-main revision
-    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-todoist-current-main '))
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && github.event.comment.user.login == github.repository_owner && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/deploy-todoist-current-main '))
     runs-on: ubuntu-latest
     outputs:
       deploy_sha: ${{ steps.target.outputs.deploy_sha }}
