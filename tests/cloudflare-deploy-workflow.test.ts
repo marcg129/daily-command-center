@@ -34,6 +34,8 @@ test("protected Cloudflare deployment accepts only the current merged PR revisio
 test("production deploys serialize and retain the protected custom-domain posture checks", async () => {
   const workflow = await readDeploy();
   assert.match(workflow, /'cloudflare-production' \|\| format\('cloudflare-noop-\{0\}', github\.run_id\)/);
+  assert.match(workflow, /github\.event\.comment\.user\.login == github\.repository_owner/);
+  assert.match(workflow, /github\.event\.comment\.author_association == 'OWNER'/);
   assert.match(workflow, /startsWith\(github\.event\.comment\.body, '\/deploy-current-main '\)/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /permissions:\s+actions: read\s+contents: read\s+issues: read\s+pull-requests: read/);
