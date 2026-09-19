@@ -5,6 +5,7 @@ import test from "node:test";
 const readDeploy = () => readFile(new URL("../.github/workflows/cloudflare-protected-deploy.yml", import.meta.url), "utf8");
 const readCheck = () => readFile(new URL("../.github/workflows/check.yml", import.meta.url), "utf8");
 const readBootstrap = () => readFile(new URL("../.github/workflows/cloudflare-bootstrap-grants.yml", import.meta.url), "utf8");
+const readTodoistDeploy = () => readFile(new URL("../.github/workflows/cloudflare-todoist-deploy.yml", import.meta.url), "utf8");
 const readWebWrangler = () => readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
 const readMcpWrangler = () => readFile(new URL("../wrangler.mcp.jsonc", import.meta.url), "utf8");
 const readSmoke = () => readFile(new URL("../scripts/smoke.mjs", import.meta.url), "utf8");
@@ -52,17 +53,21 @@ test("production deploys serialize and retain the protected custom-domain postur
   assert.match(workflow, /npm run build:mcp/);
   assert.match(workflow, /npm run deploy:mcp/);
   assert.match(workflow, /Task-capture MCP remains on its separate hostname/);
-  assert.match(workflow, /report-deploy-result:\s+name: report protected deploy result/);
-  assert.match(workflow, /report-deploy-result:[\s\S]+permissions:\s+issues: write[\s\S]+runs-on: ubuntu-latest/);
-  assert.match(workflow, /needs: \[resolve-deploy-target, deploy\]/);
-  assert.match(workflow, /if: always\(\) && github\.event_name == 'issue_comment'/);
-  assert.match(workflow, /github\.rest\.issues\.createComment/);
-  assert.match(workflow, /needs\.resolve-deploy-target\.result/);
-  assert.match(workflow, /resolveResult !== 'success'/);
-  assert.match(workflow, /validation \*\*\$\{resolveResult \|\| 'failed'\}\*\*/);
-  assert.match(workflow, /Protected production deploy \*\*succeeded\*\*/);
-  assert.match(workflow, /Protected production deploy was \*\*not started\*\*/);
-  assert.match(workflow, /actions\/runs\/\$\{context\.runId\}/);
+  assert.doesNotMatch(workflow, /report-deploy-result:/);
+  assert.doesNotMatch(workflow, /github\.rest\.issues\.createComment/);
+});
+
+test("Todoist deploy queues only owner-authorized deploy commands with production", async () => {
+  const workflow = await readTodoistDeploy();
+  assert.match(workflow, /'cloudflare-production' \|\| format\('cloudflare-noop-\{0\}', github\.run_id\)/);
+  assert.match(workflow, /github\.event\.comment\.user\.login == github\.repository_owner/);
+  assert.match(workflow, /github\.event\.comment\.author_association == 'OWNER'/);
+  assert.match(workflow, /startsWith\(github\.event\.comment\.body, '\/deploy-todoist-current-main '\)/);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /\^\\\/deploy-todoist-current-main \(\[0-9a-f\]\{40\}\) \(\[0-9\]\+\)\$/);
+  assert.match(workflow, /pullRequest\.merge_commit_sha === requestedSha/);
+  assert.match(workflow, /main\.commit\.sha === requestedSha/);
+  assert.match(workflow, /checkRun\.conclusion === 'success'/);
 });
 
 test("pull request CI proves the generated vinext artifact keeps the custom domain", async () => {
