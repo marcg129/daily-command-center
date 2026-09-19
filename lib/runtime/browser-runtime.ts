@@ -21,6 +21,27 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 let productRefreshInFlight: Promise<boolean> | null = null;
 
+const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh";
+
+async function withProductRefreshLock<T>(
+  task: () => Promise<T>,
+): Promise<T | null> {
+  const browser = typeof window !== "undefined";
+  const manager =
+    typeof navigator !== "undefined" && navigator.locks
+      ? navigator.locks
+      : null;
+
+  // Product browsers must have an origin-wide lock before rotating a single-use
+  // refresh token. If a browser lacks Web Locks, fail closed instead of falling
+  // back to tab-local coordination. Non-browser tests/server evaluation can use
+  // the direct path because there is no cross-tab cookie race there.
+  if (browser && !manager) return null;
+  return manager
+    ? manager.request(PRODUCT_REFRESH_LOCK, task)
+    : task();
+}
+
 async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
   if (!productRefreshInFlight) {
     productRefreshInFlight = (async () => {
@@ -44,9 +65,11 @@ async function refreshProductSession(fetcher: BrowserFetch): Promise<boolean> {
  * Browser fetch for DCC-hosted protected APIs.
  *
  * AuthKit uses short-lived access tokens plus rotating refresh tokens. A 403
- * may mean the product access cookie expired, so perform one serialized refresh
- * and retry once. Concurrent callers share the same refresh request, preventing
- * two consumers from rotating the same refresh token.
+ * may mean the product access cookie expired. Recovery is serialized behind one
+ * same-origin Web Lock, so separate tabs cannot rotate the same refresh token at
+ * the same time. After acquiring the lock, re-check the protected request first:
+ * a tab that waited for another tab's successful rotation observes the new
+ * browser-wide cookies and skips its own refresh.
  */
 export async function fetchHostedWithSessionRefresh(
   fetcher: BrowserFetch,
@@ -56,9 +79,21 @@ export async function fetchHostedWithSessionRefresh(
   const response = await fetcher(input, init);
   if (response.status !== 403) return response;
 
-  const refreshed = await refreshProductSession(fetcher);
-  if (!refreshed) return response;
-  return fetcher(input, init);
+  const recovered = await withProductRefreshLock(async () => {
+    // A different tab may have refreshed while this caller waited for the lock.
+    // Re-check before rotating a single-use refresh token.
+    try {
+      const recheck = await fetcher(input, init);
+      if (recheck.status !== 403) return recheck;
+    } catch {
+      return response;
+    }
+
+    const refreshed = await refreshProductSession(fetcher);
+    if (!refreshed) return response;
+    return fetcher(input, init);
+  });
+  return recovered ?? response;
 }
 
 export function isLoopbackHostname(hostname: string) {

@@ -2,7 +2,7 @@
 
 Date: 2026-09-18
 
-Status: **Provider selected; adapter/cutover implementation active.**
+Status: **AuthKit adapter + browser flow deployed; dual-provider acceptance active.**
 
 ## Decision
 
@@ -98,13 +98,19 @@ Remove direct `cf-access-jwt-assertion` parsing from individual hosted handlers.
 
 Add a WorkOS-backed `SessionProvider` using DCC's existing `jose` dependency and WorkOS JWKS. Validate signature, issuer, expiry, required session/user claims, and the expected WorkOS client ID. Map only verified human sessions to `workos-user:*`.
 
-### 2A2c — Hosted AuthKit browser flow
+### 2A2c — Hosted AuthKit browser flow ✅
 
-Add sign-in, callback, refresh/session-cookie, and sign-out handling using AuthKit hosted UI. Use PKCE + state/CSRF protection and HttpOnly/Secure/SameSite cookies. Keep secrets server-side in Cloudflare.
+Merged and deployed. DCC now has sign-in, callback, rotating refresh/session-cookie, sign-out, exact hosted proxy routing, and refresh-aware protected browser requests. WorkOS remains dormant until bindings are configured.
+
+Refresh-token rotation has one additional safety invariant: only one same-origin browser context may rotate the AuthKit refresh token at a time. DCC uses the Web Locks API for cross-tab/worker coordination. After a caller acquires the lock it re-checks the protected request before refreshing, so a tab that waited for another tab's successful rotation observes the new browser-wide cookies and skips its own refresh. Confirmed terminal refresh failures may therefore clear invalid credentials without allowing a stale losing tab to erase a newer session. A product browser without Web Locks fails closed rather than falling back to unsafe tab-local rotation.
 
 ### 2A2d — Dual-provider acceptance and cutover
 
-Run Cloudflare + WorkOS in parallel long enough to prove:
+Before enabling WorkOS credentials, add a dual-proof identity-link operation. An existing Cloudflare-authenticated DCC user must explicitly link a separately verified WorkOS human principal to the same durable `user_id`. The link operation never auto-provisions, creates workspaces, or changes memberships; conflicts fail closed.
+
+This prevents Marc's first WorkOS login from creating a second DCC user/Personal workspace and provides a provider-migration path without manual D1 edits.
+
+Then run Cloudflare + WorkOS in parallel long enough to prove:
 
 - Marc retains Personal + Indelitech;
 - a new WorkOS identity gets only its private Personal workspace;

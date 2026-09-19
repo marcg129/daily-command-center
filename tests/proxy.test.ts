@@ -48,6 +48,7 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/auth/workos/callback?code=test&state=test",
     "/api/auth/workos/refresh",
     "/api/auth/workos/signout",
+    "/api/auth/workos/link",
   ]) assert.equal(proxy(hostedRequest(path)).status, 200);
   for (const path of [
     "/api/settings",
@@ -69,6 +70,7 @@ test("hosted proxy allows only the exact hosted MVP routes", () => {
     "/api/auth/workos/callback/extra",
     "/api/auth/workos/refresh/extra",
     "/api/auth/workos/signout/extra",
+    "/api/auth/workos/link/extra",
   ]) assert.equal(proxy(hostedRequest(path)).status, 403);
 });
 

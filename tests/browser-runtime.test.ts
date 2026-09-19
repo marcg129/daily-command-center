@@ -110,9 +110,29 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
   ]);
 });
 
-test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", async () => {
+test("hosted AuthKit refresh uses a same-origin Web Lock and re-checks access before rotating", async () => {
+  const source = await readFile(
+    new URL("../lib/runtime/browser-runtime.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /const PRODUCT_REFRESH_LOCK = "dcc-workos-refresh"/);
+  assert.match(source, /navigator\.locks/);
+  assert.match(source, /manager\.request\(PRODUCT_REFRESH_LOCK, task\)/);
+  assert.match(source, /if \(browser && !manager\) return null/);
+
+  const lockIndex = source.indexOf("withProductRefreshLock(async () =>");
+  const recheckIndex = source.indexOf("const recheck = await fetcher(input, init)", lockIndex);
+  const refreshIndex = source.indexOf("const refreshed = await refreshProductSession(fetcher)", lockIndex);
+  assert.ok(lockIndex >= 0);
+  assert.ok(recheckIndex > lockIndex);
+  assert.ok(refreshIndex > recheckIndex);
+});
+
+test("concurrent hosted 403s share one same-document AuthKit refresh-token rotation", async () => {
   const attempts = new Map<string, number>();
   let refreshCalls = 0;
+  let refreshed = false;
   let releaseRefresh!: () => void;
   const refreshGate = new Promise<void>((resolve) => {
     releaseRefresh = resolve;
@@ -123,17 +143,18 @@ test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", asyn
       refreshCalls += 1;
       assert.equal(init?.method, "POST");
       await refreshGate;
+      refreshed = true;
       return new Response(null, { status: 204 });
     }
 
-    const attempt = (attempts.get(url) ?? 0) + 1;
-    attempts.set(url, attempt);
-    return new Response(null, { status: attempt === 1 ? 403 : 200 });
+    attempts.set(url, (attempts.get(url) ?? 0) + 1);
+    return new Response(null, { status: refreshed ? 200 : 403 });
   };
 
   const first = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/workspace?workspaceId=personal");
   const second = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/events?workspaceId=personal");
 
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(refreshCalls, 1);
@@ -144,8 +165,8 @@ test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", asyn
   assert.equal(firstResponse.status, 200);
   assert.equal(secondResponse.status, 200);
   assert.equal(refreshCalls, 1);
-  assert.equal(attempts.get("/api/hosted/workspace?workspaceId=personal"), 2);
-  assert.equal(attempts.get("/api/hosted/events?workspaceId=personal"), 2);
+  assert.ok((attempts.get("/api/hosted/workspace?workspaceId=personal") ?? 0) >= 2);
+  assert.ok((attempts.get("/api/hosted/events?workspaceId=personal") ?? 0) >= 2);
 });
 
 test("hosted identity bootstrap accepts only authorized workspace metadata", async () => {
@@ -181,17 +202,17 @@ test("hosted identity bootstrap accepts only authorized workspace metadata", asy
   );
 });
 
-test("hosted identity bootstrap refreshes an expired AuthKit session once and retries", async () => {
+test("hosted identity bootstrap re-checks under the lock, refreshes once, and retries", async () => {
   const calls: Array<{ url: string; method?: string }> = [];
-  let sessionAttempts = 0;
+  let refreshed = false;
 
   const session = await loadHostedApplicationSession(async (url, init) => {
     calls.push({ url, method: init?.method });
     if (url === "/api/auth/workos/refresh") {
+      refreshed = true;
       return new Response(null, { status: 204 });
     }
-    sessionAttempts += 1;
-    if (sessionAttempts === 1) return new Response(null, { status: 403 });
+    if (!refreshed) return new Response(null, { status: 403 });
     return Response.json({
       userId: "user:workos",
       expiresAt: "2026-09-20T00:00:00.000Z",
@@ -210,6 +231,7 @@ test("hosted identity bootstrap refreshes an expired AuthKit session once and re
   assert.equal(session.userId, "user:workos");
   assert.deepEqual(calls, [
     { url: "/api/hosted/session", method: undefined },
+    { url: "/api/hosted/session", method: undefined },
     { url: "/api/auth/workos/refresh", method: "POST" },
     { url: "/api/hosted/session", method: undefined },
   ]);
@@ -225,6 +247,7 @@ test("hosted identity bootstrap preserves the original failure when refresh is u
     /identity could not be resolved/,
   );
   assert.deepEqual(calls, [
+    "/api/hosted/session",
     "/api/hosted/session",
     "/api/auth/workos/refresh",
   ]);

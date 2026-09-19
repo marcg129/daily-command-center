@@ -126,7 +126,7 @@ test("callback fails closed on state mismatch without exchanging a code", async 
   assert.match(setCookies(response).join("\n"), /dcc-workos-state=;.*Max-Age=0/);
 });
 
-test("refresh rotates both WorkOS tokens, preserves transient failures, and clears terminal failures", async () => {
+test("refresh rotates WorkOS tokens, preserves transient failures, and clears confirmed-invalid credentials", async () => {
   let failureStatus: number | null = null;
   const bodies: Record<string, unknown>[] = [];
   const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
