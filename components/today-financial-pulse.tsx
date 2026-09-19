@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CircleAlert, RefreshCw, WalletCards } from "lucide-react";
 import { billProjectionToday } from "@/lib/bill-projections";
-import { browserRuntimeMode, loadHostedApplicationSession } from "@/lib/runtime/browser-runtime";
+import { browserRuntimeMode, fetchHostedWithSessionRefresh, loadHostedApplicationSession } from "@/lib/runtime/browser-runtime";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import type { HostedBill, HostedBillOccurrence } from "@/lib/runtime/hosted-bills";
 import type {
@@ -98,15 +98,15 @@ export function TodayFinancialPulse({ workspaceId }: { workspaceId: ProductWorks
         }
 
         const [incomeResponse, billsResponse, baselineResponse] = await Promise.all([
-          fetch(`/api/hosted/income?workspaceId=${encodeURIComponent(requestWorkspaceId)}&includeArchived=false`, {
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/income?workspaceId=${encodeURIComponent(requestWorkspaceId)}&includeArchived=false`, {
             cache: "no-store",
             signal: controller.signal,
           }),
-          fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(requestWorkspaceId)}&includeArchived=false`, {
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(requestWorkspaceId)}&includeArchived=false`, {
             cache: "no-store",
             signal: controller.signal,
           }),
-          fetch(`/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(requestWorkspaceId)}`, {
+          fetchHostedWithSessionRefresh(fetch, `/api/hosted/cashflow/baseline?workspaceId=${encodeURIComponent(requestWorkspaceId)}`, {
             cache: "no-store",
             signal: controller.signal,
           }),

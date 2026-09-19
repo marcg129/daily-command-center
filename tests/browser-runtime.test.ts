@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   hostedWorkspaceEndpoint,
   isLoopbackHostname,
   loadHostedApplicationSession,
@@ -109,6 +110,44 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
   ]);
 });
 
+test("concurrent hosted 403s serialize one AuthKit refresh-token rotation", async () => {
+  const attempts = new Map<string, number>();
+  let refreshCalls = 0;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+
+  const fetcher = async (url: string, init?: RequestInit) => {
+    if (url === "/api/auth/workos/refresh") {
+      refreshCalls += 1;
+      assert.equal(init?.method, "POST");
+      await refreshGate;
+      return new Response(null, { status: 204 });
+    }
+
+    const attempt = (attempts.get(url) ?? 0) + 1;
+    attempts.set(url, attempt);
+    return new Response(null, { status: attempt === 1 ? 403 : 200 });
+  };
+
+  const first = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/workspace?workspaceId=personal");
+  const second = fetchHostedWithSessionRefresh(fetcher, "/api/hosted/events?workspaceId=personal");
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(refreshCalls, 1);
+
+  releaseRefresh();
+  const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  assert.equal(refreshCalls, 1);
+  assert.equal(attempts.get("/api/hosted/workspace?workspaceId=personal"), 2);
+  assert.equal(attempts.get("/api/hosted/events?workspaceId=personal"), 2);
+});
+
 test("hosted identity bootstrap accepts only authorized workspace metadata", async () => {
   const session = await loadHostedApplicationSession(async (url, init) => {
     assert.equal(url, "/api/hosted/session");
@@ -140,6 +179,55 @@ test("hosted identity bootstrap accepts only authorized workspace metadata", asy
     selectAuthorizedWorkspace(session.workspaces, "personal"),
     "personal",
   );
+});
+
+test("hosted identity bootstrap refreshes an expired AuthKit session once and retries", async () => {
+  const calls: Array<{ url: string; method?: string }> = [];
+  let sessionAttempts = 0;
+
+  const session = await loadHostedApplicationSession(async (url, init) => {
+    calls.push({ url, method: init?.method });
+    if (url === "/api/auth/workos/refresh") {
+      return new Response(null, { status: 204 });
+    }
+    sessionAttempts += 1;
+    if (sessionAttempts === 1) return new Response(null, { status: 403 });
+    return Response.json({
+      userId: "user:workos",
+      expiresAt: "2026-09-20T00:00:00.000Z",
+      workspaces: [
+        {
+          workspaceId: "personal",
+          displayName: "Personal",
+          workspaceType: "PERSONAL",
+          themeKey: "personal-tech-blue",
+          role: "OWNER",
+        },
+      ],
+    });
+  });
+
+  assert.equal(session.userId, "user:workos");
+  assert.deepEqual(calls, [
+    { url: "/api/hosted/session", method: undefined },
+    { url: "/api/auth/workos/refresh", method: "POST" },
+    { url: "/api/hosted/session", method: undefined },
+  ]);
+});
+
+test("hosted identity bootstrap preserves the original failure when refresh is unavailable", async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    loadHostedApplicationSession(async (url) => {
+      calls.push(url);
+      return new Response(null, { status: url === "/api/auth/workos/refresh" ? 401 : 403 });
+    }),
+    /identity could not be resolved/,
+  );
+  assert.deepEqual(calls, [
+    "/api/hosted/session",
+    "/api/auth/workos/refresh",
+  ]);
 });
 
 test("hosted identity bootstrap rejects missing and malformed memberships", async () => {

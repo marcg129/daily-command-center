@@ -5,6 +5,7 @@ import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import type { IntakeEditablePatch } from "@/lib/runtime/daily-intake";
 import type { HostedIntakeItem } from "@/lib/runtime/intake-repository";
 import type { SourceFreshness } from "@/lib/runtime/source-freshness-repository";
+import { fetchHostedWithSessionRefresh } from "@/lib/runtime/browser-runtime";
 
 export type IntakeViewMode = "PENDING" | "DEFERRED" | "AWARENESS" | "HISTORY";
 export type IntakeScope = ProductWorkspaceId | "all";
@@ -24,7 +25,7 @@ function responseError(payload: unknown, fallback: string): string {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", ...init });
+  const response = await fetchHostedWithSessionRefresh(fetch, url, { cache: "no-store", ...init });
   const payload = await response.json().catch(() => null) as unknown;
   if (!response.ok) throw new Error(responseError(payload, "Intake request failed."));
   return payload as T;

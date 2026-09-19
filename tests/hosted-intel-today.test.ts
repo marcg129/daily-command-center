@@ -16,7 +16,7 @@ test("hosted Indelitech Today shows three Intel highlights without changing Pers
 test("Today Intel reads only the protected hosted snapshot and preserves isolated new-tab links", async () => {
   const panel = await readFile(new URL("../components/hosted-intel-today.tsx", import.meta.url), "utf8");
 
-  assert.match(panel, /fetch\("\/api\/hosted\/intel\?workspaceId=indelitech"/);
+  assert.match(panel, /fetchHostedWithSessionRefresh\(fetch, "\/api\/hosted\/intel\?workspaceId=indelitech"/);
   assert.match(panel, /credentials: "same-origin"/);
   assert.match(panel, /target="_blank"/);
   assert.match(panel, /rel="noreferrer noopener"/);

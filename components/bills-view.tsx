@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   loadHostedApplicationSession,
   selectAuthorizedWorkspace,
 } from "@/lib/runtime/browser-runtime";
@@ -266,7 +267,7 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=${includeArchived ? "true" : "false"}`, {
+        const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}&includeArchived=${includeArchived ? "true" : "false"}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -335,7 +336,7 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
       const core = coreFromDraft(draft, editingBill?.status ?? "ACTIVE");
       const changed = editingBill ? billOccurrenceShapeChanged(editingBill, core) : false;
       if (changed && !effectiveDate) throw new Error("Choose the date when schedule or amount changes should take effect.");
-      const response = await fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: editingBill ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingBill
@@ -358,7 +359,7 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
     setStatusPending(bill.billId);
     setError("");
     try {
-      const response = await fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ billId: bill.billId, bill: { ...coreFromBill(bill), status } }),
@@ -391,7 +392,7 @@ export function BillsView({ initialWorkspaceId }: { initialWorkspaceId: ProductW
     setResolutionError("");
     try {
       const paidAmountMinor = resolution.action === "PAID" ? dollarsInputToMinor(resolution.paidAmount) : null;
-      const response = await fetch(`/api/hosted/bills/occurrences?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills/occurrences?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

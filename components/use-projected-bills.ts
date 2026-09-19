@@ -9,6 +9,7 @@ import {
 } from "@/lib/bill-projections";
 import {
   browserRuntimeMode,
+  fetchHostedWithSessionRefresh,
   loadHostedApplicationSession,
 } from "@/lib/runtime/browser-runtime";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
@@ -52,7 +53,7 @@ export function useProjectedBills(workspaceId: ProductWorkspaceId): Omit<Project
         const authorizedWorkspaceIds = session.workspaces.map(({ workspaceId: id }) => id);
         const targetWorkspaceIds = billProjectionWorkspaceIds(workspaceId, authorizedWorkspaceIds);
         const summaries: BillWorkspaceSummary[] = await Promise.all(targetWorkspaceIds.map(async (targetWorkspaceId) => {
-          const response = await fetch(`/api/hosted/bills?workspaceId=${encodeURIComponent(targetWorkspaceId)}&includeArchived=false`, {
+          const response = await fetchHostedWithSessionRefresh(fetch, `/api/hosted/bills?workspaceId=${encodeURIComponent(targetWorkspaceId)}&includeArchived=false`, {
             cache: "no-store",
             signal: controller.signal,
           });

@@ -1,3 +1,5 @@
+import { readWorkOSAccessCookie } from "@/lib/server/workos-browser-auth";
+
 const CLOUDFLARE_ACCESS_ASSERTION_HEADER = "cf-access-jwt-assertion";
 const AUTHORIZATION_HEADER = "authorization";
 const PRODUCT_BEARER_PREFIX = "product-bearer:";
@@ -24,7 +26,10 @@ export function readRequestSessionIdentity(request: Request): string | null {
   if (accessAssertion) return accessAssertion;
 
   const token = bearerToken(request.headers.get(AUTHORIZATION_HEADER));
-  return token ? `${PRODUCT_BEARER_PREFIX}${token}` : null;
+  if (token) return `${PRODUCT_BEARER_PREFIX}${token}`;
+
+  const cookieToken = readWorkOSAccessCookie(request);
+  return cookieToken ? `${PRODUCT_BEARER_PREFIX}${cookieToken}` : null;
 }
 
 export function readProductBearerToken(

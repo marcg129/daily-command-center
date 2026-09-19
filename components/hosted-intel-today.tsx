@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Radio } from "lucide-react";
 import type { HostedIntelSnapshotResponse } from "@/lib/runtime/hosted-intel";
+import { fetchHostedWithSessionRefresh } from "@/lib/runtime/browser-runtime";
 import styles from "./hosted-intel-today.module.css";
 
 const TODAY_INTEL_LIMIT = 3;
@@ -17,7 +18,7 @@ export function HostedIntelTodayPanel({ onOpenIntel }: { onOpenIntel: () => void
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/hosted/intel?workspaceId=indelitech", {
+    fetchHostedWithSessionRefresh(fetch, "/api/hosted/intel?workspaceId=indelitech", {
       signal: controller.signal,
       credentials: "same-origin",
       headers: { Accept: "application/json" },

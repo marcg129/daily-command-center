@@ -148,7 +148,9 @@ test("post-bootstrap client saves use narrow ordered task and reminder paths", a
   const persistenceStart = source.indexOf("const workspace = { reminders, tasks } satisfies WorkspaceState;");
   assert.notEqual(persistenceStart, -1);
   const persistence = source.slice(persistenceStart, source.indexOf("if (!toast)"));
-  assert.match(persistence, /fetch\(taskMutationEndpoint\(runtimeMode, mutationWorkspaceId\)/);
+  assert.match(persistence, /const mutationEndpoint = taskMutationEndpoint\(runtimeMode, mutationWorkspaceId\)/);
+  assert.match(persistence, /fetchHostedWithSessionRefresh\(fetch, mutationEndpoint/);
+  assert.match(persistence, /: await fetch\(mutationEndpoint/);
   assert.match(persistence, /body: JSON\.stringify\(\{ mutations \}\)/);
   assert.match(persistence, /fetch\("\/api\/reminders"/);
   assert.match(persistence, /body: JSON\.stringify\(\{ reminders \}\)/);
