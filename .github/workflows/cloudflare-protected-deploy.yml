@@ -15,7 +15,7 @@ concurrency:
   # Only real deploy commands/manual dispatches share the production queue.
   # Reporter comments and unrelated PR comments get an isolated no-op group so
   # they can never evict a legitimate pending production deploy.
-  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy-current-main '))) && 'cloudflare-production' || format('cloudflare-noop-{0}', github.run_id) }}
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && github.event.comment.user.login == github.repository_owner && github.event.comment.author_association == 'OWNER' && startsWith(github.event.comment.body, '/deploy-current-main '))) && 'cloudflare-production' || format('cloudflare-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
