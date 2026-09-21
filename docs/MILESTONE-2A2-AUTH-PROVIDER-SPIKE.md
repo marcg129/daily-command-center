@@ -2,7 +2,7 @@
 
 Date: 2026-09-18
 
-Status: **AuthKit adapter + browser flow deployed; dual-provider acceptance active.**
+Status: **AuthKit adapter + browser flow deployed; dual-provider code complete; WorkOS staging acceptance configuration is the active boundary.**
 
 ## Decision
 
@@ -105,6 +105,12 @@ Merged and deployed. DCC now has sign-in, callback, rotating refresh/session-coo
 Refresh-token rotation has one additional safety invariant: only one same-origin browser context may rotate the AuthKit refresh token at a time. DCC uses the Web Locks API for cross-tab/worker coordination. After a caller acquires the lock it re-checks the protected request before refreshing, so a tab that waited for another tab's successful rotation observes the new browser-wide cookies and skips its own refresh. Confirmed terminal refresh failures may therefore clear invalid credentials without allowing a stale losing tab to erase a newer session. A product browser without Web Locks fails closed rather than falling back to unsafe tab-local rotation.
 
 ### 2A2d — Dual-provider acceptance and cutover
+
+The dual-proof identity-link operation is merged and deployed. An existing Cloudflare-authenticated DCC user must explicitly link a separately verified WorkOS human principal to the same durable `user_id`. The link operation never auto-provisions, creates workspaces, or changes memberships; conflicts fail closed.
+
+### 2A2e — WorkOS staging acceptance readiness
+
+Repository-side staging acceptance support is prepared in `docs/MILESTONE-2A2-WORKOS-STAGING-ACCEPTANCE.md`. The remaining activation boundary is external WorkOS Staging configuration plus the encrypted Cloudflare `WORKOS_API_KEY` secret. Production Cloudflare Access remains in front until real-browser linking and isolation acceptance pass.
 
 Before enabling WorkOS credentials, add a dual-proof identity-link operation. An existing Cloudflare-authenticated DCC user must explicitly link a separately verified WorkOS human principal to the same durable `user_id`. The link operation never auto-provisions, creates workspaces, or changes memberships; conflicts fail closed.
 
