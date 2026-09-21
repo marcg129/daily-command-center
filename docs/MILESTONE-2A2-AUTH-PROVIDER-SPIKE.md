@@ -110,7 +110,7 @@ The dual-proof identity-link operation is merged and deployed. An existing Cloud
 
 ### 2A2e — WorkOS staging acceptance readiness
 
-Repository-side staging acceptance support is prepared in `docs/MILESTONE-2A2-WORKOS-STAGING-ACCEPTANCE.md`. The remaining activation boundary is external WorkOS Staging configuration plus the encrypted Cloudflare `WORKOS_API_KEY` secret. Production Cloudflare Access remains in front until real-browser linking and isolation acceptance pass.
+Repository-side staging acceptance support is prepared in `docs/MILESTONE-2A2-WORKOS-STAGING-ACCEPTANCE.md`. The remaining activation boundary is external WorkOS Staging configuration plus the encrypted Cloudflare `WORKOS_API_KEY` secret. Production Cloudflare Access remains in front until real-browser linking and isolation acceptance pass. During that migration window, an explicit fail-closed acceptance selector can exercise the normal protected APIs under verified WorkOS application identity while Cloudflare continues serving only as the outer admission gate.
 
 The link-first migration prevents Marc's first WorkOS login from creating a second DCC user/Personal workspace and provides a provider-migration path without manual D1 edits.
 
