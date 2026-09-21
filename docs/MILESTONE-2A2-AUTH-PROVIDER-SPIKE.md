@@ -112,11 +112,9 @@ The dual-proof identity-link operation is merged and deployed. An existing Cloud
 
 Repository-side staging acceptance support is prepared in `docs/MILESTONE-2A2-WORKOS-STAGING-ACCEPTANCE.md`. The remaining activation boundary is external WorkOS Staging configuration plus the encrypted Cloudflare `WORKOS_API_KEY` secret. Production Cloudflare Access remains in front until real-browser linking and isolation acceptance pass.
 
-Before enabling WorkOS credentials, add a dual-proof identity-link operation. An existing Cloudflare-authenticated DCC user must explicitly link a separately verified WorkOS human principal to the same durable `user_id`. The link operation never auto-provisions, creates workspaces, or changes memberships; conflicts fail closed.
+The link-first migration prevents Marc's first WorkOS login from creating a second DCC user/Personal workspace and provides a provider-migration path without manual D1 edits.
 
-This prevents Marc's first WorkOS login from creating a second DCC user/Personal workspace and provides a provider-migration path without manual D1 edits.
-
-Then run Cloudflare + WorkOS in parallel long enough to prove:
+After staging bindings are enabled, run Cloudflare + WorkOS in parallel long enough to prove:
 
 - Marc retains Personal + Indelitech;
 - a new WorkOS identity gets only its private Personal workspace;
