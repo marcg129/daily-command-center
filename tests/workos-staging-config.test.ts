@@ -7,7 +7,7 @@ const script = fileURLToPath(new URL("../scripts/verify-workos-staging-config.mj
 
 const valid = {
   WORKOS_CLIENT_ID: "client_123456789",
-  WORKOS_API_KEY: "sk_123456789abcdef",
+  WORKOS_API_KEY: "sk_test_123456789abcdef",
   WORKOS_REDIRECT_URI: "https://command.coreyg.dev/api/auth/workos/callback",
   WORKOS_ISSUER: "https://api.workos.com/",
   WORKOS_JWKS_URL: "https://api.workos.com/sso/jwks/client_123456789",
@@ -25,8 +25,16 @@ test("WorkOS staging config verifier accepts the DCC staging contract without pr
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /structurally ready/);
   assert.match(result.stdout, /API key: configured/);
-  assert.doesNotMatch(result.stdout, /sk_123456789abcdef/);
-  assert.doesNotMatch(result.stderr, /sk_123456789abcdef/);
+  assert.doesNotMatch(result.stdout, /sk_test_123456789abcdef/);
+  assert.doesNotMatch(result.stderr, /sk_test_123456789abcdef/);
+});
+
+test("WorkOS staging config verifier rejects a production API key", () => {
+  const result = run({ WORKOS_API_KEY: "sk_live_123456789abcdef" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /staging key/);
+  assert.doesNotMatch(result.stdout, /sk_live_/);
+  assert.doesNotMatch(result.stderr, /sk_live_123456789abcdef/);
 });
 
 test("WorkOS staging config verifier requires the canonical DCC callback", () => {
