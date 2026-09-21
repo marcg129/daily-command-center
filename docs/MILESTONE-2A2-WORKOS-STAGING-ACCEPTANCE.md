@@ -37,7 +37,7 @@ In the WorkOS Dashboard:
 4. Add this exact redirect URI:
    `https://command.coreyg.dev/api/auth/workos/callback`
 5. Under Authentication, enable **Magic Auth** for the first acceptance pass.
-6. Obtain the Staging API key. It begins with `sk_`.
+6. Obtain the Staging API key. It must begin with `sk_test_`. The verifier intentionally rejects `sk_live_...` production keys.
 7. Do not place the API key in Git, Wrangler `vars`, screenshots, or issue comments.
 
 WorkOS references:
@@ -53,7 +53,7 @@ WorkOS references:
 For the Staging acceptance pass:
 
 - `WORKOS_CLIENT_ID=<staging client id>`
-- `WORKOS_API_KEY=<staging API key; secret>`
+- `WORKOS_API_KEY=<staging sk_test_... API key; secret>`
 - `WORKOS_REDIRECT_URI=https://command.coreyg.dev/api/auth/workos/callback`
 - `WORKOS_ISSUER=https://api.workos.com/`
 - `WORKOS_JWKS_URL=https://api.workos.com/sso/jwks/<staging client id>`
@@ -127,24 +127,73 @@ Acceptance requires HTTP 200 with `linked: true`, the existing durable DCC user,
 
 A conflict, missing Personal OWNER boundary, missing Cloudflare proof, missing WorkOS proof, or an already-linked WorkOS principal belonging to another user must fail closed.
 
-### C. Session and refresh acceptance
+### C. Prove protected APIs under WorkOS identity
 
-Verify in a normal browser session:
+Normal DCC browser traffic intentionally remains Cloudflare-first during migration, so simply browsing the app does **not** prove the WorkOS application identity.
 
-- DCC remains usable after AuthKit callback;
-- protected reads/writes continue to work;
-- multiple open tabs do not cause refresh-token logout races;
+For acceptance only, DCC supports an explicit selector header:
+
+`x-dcc-auth-provider: workos`
+
+The selector is fail-closed and migration-scoped:
+
+- it works only when Cloudflare Access has already admitted the request and supplied its assertion;
+- it ignores that assertion for DCC application identity;
+- it requires the HttpOnly WorkOS access cookie;
+- it passes the WorkOS token through the normal WorkOS verifier and normal DCC user/workspace authorization;
+- without the Access assertion or without the WorkOS cookie, the selected request is unauthenticated.
+
+Use this browser-console helper after Marc's WorkOS principal has been linked:
+
+```js
+const workosFetch = (path, init = {}) =>
+  fetch(path, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      ...(init.headers || {}),
+      "x-dcc-auth-provider": "workos",
+    },
+  });
+```
+
+First prove the hosted session is being resolved through Marc's linked WorkOS principal:
+
+```js
+await workosFetch("/api/hosted/session").then(async (response) => ({
+  status: response.status,
+  body: await response.json(),
+}))
+```
+
+Acceptance requires HTTP 200 with Marc's existing durable DCC user and the existing Personal + Indelitech workspace set.
+
+Then exercise representative protected reads/writes with `workosFetch`. These requests traverse the same hosted authorization surfaces but use the verified WorkOS principal as the DCC identity.
+
+The ordinary UI remains Cloudflare-first until the final cutover; do not claim UI traffic itself is WorkOS-authenticated during this phase.
+
+### D. WorkOS session/refresh acceptance
+
+Separately verify:
+
+- AuthKit callback establishes secure WorkOS access/refresh cookies;
+- the WorkOS refresh endpoint rotates the session successfully;
+- concurrent browser tabs do not cause refresh-token logout races;
 - sign-out clears WorkOS access/refresh cookies;
 - Cloudflare Access still protects the outer site during the migration window.
 
-### D. New-user acceptance
+### E. New-user acceptance
 
 Only after Marc's existing-user link is proven:
 
-1. authenticate a separate WorkOS human identity;
-2. confirm first login creates exactly one private Personal workspace;
-3. confirm it receives no Indelitech membership;
-4. verify cross-user reads fail closed for Tasks, Intake, Calendar, Bills, Income, Cash Flow, and Intel.
+1. sign out of WorkOS without ending the outer Cloudflare Access session;
+2. authenticate a separate WorkOS human identity;
+3. call `/api/hosted/session` with `workosFetch` so DCC resolves the request from the WorkOS principal rather than the Access assertion;
+4. confirm first WorkOS resolution creates exactly one private Personal workspace;
+5. confirm it receives no Indelitech membership;
+6. use WorkOS-selected requests to verify cross-user reads fail closed for Tasks, Intake, Calendar, Bills, Income, Cash Flow, and Intel.
+
+The Cloudflare assertion in this phase is only the temporary outer admission gate. The application user, provisioning decision, memberships, and protected-resource authorization are derived from the verified WorkOS principal.
 
 ## Cutover remains blocked until acceptance passes
 
