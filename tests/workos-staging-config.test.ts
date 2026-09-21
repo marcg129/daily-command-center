@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const script = new URL("../scripts/verify-workos-staging-config.mjs", import.meta.url);
+const script = fileURLToPath(new URL("../scripts/verify-workos-staging-config.mjs", import.meta.url));
 
 const valid = {
   WORKOS_CLIENT_ID: "client_123456789",
@@ -13,7 +14,7 @@ const valid = {
 };
 
 function run(overrides: Record<string, string> = {}) {
-  return spawnSync(process.execPath, [script.pathname], {
+  return spawnSync(process.execPath, [script], {
     encoding: "utf8",
     env: { ...process.env, ...valid, ...overrides },
   });
