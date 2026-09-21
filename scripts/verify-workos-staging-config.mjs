@@ -20,8 +20,8 @@ const jwksUrl = required("WORKOS_JWKS_URL");
 if (!/^client_[A-Za-z0-9_-]{8,120}$/.test(clientId)) {
   fail("WORKOS_CLIENT_ID has an unexpected format");
 }
-if (!/^sk_[A-Za-z0-9_-]{8,}$/.test(apiKey)) {
-  fail("WORKOS_API_KEY has an unexpected format");
+if (!/^sk_test_[A-Za-z0-9_-]{8,}$/.test(apiKey)) {
+  fail("WORKOS_API_KEY must be a WorkOS staging key (sk_test_...)");
 }
 
 let redirect;
