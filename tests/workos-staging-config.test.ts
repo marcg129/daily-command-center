@@ -9,7 +9,7 @@ const valid = {
   WORKOS_CLIENT_ID: "client_123456789",
   WORKOS_API_KEY: "sk_test_123456789abcdef",
   WORKOS_REDIRECT_URI: "https://command.coreyg.dev/api/auth/workos/callback",
-  WORKOS_ISSUER: "https://api.workos.com/",
+  WORKOS_ISSUER: "https://api.workos.com/user_management/client_123456789",
   WORKOS_JWKS_URL: "https://api.workos.com/sso/jwks/client_123456789",
 };
 
@@ -53,9 +53,10 @@ test("WorkOS staging config verifier binds the JWKS endpoint to the configured c
   assert.match(result.stderr, /WORKOS_JWKS_URL must be/);
 });
 
-test("WorkOS staging config verifier accepts the client-scoped issuer form", () => {
+test("WorkOS staging config verifier rejects a bare issuer that is not client-scoped", () => {
   const result = run({
-    WORKOS_ISSUER: "https://api.workos.com/user_management/client_123456789",
+    WORKOS_ISSUER: "https://api.workos.com/",
   });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /WORKOS_ISSUER must be/);
 });
