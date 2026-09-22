@@ -55,7 +55,7 @@ For the Staging acceptance pass:
 - `WORKOS_CLIENT_ID=<staging client id>`
 - `WORKOS_API_KEY=<staging sk_test_... API key; secret>`
 - `WORKOS_REDIRECT_URI=https://command.coreyg.dev/api/auth/workos/callback`
-- `WORKOS_ISSUER=https://api.workos.com/`
+- `WORKOS_ISSUER=https://api.workos.com/user_management/<staging client id>`
 - `WORKOS_JWKS_URL=https://api.workos.com/sso/jwks/<staging client id>`
 
 The repository helper validates this contract without making a network request and never prints the API key:
@@ -68,9 +68,9 @@ Set the five values only in the current shell, run the verifier, then close the 
 
 ```powershell
 $env:WORKOS_CLIENT_ID="client_..."
-$env:WORKOS_API_KEY="sk_..."
+$env:WORKOS_API_KEY="sk_test_..."
 $env:WORKOS_REDIRECT_URI="https://command.coreyg.dev/api/auth/workos/callback"
-$env:WORKOS_ISSUER="https://api.workos.com/"
+$env:WORKOS_ISSUER="https://api.workos.com/user_management/$($env:WORKOS_CLIENT_ID)"
 $env:WORKOS_JWKS_URL="https://api.workos.com/sso/jwks/$($env:WORKOS_CLIENT_ID)"
 npm run auth:workos:verify
 ```
