@@ -38,18 +38,9 @@ try {
 if (redirect.toString() !== EXPECTED_REDIRECT) {
   fail(`WORKOS_REDIRECT_URI must be exactly ${EXPECTED_REDIRECT}`);
 }
-if (
-  issuerUrl.protocol !== "https:" ||
-  issuerUrl.origin !== "https://api.workos.com" ||
-  issuerUrl.search ||
-  issuerUrl.hash
-) {
-  fail("WORKOS_ISSUER must use https://api.workos.com");
-}
-const issuerPath = issuerUrl.pathname.replace(/\/$/, "");
-const allowedIssuerPaths = new Set(["", `/user_management/${clientId}`]);
-if (!allowedIssuerPaths.has(issuerPath)) {
-  fail("WORKOS_ISSUER does not match the configured client");
+const expectedIssuer = `https://api.workos.com/user_management/${clientId}`;
+if (issuerUrl.toString().replace(/\/$/, "") !== expectedIssuer) {
+  fail(`WORKOS_ISSUER must be ${expectedIssuer}`);
 }
 
 const expectedJwks = `https://api.workos.com/sso/jwks/${clientId}`;
