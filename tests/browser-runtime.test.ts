@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applyHostedAcceptanceAuth,
   browserRuntimeMode,
   fetchHostedWithSessionRefresh,
   hostedWorkspaceEndpoint,
@@ -110,6 +111,22 @@ test("hosted workspace switches and task writes retain explicit workspace endpoi
   ]);
 });
 
+test("WorkOS staging acceptance adds the selector without dropping existing request headers", () => {
+  const init = applyHostedAcceptanceAuth({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  }, "workos");
+  const headers = new Headers(init?.headers);
+  assert.equal(init?.method, "POST");
+  assert.equal(headers.get("Content-Type"), "application/json");
+  assert.equal(headers.get("x-dcc-auth-provider"), "workos");
+});
+
+test("normal hosted requests remain unchanged when staging acceptance is inactive", () => {
+  const init = { cache: "no-store" as const };
+  assert.equal(applyHostedAcceptanceAuth(init, null), init);
+});
+
 test("hosted AuthKit refresh uses a same-origin Web Lock and re-checks access before rotating", async () => {
   const source = await readFile(
     new URL("../lib/runtime/browser-runtime.ts", import.meta.url),
@@ -121,8 +138,11 @@ test("hosted AuthKit refresh uses a same-origin Web Lock and re-checks access be
   assert.match(source, /manager\.request\(PRODUCT_REFRESH_LOCK, task\)/);
   assert.match(source, /if \(browser && !manager\) return null/);
 
+  assert.match(source, /const protectedInit = applyHostedAcceptanceAuth\(init\)/);
+  assert.match(source, /fetcher\(input, protectedInit\)/);
+
   const lockIndex = source.indexOf("withProductRefreshLock(async () =>");
-  const recheckIndex = source.indexOf("const recheck = await fetcher(input, init)", lockIndex);
+  const recheckIndex = source.indexOf("const recheck = await fetcher(input, protectedInit)", lockIndex);
   const refreshIndex = source.indexOf("const refreshed = await refreshProductSession(fetcher)", lockIndex);
   assert.ok(lockIndex >= 0);
   assert.ok(recheckIndex > lockIndex);

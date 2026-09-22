@@ -19,6 +19,34 @@ test("Cloudflare Access assertion remains the migration-first session identity",
   );
 });
 
+test("explicit WorkOS acceptance selection uses the WorkOS cookie behind the Cloudflare gate", () => {
+  assert.equal(
+    readRequestSessionIdentity(request({
+      "cf-access-jwt-assertion": "access-assertion",
+      "x-dcc-auth-provider": "workos",
+      cookie: "dcc-workos-access=cookie-token",
+    })),
+    "product-bearer:cookie-token",
+  );
+});
+
+test("WorkOS acceptance selection fails closed without both the Access gate and WorkOS cookie", () => {
+  assert.equal(
+    readRequestSessionIdentity(request({
+      "x-dcc-auth-provider": "workos",
+      cookie: "dcc-workos-access=cookie-token",
+    })),
+    null,
+  );
+  assert.equal(
+    readRequestSessionIdentity(request({
+      "cf-access-jwt-assertion": "access-assertion",
+      "x-dcc-auth-provider": "workos",
+    })),
+    null,
+  );
+});
+
 test("product bearer tokens are tagged before reaching a session provider", () => {
   const identity = readRequestSessionIdentity(
     request({ authorization: "Bearer workos-access-token" }),
