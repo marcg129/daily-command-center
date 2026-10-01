@@ -134,14 +134,13 @@ test("direct Calendar sync authorizes Indelitech classification before persistin
   ]);
 });
 
-test("direct scan status records freshness only after resolving both logical workspaces to the same user", async () => {
+test("direct scan status records freshness for the authenticated user without an unnecessary Indelitech dependency", async () => {
   const deps = dependencies();
   const result = await service(deps).recordScanStatus(scanStatus);
 
   assert.deepEqual(result, { scanRunId: "scan-direct-1", recorded: true });
   assert.deepEqual(deps.events, [
     "resolve:personal",
-    "resolve:indelitech",
     "status:user:marc",
   ]);
 });
