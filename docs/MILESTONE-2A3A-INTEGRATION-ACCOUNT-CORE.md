@@ -80,7 +80,9 @@ The keyring supports reading older key versions while new writes use one active 
 - decrypts only after an owned account lookup;
 - resets health state after credential replacement;
 - records success/failure health without returning secrets;
-- deletes credential ciphertext on disconnect.
+- deletes credential ciphertext on disconnect;
+- allows an owned disconnected account to reconnect only by persisting a new authenticated credential envelope; and
+- rejects credential bundles whose actual AES-GCM/base64url envelope would exceed the migration's bounded ciphertext field.
 
 There is intentionally no browser/API route in 2A3a.
 
