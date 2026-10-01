@@ -261,9 +261,12 @@ export class D1IntegrationAccountRepository {
     now: string;
   }>): Promise<void> {
     const account = await this.get(input.userId, input.integrationId);
-    if (!account || account.status === "DISCONNECTED") {
+    if (!account) {
       throw new Error("Integration account access denied.");
     }
+    // Credential replacement is also the explicit reconnect path for an owned
+    // disconnected account. The metadata update below reactivates the account
+    // only after a new authenticated credential envelope is ready to persist.
     const now = optionalTimestamp(input.now, "Integration timestamp");
     if (!now) throw new Error("Integration timestamp is invalid.");
     const accessTokenExpiresAt = optionalTimestamp(
