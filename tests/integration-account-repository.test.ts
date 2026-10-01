@@ -194,12 +194,12 @@ test("integration health tracks success and bounded failure state without exposi
   await integrations.recordSyncSuccess({
     userId,
     integrationId,
-    completedAt: "2026-10-01T12:30:00Z",
-    nextSyncAt: "2026-10-01T13:00:00Z",
+    completedAt: "2026-10-01T08:30:00-04:00",
+    nextSyncAt: "2026-10-01T09:00:00-04:00",
   });
   account = await integrations.get(userId, integrationId);
-  assert.equal(account?.lastSuccessfulSyncAt, "2026-10-01T12:30:00Z");
-  assert.equal(account?.nextSyncAt, "2026-10-01T13:00:00Z");
+  assert.equal(account?.lastSuccessfulSyncAt, "2026-10-01T12:30:00.000Z");
+  assert.equal(account?.nextSyncAt, "2026-10-01T13:00:00.000Z");
 
   database.sqlite.close();
 });
@@ -235,6 +235,16 @@ test("disconnect deletes credential ciphertext and disabled users fail closed", 
     /access denied/i,
   );
 
+  await assert.rejects(
+    integrations.replaceCredentials({
+      userId,
+      integrationId: id,
+      credentials: { refreshToken: "missing-scope-reconnect" },
+      now: "2026-10-01T13:30:00Z",
+    }),
+    /current granted scopes/i,
+  );
+
   await integrations.replaceCredentials({
     userId,
     integrationId: id,
@@ -242,20 +252,23 @@ test("disconnect deletes credential ciphertext and disabled users fail closed", 
       refreshToken: "refresh-alice-reconnected",
       accessToken: "access-alice-reconnected",
     },
-    accessTokenExpiresAt: "2026-10-01T15:00:00Z",
-    now: "2026-10-01T14:00:00Z",
+    scopes: ["scope.calendar"],
+    accessTokenExpiresAt: "2026-10-01T15:00:00-04:00",
+    now: "2026-10-01T14:00:00-04:00",
   });
-  assert.equal((await integrations.get(userId, id))?.status, "ACTIVE");
+  const reconnected = await integrations.get(userId, id);
+  assert.equal(reconnected?.status, "ACTIVE");
+  assert.deepEqual(reconnected?.scopes, ["scope.calendar"]);
+  assert.equal(reconnected?.accessTokenExpiresAt, "2026-10-01T19:00:00.000Z");
   assert.deepEqual(await integrations.readCredentials(userId, id), {
     refreshToken: "refresh-alice-reconnected",
     accessToken: "access-alice-reconnected",
   });
-  assert.equal(
-    database.sqlite.prepare(
-      "SELECT COUNT(*) count FROM integration_credentials WHERE integration_id=?",
-    ).get(id)!.count,
-    1,
-  );
+  const credentialRow = database.sqlite.prepare(
+    "SELECT COUNT(*) count, MIN(created_at) created_at FROM integration_credentials WHERE integration_id=?",
+  ).get(id) as { count: number; created_at: string };
+  assert.equal(credentialRow.count, 1);
+  assert.equal(credentialRow.created_at, "2026-10-01T18:00:00.000Z");
 
   await assert.rejects(
     integrations.list(applicationUserId("user:disabled")),
