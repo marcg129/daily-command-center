@@ -97,7 +97,7 @@ export function createDirectDailyIntakeIngressService({
 
     async recordScanStatus(input: ScanStatusInput) {
       validate("Scan status", () => validateScanStatusInput(input));
-      const userId = await resolveSameUser(["personal", "indelitech"]);
+      const { userId } = await resolve("personal");
       await sourceFreshnessRepository.record(userId, input);
       return {
         scanRunId: input.scanRunId,
