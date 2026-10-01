@@ -103,10 +103,11 @@ function optionalEmail(value: string | null | undefined): string | null {
 function optionalTimestamp(value: string | null | undefined, label: string): string | null {
   if (value == null || !value.trim()) return null;
   const normalized = value.trim();
-  if (!Number.isFinite(Date.parse(normalized))) {
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed)) {
     throw new Error(`${label} is invalid.`);
   }
-  return normalized;
+  return new Date(parsed).toISOString();
 }
 
 function envelope(row: CredentialRow): EncryptedIntegrationCredential {
@@ -257,6 +258,7 @@ export class D1IntegrationAccountRepository {
     userId: ApplicationUserId;
     integrationId: IntegrationAccountId;
     credentials: IntegrationCredentialBundle;
+    scopes?: readonly string[];
     accessTokenExpiresAt?: string | null;
     now: string;
   }>): Promise<void> {
@@ -273,6 +275,12 @@ export class D1IntegrationAccountRepository {
       input.accessTokenExpiresAt,
       "Access token expiry",
     );
+    if (account.status === "DISCONNECTED" && input.scopes === undefined) {
+      throw new Error("Integration reconnect requires the current granted scopes.");
+    }
+    const scopes = input.scopes === undefined
+      ? account.scopes
+      : normalizeIntegrationScopes(input.scopes);
     const encrypted = await this.cipher.encrypt(
       this.context(input.userId, input.integrationId, account.provider),
       input.credentials,
@@ -295,11 +303,12 @@ export class D1IntegrationAccountRepository {
         encrypted.formatVersion,
         encrypted.nonceB64u,
         encrypted.ciphertextB64u,
-        account.createdAt,
+        now,
         now,
       ),
       this.database.prepare(`UPDATE integration_accounts SET
         status='ACTIVE',
+        scopes_json=?,
         access_token_expires_at=?,
         consecutive_failures=0,
         last_error_code=NULL,
@@ -307,6 +316,7 @@ export class D1IntegrationAccountRepository {
         disconnected_at=NULL,
         updated_at=?
        WHERE user_id=? AND integration_id=?`).bind(
+        JSON.stringify(scopes),
         accessTokenExpiresAt,
         now,
         input.userId,
