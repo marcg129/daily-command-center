@@ -113,12 +113,19 @@ export class AesGcmIntegrationCredentialCipher {
       key,
       exactArrayBuffer(plaintext),
     );
+    const ciphertextB64u = base64Url(new Uint8Array(encrypted));
+    // Keep the runtime acceptance boundary aligned with migration 0014. Check
+    // the actual authenticated ciphertext size so JSON escaping and multi-byte
+    // token content cannot create a bundle that validates but fails in D1.
+    if (ciphertextB64u.length > 32_768) {
+      throw new Error("Integration credentials exceed the encrypted storage limit.");
+    }
     return {
       algorithm: "AES-256-GCM",
       keyVersion: this.keyring.activeVersion,
       formatVersion: 1,
       nonceB64u: base64Url(nonce),
-      ciphertextB64u: base64Url(new Uint8Array(encrypted)),
+      ciphertextB64u,
     };
   }
 
