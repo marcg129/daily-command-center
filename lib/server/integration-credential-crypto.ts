@@ -42,6 +42,12 @@ function fromBase64Url(value: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function aad(context: IntegrationCredentialContext): Uint8Array {
   return new TextEncoder().encode(JSON.stringify([
     "dcc-integration-credential",
@@ -63,7 +69,7 @@ function keyBytes(value: string): Uint8Array {
 async function importKey(value: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "raw",
-    keyBytes(value),
+    exactArrayBuffer(keyBytes(value)),
     { name: "AES-GCM" },
     false,
     ["encrypt", "decrypt"],
@@ -98,9 +104,14 @@ export class AesGcmIntegrationCredentialCipher {
       accessToken: validated.accessToken ?? null,
     }));
     const encrypted = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: aad(context), tagLength: 128 },
+      {
+        name: "AES-GCM",
+        iv: exactArrayBuffer(nonce),
+        additionalData: exactArrayBuffer(aad(context)),
+        tagLength: 128,
+      },
       key,
-      plaintext,
+      exactArrayBuffer(plaintext),
     );
     return {
       algorithm: "AES-256-GCM",
@@ -133,12 +144,12 @@ export class AesGcmIntegrationCredentialCipher {
       decrypted = await crypto.subtle.decrypt(
         {
           name: "AES-GCM",
-          iv: nonce,
-          additionalData: aad(context),
+          iv: exactArrayBuffer(nonce),
+          additionalData: exactArrayBuffer(aad(context)),
           tagLength: 128,
         },
         key,
-        fromBase64Url(envelope.ciphertextB64u),
+        exactArrayBuffer(fromBase64Url(envelope.ciphertextB64u)),
       );
     } catch {
       throw new Error("Integration credential decryption failed.");
