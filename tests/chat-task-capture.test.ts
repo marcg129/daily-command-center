@@ -167,6 +167,17 @@ test("MCP metadata makes SEND TO TASKS a direct explicit command while inferred 
   assert.doesNotMatch(source, /api[_-]?key|bearer-token bypass|Access-Control-Allow-Origin/i);
 });
 
+test("MCP exposes a direct Daily Intake transport so scheduled scans do not require Todoist", async () => {
+  const source = await readFile(new URL("../workers/task-capture-mcp.ts", import.meta.url), "utf8");
+  assert.match(source, /submit_intake_proposal/);
+  assert.match(source, /sync_calendar_batch/);
+  assert.match(source, /record_scan_status/);
+  assert.match(source, /without Todoist/);
+  assert.match(source, /never auto-approve a Task or Bill/);
+  assert.match(source, /createDirectDailyIntakeIngressService/);
+  assert.doesNotMatch(source, /todoist-api|TODOIST_API_TOKEN|TODOIST_PROJECT_ID/);
+});
+
 test("future-ready Skill mirrors the explicit command and confirmation boundary", async () => {
   const skill = await readFile(
     new URL("../skills/daily-command-center-tasks/SKILL.md", import.meta.url),

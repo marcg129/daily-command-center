@@ -1,14 +1,21 @@
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { createChatTaskCaptureService } from "../lib/runtime/chat-task-capture";
+import {
+  createDirectDailyIntakeIngressService,
+  DirectDailyIntakeValidationError,
+} from "../lib/runtime/direct-daily-intake-ingress";
 import type { D1Database } from "../lib/runtime/d1";
-import { systemClock } from "../lib/runtime/primitives";
+import { systemClock, webIdGenerator } from "../lib/runtime/primitives";
 import { requireAuthenticatedSession } from "../lib/runtime/session";
 import {
   TaskCaptureConflictError,
   TaskCaptureValidationError,
 } from "../lib/runtime/task-capture";
 import { CloudflareAccessSessionProvider } from "../lib/server/cloudflare-access-session-provider";
+import { D1CalendarProjectionRepository } from "../lib/server/d1-calendar-projection-repository";
+import { D1IntakeRepository } from "../lib/server/d1-intake-repository";
+import { D1SourceFreshnessRepository } from "../lib/server/d1-source-freshness-repository";
 import { D1TaskRepository } from "../lib/server/d1-task-repository";
 import { D1WorkspaceResolver } from "../lib/server/d1-workspace-resolver";
 
@@ -43,11 +50,98 @@ const captureShape = {
   sourceContext: text(500).describe("Short chat/thread reference when useful; never paste unnecessary sensitive conversation text."),
 };
 
+
+const billRecurrenceShape = z.object({
+  scheduleStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  recurrenceUnit: z.enum(["NONE", "WEEK", "MONTH", "YEAR"]),
+  recurrenceInterval: z.number().int().min(1).max(120),
+  recurrenceDayMode: z.enum(["ANCHOR_DATE", "LAST_DAY"]).nullable(),
+}).strict();
+
+const intakeProposalShape = z.object({
+  scanRunId: z.string().trim().min(1).max(200),
+  workspaceId: z.enum(["personal", "indelitech"]),
+  sourceKey: z.enum([
+    "personal_gmail",
+    "professional_gmail",
+    "indelitech_gmail",
+    "primary_calendar",
+    "family_calendar",
+    "chat_history",
+  ]),
+  sourceType: z.enum(["gmail", "calendar", "chat"]),
+  messageId: z.string().max(1024).optional(),
+  chatItemId: z.string().max(1024).optional(),
+  chatThreadId: z.string().max(1024).optional(),
+  threadId: z.string().max(1024).optional(),
+  eventId: z.string().max(1024).optional(),
+  seriesId: z.string().max(1024).optional(),
+  proposalOrdinal: z.number().int().min(1).max(10_000),
+  sourceTimestamp: z.string().max(64),
+  sender: z.string().max(500).optional(),
+  subject: z.string().max(1000).optional(),
+  sourceUrl: z.string().max(2048).optional(),
+  intakeType: z.enum(["TASK", "FOLLOW_UP", "BILL", "AWARENESS"]),
+  title: z.string().trim().min(1).max(300),
+  summary: z.string().trim().min(1).max(4000),
+  classificationReason: z.string().trim().min(1).max(3000),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  followUpAt: z.string().max(64).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+  amountMinor: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  recurrence: billRecurrenceShape.optional(),
+}).strict();
+
+const calendarEventShape = z.object({
+  eventId: z.string().trim().min(1).max(1024),
+  seriesId: z.string().max(1024).optional(),
+  occurrenceId: z.string().max(1024).optional(),
+  title: z.string().trim().min(1).max(500),
+  start: z.string().max(64),
+  end: z.string().max(64),
+  allDay: z.boolean(),
+  location: z.string().max(1000).optional(),
+  sourceUrl: z.string().max(2048).optional(),
+  automaticWorkspaceId: z.enum(["personal", "indelitech"]).optional(),
+  cancelled: z.boolean(),
+}).strict();
+
+const calendarSyncShape = z.object({
+  scanRunId: z.string().trim().min(1).max(200),
+  sourceKey: z.enum(["primary_calendar", "family_calendar"]),
+  windowStart: z.string().max(64),
+  windowEnd: z.string().max(64),
+  batchIndex: z.number().int().min(1).max(1000),
+  batchCount: z.number().int().min(1).max(1000),
+  events: z.array(calendarEventShape).max(500),
+}).strict();
+
+const scanSourceStatusShape = z.object({
+  sourceKey: z.enum([
+    "personal_gmail",
+    "professional_gmail",
+    "indelitech_gmail",
+    "primary_calendar",
+    "family_calendar",
+  ]),
+  state: z.enum(["SUCCESS", "FAILED"]),
+  attemptedAt: z.string().max(64),
+  completedAt: z.string().max(64).optional(),
+  diagnostic: z.string().max(1000).optional(),
+}).strict();
+
+const scanStatusShape = z.object({
+  scanRunId: z.string().trim().min(1).max(200),
+  sources: z.array(scanSourceStatusShape).length(5),
+}).strict();
+
 function toolError(error: unknown) {
   let message = "The task could not be processed safely.";
   if (
     error instanceof TaskCaptureValidationError ||
     error instanceof TaskCaptureConflictError ||
+    error instanceof DirectDailyIntakeValidationError ||
     (error instanceof Error && [
       "Authentication required.",
       "Workspace access denied.",
@@ -60,14 +154,22 @@ function toolError(error: unknown) {
 }
 
 function createServer(env: Env, principal: ReturnType<typeof requireAuthenticatedSession>) {
+  const workspaceResolver = new D1WorkspaceResolver(env.DB);
   const tasks = createChatTaskCaptureService(
     principal,
-    new D1WorkspaceResolver(env.DB),
+    workspaceResolver,
     new D1TaskRepository(env.DB),
     systemClock,
   );
+  const directIntake = createDirectDailyIntakeIngressService({
+    principal,
+    workspaceResolver,
+    intakeRepository: new D1IntakeRepository(env.DB, systemClock, webIdGenerator),
+    calendarRepository: new D1CalendarProjectionRepository(env.DB, systemClock, webIdGenerator),
+    sourceFreshnessRepository: new D1SourceFreshnessRepository(env.DB),
+  });
   const server = new McpServer(
-    { name: "Daily Command Center Tasks", version: "1.1.0" },
+    { name: "Daily Command Center Tasks", version: "1.2.0" },
     {
       instructions: [
         "Treat an explicit user request to save or create a task as authorization to perform the write.",
@@ -76,6 +178,7 @@ function createServer(env: Env, principal: ReturnType<typeof requireAuthenticate
         "If you merely infer a likely task from ordinary conversation, do not write it. Ask whether the user wants it added. A clear yes, do it, add it, or equivalent reply then authorizes create_task using the existing conversation context.",
         "Use preview_task only when the exact interpretation itself needs review before saving. If preview_task is used, show the material proposal and wait for confirmation before create_task.",
         "Clarify only a materially required ambiguity, especially workspace. Omit optional fields that are unknown. Never invent a due date, reminder, recurrence, workspace, duration, or other material detail.",
+        "For Daily Intake scans, use the direct Intake, Calendar, and scan-status tools instead of Todoist whenever these tools are available. These tools write only staging/projection/freshness data and never auto-approve a Task or Bill.",
       ].join(" "),
     },
   );
@@ -146,6 +249,101 @@ function createServer(env: Env, principal: ReturnType<typeof requireAuthenticate
             text: result.created
               ? `Created task “${result.task.title}” in ${result.task.primaryWorkspaceId}.`
               : `Task “${result.task.title}” already exists; no duplicate was created.`,
+          }],
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+
+  server.registerTool(
+    "submit_intake_proposal",
+    {
+      title: "Submit a Daily Command Center Intake proposal directly",
+      description:
+        "Persist one validated Intake proposal directly to Daily Command Center without Todoist. This only creates or reuses a confirmation-gated Intake item; it never approves the item or creates a canonical Task or Bill.",
+      inputSchema: intakeProposalShape.shape,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      try {
+        const result = await directIntake.submitIntakeProposal(input);
+        return {
+          structuredContent: { result },
+          content: [{
+            type: "text",
+            text: result.status === "created"
+              ? "Stored the Intake proposal directly in Daily Command Center."
+              : "The Intake proposal was already known; no duplicate was created.",
+          }],
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "sync_calendar_batch",
+    {
+      title: "Sync a Daily Command Center Calendar batch directly",
+      description:
+        "Persist one validated Primary or Family Calendar snapshot batch directly to Daily Command Center without Todoist. Use this for DCC Intake scans. It updates calendar projections only.",
+      inputSchema: calendarSyncShape.shape,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      try {
+        const result = await directIntake.syncCalendarBatch(input);
+        return {
+          structuredContent: { result },
+          content: [{
+            type: "text",
+            text: result.complete
+              ? `Calendar snapshot for ${result.sourceKey} is complete.`
+              : `Accepted calendar batch ${result.batchIndex} of ${result.batchCount} for ${result.sourceKey}.`,
+          }],
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "record_scan_status",
+    {
+      title: "Record Daily Command Center Intake scan health directly",
+      description:
+        "Record the five-source Daily Intake scan status directly in Daily Command Center without Todoist. This updates source freshness/health only.",
+      inputSchema: scanStatusShape.shape,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      try {
+        const result = await directIntake.recordScanStatus(input);
+        return {
+          structuredContent: { result },
+          content: [{
+            type: "text",
+            text: "Recorded Daily Command Center Intake scan health.",
           }],
         };
       } catch (error) {

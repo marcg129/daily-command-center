@@ -2,7 +2,7 @@
 
 Date: 2026-09-16
 
-Status: **Approved experiment; implementation isolated from Milestone 1G-G.**
+Status: **Fallback transport only. Daily Intake/Calendar automation should use the direct authenticated DCC MCP transport when available.**
 
 ## Objective
 
@@ -10,7 +10,7 @@ Restore the original low-friction Daily Command Center workflow even when ChatGP
 
 **conversation → capture request → Daily Command Center task, with no second planning app to manage manually.**
 
-Todoist is transport only. Daily Command Center remains the system of record.
+Todoist is transport only. Daily Command Center remains the system of record. As of the direct Intake transport hardening, scheduled Daily Intake/Calendar scans should not use Todoist as their primary message bus; the authenticated DCC MCP writes those staging/projection/freshness records directly. This bridge remains available as a degraded-mode capture fallback.
 
 ## Validated first hop
 

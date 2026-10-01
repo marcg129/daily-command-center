@@ -26,6 +26,17 @@ Treat equivalent direct instructions such as “add that to my tasks,” “put 
 7. Use a preview/review action only when the exact interpretation itself needs user review before saving. Do not make preview a mandatory first step for an unambiguous explicit request.
 8. Do not claim success unless the Daily Command Center action succeeds. If the capability is unavailable on the current ChatGPT surface, say that the task could not be written from that surface rather than pretending it was saved.
 
+
+## Daily Intake transport
+
+For scheduled or explicit Daily Command Center Intake scans, prefer the authenticated direct DCC actions when they are available:
+
+- `submit_intake_proposal` for confirmation-gated Intake candidates;
+- `sync_calendar_batch` for Primary/Family Calendar projections; and
+- `record_scan_status` for five-source freshness/health.
+
+Do not route these records through Todoist when the direct DCC actions are available. These actions write Intake staging, Calendar projections, and source freshness only. They must never auto-approve an Intake item or create a canonical Task or Bill.
+
 ## Authorization boundary
 
 Never bypass the Daily Command Center backend. The app/server must authenticate the actual user, resolve the logical workspace to that user's physical workspace instance, validate membership, and fail closed for unauthorized, disabled, unmapped, or forged workspace access.
