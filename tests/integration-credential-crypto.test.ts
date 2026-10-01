@@ -73,6 +73,24 @@ test("encrypted credentials are cryptographically bound to the owning user and i
   );
 });
 
+test("credential encryption rejects bundles whose actual ciphertext exceeds the D1 envelope limit", async () => {
+  const cipher = new AesGcmIntegrationCredentialCipher({
+    activeVersion: 1,
+    keys: new Map([[1, generateIntegrationCredentialKey()]]),
+  });
+
+  await assert.rejects(
+    cipher.encrypt(
+      { userId: alice, integrationId: integration, provider: "GOOGLE" },
+      {
+        refreshToken: "r".repeat(13_000),
+        accessToken: "a".repeat(13_000),
+      },
+    ),
+    /encrypted storage limit/i,
+  );
+});
+
 test("credential key rotation can decrypt old envelopes while writing the active version", async () => {
   const v1 = generateIntegrationCredentialKey();
   const v2 = generateIntegrationCredentialKey();
