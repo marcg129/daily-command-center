@@ -52,7 +52,7 @@ const captureShape = {
 
 
 const billRecurrenceShape = z.object({
-  scheduleStartDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  scheduleStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   recurrenceUnit: z.enum(["NONE", "WEEK", "MONTH", "YEAR"]),
   recurrenceInterval: z.number().int().min(1).max(120),
   recurrenceDayMode: z.enum(["ANCHOR_DATE", "LAST_DAY"]).nullable(),
@@ -85,7 +85,7 @@ const intakeProposalShape = z.object({
   title: z.string().trim().min(1).max(300),
   summary: z.string().trim().min(1).max(4000),
   classificationReason: z.string().trim().min(1).max(3000),
-  dueDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   followUpAt: z.string().max(64).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   amountMinor: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
