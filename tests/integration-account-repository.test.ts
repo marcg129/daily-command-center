@@ -234,6 +234,29 @@ test("disconnect deletes credential ciphertext and disabled users fail closed", 
     integrations.readCredentials(userId, id),
     /access denied/i,
   );
+
+  await integrations.replaceCredentials({
+    userId,
+    integrationId: id,
+    credentials: {
+      refreshToken: "refresh-alice-reconnected",
+      accessToken: "access-alice-reconnected",
+    },
+    accessTokenExpiresAt: "2026-10-01T15:00:00Z",
+    now: "2026-10-01T14:00:00Z",
+  });
+  assert.equal((await integrations.get(userId, id))?.status, "ACTIVE");
+  assert.deepEqual(await integrations.readCredentials(userId, id), {
+    refreshToken: "refresh-alice-reconnected",
+    accessToken: "access-alice-reconnected",
+  });
+  assert.equal(
+    database.sqlite.prepare(
+      "SELECT COUNT(*) count FROM integration_credentials WHERE integration_id=?",
+    ).get(id)!.count,
+    1,
+  );
+
   await assert.rejects(
     integrations.list(applicationUserId("user:disabled")),
     /access denied/i,
