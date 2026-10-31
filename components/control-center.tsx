@@ -3647,7 +3647,7 @@ export function ControlCenter() {
           <WorkspacePageShell eyebrow="Indelitech · Intel" title="Intel" description="Hosted business intelligence is not enabled in this milestone." icon={<Radio size={25} />} emptyTitle="Hosted Intel is deferred" emptyDescription="This hosted shell does not call local live-feed APIs. Task workflows remain available in Today and Tasks." />
         )}{" "}
         {activeTab === "calendar" && (
-          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={openTask} />
+          <TaskCalendar tasks={tasks} workspaceId={activeWorkspaceId} onOpenTask={openTask} authorizedWorkspaceIds={authorizedWorkspaceIds} eventsEnabled={runtimeMode === "hosted"} />
         )}{" "}
         {activeTab === "intake" && (
           <IntakeView workspaceId={activeWorkspaceId} authorizedWorkspaceIds={authorizedWorkspaceIds} enabled={runtimeMode === "hosted"} />
