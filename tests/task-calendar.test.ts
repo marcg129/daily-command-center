@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { monthCalendarDays, shiftCalendarMonth, taskCalendarEntries } from "../lib/task-calendar";
-import type { ProjectedCalendarEvent } from "../lib/runtime/calendar-projection-repository";\nimport type { TaskItem } from "../lib/types";
+import type { ProjectedCalendarEvent } from "../lib/runtime/calendar-projection-repository";
+import type { TaskItem } from "../lib/types";
 
 function task(overrides: Partial<TaskItem> = {}): TaskItem {
   return { id: "task", title: "Canonical task", description: "Details", due: "2026-09-15", recurrence: "One-time", priority: "HIGH", primaryWorkspaceId: "personal", done: false, status: "OPEN", ...overrides };
