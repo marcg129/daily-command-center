@@ -1,3 +1,4 @@
+import type { ProjectedCalendarEvent } from "./runtime/calendar-projection-repository";
 import type { ProductWorkspaceId } from "./runtime/context";
 import { PRODUCT_TIME_ZONE } from "./product-time";
 import { normalizeTaskPriority, taskIsActive, taskIsOverdue, visibleTaskItems } from "./tasks";
@@ -15,6 +16,12 @@ export type TaskCalendarEntry = {
   overdue: boolean;
   priority: "LOW" | "MEDIUM" | "HIGH";
 };
+
+export type CalendarEventEntry = Readonly<{
+  id: string;
+  date: string;
+  event: ProjectedCalendarEvent;
+}>;
 
 function productDate(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -47,6 +54,21 @@ function timedEntry(task: TaskItem, kind: "REMINDER" | "FOLLOW_UP", timestamp?: 
     overdue: false,
     priority: normalizeTaskPriority(task.priority),
   };
+}
+
+export function calendarEventEntries(events: readonly ProjectedCalendarEvent[]): CalendarEventEntry[] {
+  return events.flatMap((event) => {
+    const date = event.allDay
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(event.startAt) ? event.startAt : event.startAt.slice(0, 10))
+      : (Number.isFinite(Date.parse(event.startAt)) ? productDate(new Date(event.startAt)) : "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    return [{ id: `event:${event.eventProjectionId}`, date, event }];
+  }).toSorted((left, right) =>
+    left.date.localeCompare(right.date) ||
+    Number(left.event.allDay) * -1 - Number(right.event.allDay) * -1 ||
+    left.event.startAt.localeCompare(right.event.startAt) ||
+    left.event.eventProjectionId.localeCompare(right.event.eventProjectionId)
+  );
 }
 
 export function taskCalendarEntries(tasks: TaskItem[], workspaceId: ProductWorkspaceId, now = new Date()) {
