@@ -1,6 +1,6 @@
 # Project roadmap
 
-Last updated: 2026-09-18
+Last updated: 2026-10-01
 
 This document is the canonical near-term delivery order. Completed milestone notes preserve implementation detail; this roadmap records the current boundary and what comes next.
 
@@ -252,6 +252,12 @@ See:
 
 
 ## Active milestone 2A — Consumer-ready identity, provisioning, and integrations
+
+### Current boundary
+
+- **2A1 — Safe private-user provisioning:** merged, deployed, and regression-tested.
+- **2A2 — Product authentication adapter:** WorkOS/AuthKit adapter, browser flow, dual-proof linking, and staging acceptance harness are merged and deployed. Real WorkOS Staging configuration/browser acceptance remains an external activation gate; Cloudflare Access still protects the customer-facing path.
+- **2A3a — Integration account core:** active. Adds user-owned hosted integration metadata plus encrypted credential persistence without yet enabling Google OAuth or collection.
 
 ### Goal
 
