@@ -54,3 +54,10 @@ test("related Intake and approved Task targets stay linked to the projected even
   assert.match(eventItem, /approvedTargetId/);
   assert.match(eventItem, /onOpenTask/);
 });
+
+
+test("one-off events expose an event-level workspace correction even without recurring keys", () => {
+  const eventItem = source("components/calendar-event-item.tsx");
+  assert.match(eventItem, /event\.occurrenceKey\s*\|\|\s*!event\.seriesId/);
+  assert.match(eventItem, /This occurrence only/);
+});
