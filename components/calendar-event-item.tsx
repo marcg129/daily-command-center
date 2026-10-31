@@ -96,7 +96,7 @@ export function CalendarEventItem({
         Apply to{" "}
         <select value={scope} onChange={(change) => setScope(change.target.value as CalendarOverrideScope)} disabled={pending}>
           {event.seriesId && <option value="SERIES">Entire series</option>}
-          {event.occurrenceKey && <option value="OCCURRENCE">This occurrence only</option>}
+          {(event.occurrenceKey || !event.seriesId) && <option value="OCCURRENCE">This occurrence only</option>}
         </select>
       </label>
       <button type="button" onClick={() => void applyOverride()} disabled={pending}>
