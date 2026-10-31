@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { monthCalendarDays, shiftCalendarMonth, taskCalendarEntries } from "../lib/task-calendar";
-import type { TaskItem } from "../lib/types";
+import type { ProjectedCalendarEvent } from "../lib/runtime/calendar-projection-repository";\nimport type { TaskItem } from "../lib/types";
 
 function task(overrides: Partial<TaskItem> = {}): TaskItem {
   return { id: "task", title: "Canonical task", description: "Details", due: "2026-09-15", recurrence: "One-time", priority: "HIGH", primaryWorkspaceId: "personal", done: false, status: "OPEN", ...overrides };
@@ -65,4 +65,66 @@ test("month calendar exposes selectable days, overflow drill-down, and keyboard 
   assert.doesNotMatch(calendar, /event\.target !== event\.currentTarget/);
   assert.match(calendar, /className="calendar-day-detail" aria-live="polite"/);
   assert.match(calendar, /selectedEntries\.map\(\(entry\) => <CalendarItem/);
+});
+
+
+test("Google event projection preserves event identity and product dates without task semantics", async () => {
+  const module = await import("../lib/task-calendar");
+  const calendarEventEntries = (module as unknown as {
+    calendarEventEntries?: (events: readonly ProjectedCalendarEvent[]) => Array<{
+      id: string;
+      date: string;
+      event: ProjectedCalendarEvent;
+      overdue?: unknown;
+      priority?: unknown;
+    }>;
+  }).calendarEventEntries;
+
+  assert.equal(typeof calendarEventEntries, "function");
+  if (!calendarEventEntries) return;
+
+  const events: ProjectedCalendarEvent[] = [
+    {
+      eventProjectionId: "projection-all-day",
+      sourceKey: "family_calendar",
+      googleEventId: "family-day",
+      seriesId: null,
+      occurrenceKey: null,
+      title: "Family day",
+      startAt: "2026-09-20",
+      endAt: "2026-09-21",
+      allDay: true,
+      location: null,
+      sourceUrl: null,
+      automaticWorkspaceId: "personal",
+      resolvedWorkspaceId: "personal",
+      removedAt: null,
+      relatedIntake: [],
+    },
+    {
+      eventProjectionId: "projection-timed",
+      sourceKey: "primary_calendar",
+      googleEventId: "late-call",
+      seriesId: "series-call",
+      occurrenceKey: "occ-call",
+      title: "Late call",
+      startAt: "2026-09-21T01:00:00Z",
+      endAt: "2026-09-21T01:30:00Z",
+      allDay: false,
+      location: null,
+      sourceUrl: null,
+      automaticWorkspaceId: "indelitech",
+      resolvedWorkspaceId: "indelitech",
+      removedAt: null,
+      relatedIntake: [],
+    },
+  ];
+
+  const entries = calendarEventEntries(events);
+  assert.deepEqual(entries.map(({ id, date }) => [id, date]), [
+    ["event:projection-all-day", "2026-09-20"],
+    ["event:projection-timed", "2026-09-20"],
+  ]);
+  assert.ok(entries.every((entry) => !("overdue" in entry) && !("priority" in entry)));
+  assert.equal(entries[1]?.event, events[1]);
 });
