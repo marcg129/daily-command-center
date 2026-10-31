@@ -64,7 +64,9 @@ function compareCalendarProjection(left: CalendarProjection, right: CalendarProj
       left.eventEntry.event.eventProjectionId.localeCompare(right.eventEntry.event.eventProjectionId);
   }
   if (left.source === right.source) return 0;
-  return SOURCE_RANK[left.source] - SOURCE_RANK[right.source];
+  if (left.source === "EVENT") return -1;
+  if (right.source === "EVENT") return 1;
+  return left.source === "BILL" ? -1 : 1;
 }
 
 function CalendarItem({
@@ -199,7 +201,14 @@ export function TaskCalendar({
       <div className="calendar-toolbar"><button aria-label="Previous month" onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button><h2 aria-live="polite">{monthLabel(month)}</h2><button aria-label="Next month" onClick={() => moveMonth(1)}><ChevronRight size={17} /></button><button className="calendar-today" onClick={() => { setMonth(today.slice(0, 7)); setSelectedDate(today); }}>Today</button></div>
       <div className="calendar-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>
       <div className="calendar-grid">{days.map((date) => { const dayEntries = byDate.get(date) || []; return <section key={date} className={`calendar-day ${date.slice(0, 7) !== month ? "outside-month" : ""} ${date === today ? "is-today" : ""} ${date === selectedDate ? "is-selected" : ""}`} aria-label={dateLabel(date)}><button type="button" className="calendar-date" aria-pressed={date === selectedDate} aria-label={`Show ${dayEntries.length || "no"} calendar ${dayEntries.length === 1 ? "entry" : "entries"} for ${dateLabel(date)}`} onClick={() => setSelectedDate(date)}><time dateTime={date}>{Number(date.slice(-2))}</time></button><div>{dayEntries.slice(0, 3).map((entry) => renderItem(entry, true))}{dayEntries.length > 3 && <button type="button" className="calendar-more" onClick={() => setSelectedDate(date)} aria-label={`Show ${dayEntries.length - 3} more entries for ${dateLabel(date)}`}>+{dayEntries.length - 3} more</button>}</div></section>; })}</div>
-      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => renderItem(entry)) : <p>No task due dates, reminders, follow-ups, bill obligations, or Google events on this day.</p>}</div></div>}
+      {selectedDate && <div className="calendar-day-detail" aria-live="polite"><div><p className="eyebrow">Selected day</p><h3>{dateLabel(selectedDate)}</h3><span>{selectedEntries.length} {selectedEntries.length === 1 ? "entry" : "entries"}</span></div><div>{selectedEntries.length ? selectedEntries.map((entry) => <CalendarItem
+  key={entry.id}
+  entry={entry}
+  onOpenTask={onOpenTask}
+  onOpenBill={openBill}
+  onOverrideEvent={projectedEvents.setWorkspaceOverride}
+  authorizedWorkspaceIds={authorizedWorkspaceIds}
+/>) : <p>No task due dates, reminders, follow-ups, bill obligations, or Google events on this day.</p>}</div></div>}
     </section>}
 
     {view === "agenda" && <section className="agenda-panel" aria-label="Task, bill, and event calendar agenda">
@@ -223,6 +232,6 @@ export function TaskCalendar({
 
     {projectedBills.error && <p className="calendar-source-note"><WalletCards size={14} /> Bills could not be included right now: {projectedBills.error}</p>}
     {projectedEvents.error && <p className="calendar-source-note"><CalendarDays size={14} /> Google events could not be included right now: {projectedEvents.error}</p>}
-    <p className="calendar-source-note"><CalendarDays size={14} /> Tasks and bills remain canonical records. Google events are read-only projections; workspace corrections stay inside DCC and do not modify Google Calendar.</p>
+    <p className="calendar-source-note"><CalendarDays size={14} /> Derived from canonical tasks and bill occurrences. Google events are read-only projections; workspace corrections stay inside DCC and do not modify Google Calendar.</p>
   </div>;
 }
