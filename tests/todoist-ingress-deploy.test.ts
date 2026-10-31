@@ -51,3 +51,29 @@ test("deployment never sources Todoist credentials or DCC identity from GitHub s
   assert.doesNotMatch(deployment, /secrets\.DCC_USER_ID/);
   assert.match(deployment, /Cloudflare Worker secrets/);
 });
+
+
+test("1G-H production migration and canonical Todoist transport stay in the protected deploy path", () => {
+  const deployment = text("../.github/workflows/cloudflare-todoist-deploy.yml");
+  const webDeployment = text("../.github/workflows/cloudflare-protected-deploy.yml");
+  const migrationUrl = new URL("../migrations/0012_daily_intake_events.sql", import.meta.url);
+
+  assert.equal(existsSync(migrationUrl), true, "1G-H migration must ship with the deployable revision");
+  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE IF NOT EXISTS intake_items/);
+  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE IF NOT EXISTS projected_calendar_events/);
+  assert.match(deployment, /wrangler d1 migrations apply daily-command-center-prod --remote --config wrangler\.todoist\.jsonc/);
+  assert.match(webDeployment, /wrangler d1 migrations apply daily-command-center-prod --remote --config wrangler\.jsonc/);
+  assert.match(deployment, /npm run build:todoist/);
+  assert.match(text("../wrangler.todoist.jsonc"), /"TODOIST_PROJECT_ID": "6hWfF7hXXMj9XpV5"/);
+  assert.match(text("../wrangler.todoist.jsonc"), /"workers_dev": false/);
+  assert.match(text("../wrangler.todoist.jsonc"), /"preview_urls": false/);
+  assert.match(text("../wrangler.todoist.jsonc"), /"crons": \["\* \* \* \* \*"\]/);
+});
+
+test("golden-path smoke actively guards the hosted Intake and Events route surface", () => {
+  const smoke = text("../scripts/smoke.mjs");
+  assert.match(smoke, /\/api\/hosted\/intake\?workspaceId=personal&status=PENDING/);
+  assert.match(smoke, /\/api\/hosted\/intake\/status\?workspaceId=personal/);
+  assert.match(smoke, /\/api\/hosted\/events\?workspaceId=personal&fromDate=/);
+  assert.match(smoke, /Hosted route .*expected 500.*no-store/i);
+});
