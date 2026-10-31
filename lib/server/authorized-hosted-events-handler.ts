@@ -139,7 +139,9 @@ export function createAuthorizedHostedEventsHandler(
           .bind(targetContext.userId, sourceKey, body.eventId).first<OwnedEventIdentity>();
         if (!owned) return errorResponse("Calendar event was not found.", 404);
 
-        const identityKey = scope === "SERIES" ? owned.series_id : owned.occurrence_key;
+        const identityKey = scope === "SERIES"
+          ? owned.series_id
+          : owned.occurrence_key ?? (owned.series_id === null ? body.eventId : null);
         if (!identityKey) return errorResponse("Calendar event does not support the requested override scope.", 400);
 
         if (body.clear === true) {
