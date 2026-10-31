@@ -239,7 +239,7 @@ export class D1CalendarProjectionRepository implements CalendarProjectionReposit
       FROM projected_calendar_events e
       LEFT JOIN calendar_workspace_overrides occ
         ON occ.user_id=e.user_id AND occ.source_key=e.source_key AND occ.scope='OCCURRENCE'
-        AND occ.identity_key=e.occurrence_key
+        AND occ.identity_key=COALESCE(e.occurrence_key, CASE WHEN e.series_id IS NULL THEN e.google_event_id END)
       LEFT JOIN calendar_workspace_overrides series
         ON series.user_id=e.user_id AND series.source_key=e.source_key AND series.scope='SERIES'
         AND series.identity_key=e.series_id
