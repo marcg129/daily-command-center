@@ -100,6 +100,8 @@ import { WorkspacePageShell } from "@/components/workspace-page-shell";
 import { TaskCalendar } from "@/components/task-calendar";
 import { HostedIntelTodayPanel } from "@/components/hosted-intel-today";
 import { TodayFinancialPulse } from "@/components/today-financial-pulse";
+import { TodayEvents } from "@/components/today-events";
+import { TodayIntakeSummary } from "@/components/today-intake-summary";
 import { IntakeView } from "@/components/intake-view";
 import type { ProductWorkspaceId } from "@/lib/runtime/context";
 import {
@@ -671,7 +673,7 @@ function newsletterSetupReady(settings: PublicSettings) {
   return settings.newsletters.connected && isAiReady(settings.ai);
 }
 
-function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: Task[]; goTo: (tab: Tab) => void; openTask: (taskId: Task["id"]) => void; workspaceId: ProductWorkspaceId }) {
+function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId, authorizedWorkspaceIds, enabled }: { tasks: Task[]; goTo: (tab: Tab) => void; openTask: (taskId: Task["id"]) => void; workspaceId: ProductWorkspaceId; authorizedWorkspaceIds: readonly ProductWorkspaceId[]; enabled: boolean }) {
   const personal = workspaceId === "personal";
   return (
     <div className="view">
@@ -680,6 +682,18 @@ function TaskFocusedTodayView({ tasks, goTo, openTask, workspaceId }: { tasks: T
         <TaskAttentionPanel tasks={tasks} workspaceId={workspaceId} onOpenTask={openTask} onOpenAll={() => goTo("tasks")} />
         <TaskHorizon tasks={tasks} onOpen={() => goTo("tasks")} />
       </div>
+      <TodayIntakeSummary
+        workspaceId={workspaceId}
+        authorizedWorkspaceIds={authorizedWorkspaceIds}
+        enabled={enabled}
+        onOpenIntake={() => goTo("intake")}
+      />
+      <TodayEvents
+        workspaceId={workspaceId}
+        authorizedWorkspaceIds={authorizedWorkspaceIds}
+        enabled={enabled}
+        onOpenCalendar={() => goTo("calendar")}
+      />
       <TodayFinancialPulse workspaceId={workspaceId} />
       {!personal && <HostedIntelTodayPanel onOpenIntel={() => goTo("industry")} />}
     </div>
@@ -3623,10 +3637,10 @@ export function ControlCenter() {
           </div>
         )}
         {activeTab === "today" && activeWorkspaceId === "personal" && (
-          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} openTask={openTask} workspaceId="personal" />
+          <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "personal")} goTo={goTo} openTask={openTask} workspaceId="personal" authorizedWorkspaceIds={authorizedWorkspaceIds} enabled={runtimeMode === "hosted"} />
         )}
         {activeTab === "today" && activeWorkspaceId === "indelitech" && (
-          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} openTask={openTask} workspaceId="indelitech" /> : <TodayView
+          runtimeMode === "hosted" ? <TaskFocusedTodayView tasks={visibleTaskItems(tasks, "indelitech")} goTo={goTo} openTask={openTask} workspaceId="indelitech" authorizedWorkspaceIds={authorizedWorkspaceIds} enabled={runtimeMode === "hosted"} /> : <TodayView
             settings={settings}
             tasks={tasks}
             goTo={goTo}
