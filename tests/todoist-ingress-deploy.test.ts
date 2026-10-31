@@ -59,8 +59,8 @@ test("1G-H production migration and canonical Todoist transport stay in the prot
   const migrationUrl = new URL("../migrations/0012_daily_intake_events.sql", import.meta.url);
 
   assert.equal(existsSync(migrationUrl), true, "1G-H migration must ship with the deployable revision");
-  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE IF NOT EXISTS intake_items/);
-  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE IF NOT EXISTS projected_calendar_events/);
+  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE intake_items/);
+  assert.match(text("../migrations/0012_daily_intake_events.sql"), /CREATE TABLE projected_calendar_events/);
   assert.match(deployment, /wrangler d1 migrations apply daily-command-center-prod --remote --config wrangler\.todoist\.jsonc/);
   assert.match(webDeployment, /wrangler d1 migrations apply daily-command-center-prod --remote --config wrangler\.jsonc/);
   assert.match(deployment, /npm run build:todoist/);
