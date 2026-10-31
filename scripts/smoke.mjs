@@ -179,6 +179,27 @@ try {
   const homeText = await home.text();
   if (!home.ok || !homeText.includes("Daily Command Center"))
     throw new Error("The dashboard home page did not render.");
+
+  const smokeToday = new Date().toISOString().slice(0, 10);
+  const smokeThroughDate = new Date(`${smokeToday}T12:00:00Z`);
+  smokeThroughDate.setUTCDate(smokeThroughDate.getUTCDate() + 7);
+  const smokeThrough = smokeThroughDate.toISOString().slice(0, 10);
+  const hostedRouteProbes = [
+    "/api/hosted/intake?workspaceId=personal&status=PENDING",
+    "/api/hosted/intake/status?workspaceId=personal",
+    `/api/hosted/events?workspaceId=personal&fromDate=${smokeToday}&throughDate=${smokeThrough}`,
+  ];
+  for (const pathname of hostedRouteProbes) {
+    const result = await fetch(`http://127.0.0.1:${port}${pathname}`);
+    const cacheControl = result.headers.get("cache-control");
+    if (result.status !== 500 || cacheControl !== "no-store") {
+      throw new Error(`Hosted route ${pathname} expected 500 with no-store in local smoke mode; received HTTP ${result.status} and cache-control ${cacheControl ?? "missing"}.`);
+    }
+    const payload = await result.json().catch(() => null);
+    if (payload?.error !== "Hosted runtime is unavailable.") {
+      throw new Error(`Hosted route ${pathname} returned an unexpected local-mode error payload.`);
+    }
+  }
   const getJson = async (pathname) => {
     const result = await fetch(`http://127.0.0.1:${port}${pathname}`);
     if (!result.ok)
