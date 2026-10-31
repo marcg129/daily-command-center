@@ -54,7 +54,6 @@ function entryTime(entry: TaskCalendarEntry) {
   return new Intl.DateTimeFormat("en-US", { timeZone: PRODUCT_TIME_ZONE, hour: "numeric", minute: "2-digit" }).format(new Date(entry.timestamp));
 }
 
-const SOURCE_RANK: Record<CalendarProjection["source"], number> = { EVENT: 0, BILL: 1, TASK: 2 };
 
 function compareCalendarProjection(left: CalendarProjection, right: CalendarProjection) {
   const byDate = left.date.localeCompare(right.date);
