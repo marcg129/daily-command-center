@@ -78,6 +78,9 @@ The keyring supports reading older key versions while new writes use one active 
 - scopes every account read by `user_id`;
 - encrypts before persistence;
 - decrypts only after an owned account lookup;
+- returns credentials together with an opaque `credentialRevision` snapshot;
+- requires that revision for both successful and failed sync health writes;
+- atomically ignores results from replaced credentials, or results racing with disconnect/user disable;
 - resets health state after credential replacement;
 - records success/failure health without returning secrets;
 - deletes credential ciphertext on disconnect;
@@ -85,6 +88,16 @@ The keyring supports reading older key versions while new writes use one active 
 - rejects credential bundles whose actual AES-GCM/base64url envelope would exceed the migration's bounded ciphertext field.
 
 There is intentionally no browser/API route in 2A3a.
+
+Sync workers must retain the `credentialRevision` returned by `readCredentials`
+alongside its `credentials`, and pass that same revision to `recordSyncSuccess`
+or `recordSyncFailure`. Each encrypted write generates a fresh random nonce,
+which also serves as the revision; this distinguishes credential replacements
+even when they share a timestamp. The health UPDATE checks the persisted nonce,
+connection status, and active user in the same SQL statement. A stale result is
+a no-op, preserving the new connection's health and scheduling state. This does
+not order overlapping runs that use the same credential revision; run ordering
+and deduplication belong to the future scheduler slice.
 
 ## Deferred to subsequent 2A3 slices
 

@@ -13,16 +13,24 @@ import { D1IntegrationAccountRepository } from "@/lib/server/d1-integration-acco
 
 class Statement implements D1PreparedStatement {
   private values: unknown[] = [];
-  constructor(private readonly statement: StatementSync) {}
+  constructor(
+    private readonly statement: StatementSync,
+    private readonly beforeRun: () => Promise<void>,
+  ) {}
   bind(...values: unknown[]) { this.values = values; return this; }
   private input() { return this.values as SQLInputValue[]; }
   async first<T>() { return (this.statement.get(...this.input()) as T | undefined) ?? null; }
   async all<T>() { return { success: true, results: this.statement.all(...this.input()) as T[] }; }
-  async run<T>(): Promise<D1Result<T>> { this.statement.run(...this.input()); return { success: true }; }
+  async run<T>(): Promise<D1Result<T>> {
+    await this.beforeRun();
+    this.statement.run(...this.input());
+    return { success: true };
+  }
 }
 
 class TestD1 implements D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
+  beforeNextWrite?: () => Promise<void>;
   constructor() {
     this.sqlite.exec("PRAGMA foreign_keys=ON");
     for (const name of [
@@ -34,7 +42,13 @@ class TestD1 implements D1Database {
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
     }
   }
-  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
+  prepare(sql: string) {
+    return new Statement(this.sqlite.prepare(sql), async () => {
+      const beforeWrite = this.beforeNextWrite;
+      this.beforeNextWrite = undefined;
+      await beforeWrite?.();
+    });
+  }
   async batch<T>(statements: D1PreparedStatement[]) {
     this.sqlite.exec("BEGIN IMMEDIATE");
     try {
@@ -98,7 +112,7 @@ test("integration accounts are user-scoped and D1 stores only ciphertext", async
     /access denied/i,
   );
 
-  assert.deepEqual(await integrations.readCredentials(alice, id), {
+  assert.deepEqual((await integrations.readCredentials(alice, id)).credentials, {
     refreshToken: "refresh-secret-alice",
     accessToken: "access-secret-alice",
   });
@@ -170,6 +184,7 @@ test("integration health tracks success and bounded failure state without exposi
   await integrations.recordSyncFailure({
     userId,
     integrationId,
+    credentialRevision: (await integrations.readCredentials(userId, integrationId)).credentialRevision,
     failedAt: "2026-10-01T12:10:00Z",
     errorCode: "TOKEN_REVOKED",
     reauthRequired: true,
@@ -194,6 +209,7 @@ test("integration health tracks success and bounded failure state without exposi
   await integrations.recordSyncSuccess({
     userId,
     integrationId,
+    credentialRevision: (await integrations.readCredentials(userId, integrationId)).credentialRevision,
     completedAt: "2026-10-01T08:30:00-04:00",
     nextSyncAt: "2026-10-01T09:00:00-04:00",
   });
@@ -260,7 +276,7 @@ test("disconnect deletes credential ciphertext and disabled users fail closed", 
   assert.equal(reconnected?.status, "ACTIVE");
   assert.deepEqual(reconnected?.scopes, ["scope.calendar"]);
   assert.equal(reconnected?.accessTokenExpiresAt, "2026-10-01T19:00:00.000Z");
-  assert.deepEqual(await integrations.readCredentials(userId, id), {
+  assert.deepEqual((await integrations.readCredentials(userId, id)).credentials, {
     refreshToken: "refresh-alice-reconnected",
     accessToken: "access-alice-reconnected",
   });
@@ -288,3 +304,81 @@ test("integration schema never declares plaintext OAuth token columns", () => {
   assert.match(migration, /ciphertext_b64u/);
   assert.match(migration, /AES-256-GCM/);
 });
+
+for (const outcome of ["success", "failure"] as const) {
+  test(`stale sync ${outcome} cannot overwrite health after credential replacement`, async () => {
+    const database = new TestD1();
+    seedUser(database, "user:alice");
+    const integrations = repository(database);
+    const userId = applicationUserId("user:alice");
+    const integrationId = integrationAccountId("integration:google:alice");
+    await integrations.create({
+      integrationId, userId, provider: "GOOGLE", providerAccountId: "google-sub-alice",
+      scopes: [], credentials: { refreshToken: "old-refresh" }, now: "2026-10-01T12:00:00Z",
+    });
+    const snapshot = await integrations.readCredentials(userId, integrationId);
+    await integrations.replaceCredentials({
+      userId, integrationId, credentials: { refreshToken: "new-refresh" },
+      now: "2026-10-01T12:00:00Z",
+    });
+    const before = await integrations.get(userId, integrationId);
+    if (outcome === "success") {
+      await integrations.recordSyncSuccess({
+        userId, integrationId, credentialRevision: snapshot.credentialRevision,
+        completedAt: "2026-10-01T12:10:00Z", nextSyncAt: "2026-10-01T13:00:00Z",
+      });
+    } else {
+      await integrations.recordSyncFailure({
+        userId, integrationId, credentialRevision: snapshot.credentialRevision,
+        failedAt: "2026-10-01T12:10:00Z", errorCode: "TOKEN_REVOKED", reauthRequired: true,
+      });
+    }
+    assert.deepEqual(await integrations.get(userId, integrationId), before);
+    database.sqlite.close();
+  });
+
+  for (const transition of ["replace", "disconnect", "disable"] as const) {
+    test(`sync ${outcome} cannot overwrite a concurrent ${transition} at the database write`, async () => {
+      const database = new TestD1();
+      seedUser(database, "user:alice");
+      const integrations = repository(database);
+      const userId = applicationUserId("user:alice");
+      const integrationId = integrationAccountId("integration:google:alice");
+      await integrations.create({
+        integrationId, userId, provider: "GOOGLE", providerAccountId: "google-sub-alice",
+        scopes: [], credentials: { refreshToken: "old-refresh" }, now: "2026-10-01T12:00:00Z",
+      });
+      const snapshot = await integrations.readCredentials(userId, integrationId);
+      let expected: unknown;
+      database.beforeNextWrite = async () => {
+        if (transition === "replace") {
+          await integrations.replaceCredentials({
+            userId, integrationId, credentials: { refreshToken: "new-refresh" },
+            now: "2026-10-01T12:00:00Z",
+          });
+        } else if (transition === "disconnect") {
+          await integrations.disconnect(userId, integrationId, "2026-10-01T12:05:00Z");
+        } else {
+          database.sqlite.prepare("UPDATE users SET status='DISABLED' WHERE user_id=?").run(userId);
+        }
+        expected = database.sqlite.prepare("SELECT * FROM integration_accounts WHERE integration_id=?").get(integrationId);
+      };
+      if (outcome === "success") {
+        await integrations.recordSyncSuccess({
+          userId, integrationId, credentialRevision: snapshot.credentialRevision,
+          completedAt: "2026-10-01T12:10:00Z", nextSyncAt: "2026-10-01T13:00:00Z",
+        });
+      } else {
+        await integrations.recordSyncFailure({
+          userId, integrationId, credentialRevision: snapshot.credentialRevision,
+          failedAt: "2026-10-01T12:10:00Z", errorCode: "TOKEN_REVOKED", reauthRequired: true,
+        });
+      }
+      assert.deepEqual(
+        database.sqlite.prepare("SELECT * FROM integration_accounts WHERE integration_id=?").get(integrationId),
+        expected,
+      );
+      database.sqlite.close();
+    });
+  }
+}

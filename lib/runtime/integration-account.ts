@@ -35,6 +35,11 @@ export type IntegrationCredentialBundle = Readonly<{
   accessToken?: string | null;
 }>;
 
+export type IntegrationCredentialSnapshot = Readonly<{
+  credentials: IntegrationCredentialBundle;
+  credentialRevision: string;
+}>;
+
 export type EncryptedIntegrationCredential = Readonly<{
   algorithm: "AES-256-GCM";
   keyVersion: number;

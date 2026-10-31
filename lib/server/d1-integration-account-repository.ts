@@ -9,6 +9,7 @@ import {
   type IntegrationAccountId,
   type IntegrationAccountStatus,
   type IntegrationCredentialBundle,
+  type IntegrationCredentialSnapshot,
   type IntegrationProvider,
 } from "@/lib/runtime/integration-account";
 import {
@@ -118,6 +119,13 @@ function envelope(row: CredentialRow): EncryptedIntegrationCredential {
     nonceB64u: row.nonce_b64u,
     ciphertextB64u: row.ciphertext_b64u,
   };
+}
+
+function credentialRevision(value: string): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16}$/.test(value)) {
+    throw new Error("Integration credential revision is invalid.");
+  }
+  return value;
 }
 
 export class D1IntegrationAccountRepository {
@@ -235,7 +243,7 @@ export class D1IntegrationAccountRepository {
   async readCredentials(
     userId: ApplicationUserId,
     integrationId: IntegrationAccountId,
-  ): Promise<IntegrationCredentialBundle> {
+  ): Promise<IntegrationCredentialSnapshot> {
     const account = await this.get(userId, integrationId);
     if (!account || account.status === "DISCONNECTED") {
       throw new Error("Integration account access denied.");
@@ -244,14 +252,18 @@ export class D1IntegrationAccountRepository {
       c.algorithm, c.key_version, c.format_version, c.nonce_b64u, c.ciphertext_b64u
       FROM integration_credentials c
       JOIN integration_accounts a ON a.integration_id=c.integration_id
-      WHERE a.user_id=? AND a.integration_id=?`)
+      WHERE a.user_id=? AND a.integration_id=? AND a.status<>'DISCONNECTED'
+        AND EXISTS (SELECT 1 FROM users u WHERE u.user_id=a.user_id AND u.status='ACTIVE')`)
       .bind(userId, integrationId)
       .first<CredentialRow>();
     if (!row) throw new Error("Integration credentials are unavailable.");
-    return this.cipher.decrypt(
+    const credentials = await this.cipher.decrypt(
       this.context(userId, integrationId, account.provider),
       envelope(row),
     );
+    // The nonce changes on every encrypted write, including same-instant
+    // replacements. Return it from the same row as the decrypted credentials.
+    return { credentials, credentialRevision: row.nonce_b64u };
   }
 
   async replaceCredentials(input: Readonly<{
@@ -331,6 +343,7 @@ export class D1IntegrationAccountRepository {
   async recordSyncSuccess(input: Readonly<{
     userId: ApplicationUserId;
     integrationId: IntegrationAccountId;
+    credentialRevision: string;
     completedAt: string;
     nextSyncAt?: string | null;
   }>): Promise<void> {
@@ -341,6 +354,9 @@ export class D1IntegrationAccountRepository {
     const completedAt = optionalTimestamp(input.completedAt, "Sync completion time");
     if (!completedAt) throw new Error("Sync completion time is invalid.");
     const nextSyncAt = optionalTimestamp(input.nextSyncAt, "Next sync time");
+    const revision = credentialRevision(input.credentialRevision);
+    // Match at write time: a prior lookup cannot protect against a reconnect,
+    // disconnect, or user disable while the result is being persisted.
     const result = await this.database.prepare(`UPDATE integration_accounts SET
       status='ACTIVE',
       last_successful_sync_at=?,
@@ -349,12 +365,16 @@ export class D1IntegrationAccountRepository {
       last_error_code=NULL,
       last_error_at=NULL,
       updated_at=?
-     WHERE user_id=? AND integration_id=?`).bind(
+     WHERE user_id=? AND integration_id=? AND status<>'DISCONNECTED'
+       AND EXISTS (SELECT 1 FROM integration_credentials c
+                   WHERE c.integration_id=integration_accounts.integration_id AND c.nonce_b64u=?)
+       AND EXISTS (SELECT 1 FROM users u WHERE u.user_id=integration_accounts.user_id AND u.status='ACTIVE')`).bind(
       completedAt,
       nextSyncAt,
       completedAt,
       input.userId,
       input.integrationId,
+      revision,
     ).run();
     if (!result.success) throw new Error("Integration health persistence failed.");
   }
@@ -362,6 +382,7 @@ export class D1IntegrationAccountRepository {
   async recordSyncFailure(input: Readonly<{
     userId: ApplicationUserId;
     integrationId: IntegrationAccountId;
+    credentialRevision: string;
     failedAt: string;
     errorCode: string;
     reauthRequired?: boolean;
@@ -374,6 +395,7 @@ export class D1IntegrationAccountRepository {
     const failedAt = optionalTimestamp(input.failedAt, "Sync failure time");
     if (!failedAt) throw new Error("Sync failure time is invalid.");
     const nextSyncAt = optionalTimestamp(input.nextSyncAt, "Next sync time");
+    const revision = credentialRevision(input.credentialRevision);
     const errorCode = nonEmpty(input.errorCode, "Integration error code", 80);
     const status: IntegrationAccountStatus = input.reauthRequired
       ? "REAUTH_REQUIRED"
@@ -385,7 +407,10 @@ export class D1IntegrationAccountRepository {
       last_error_code=?,
       last_error_at=?,
       updated_at=?
-     WHERE user_id=? AND integration_id=?`).bind(
+     WHERE user_id=? AND integration_id=? AND status<>'DISCONNECTED'
+       AND EXISTS (SELECT 1 FROM integration_credentials c
+                   WHERE c.integration_id=integration_accounts.integration_id AND c.nonce_b64u=?)
+       AND EXISTS (SELECT 1 FROM users u WHERE u.user_id=integration_accounts.user_id AND u.status='ACTIVE')`).bind(
       status,
       nextSyncAt,
       errorCode,
@@ -393,6 +418,7 @@ export class D1IntegrationAccountRepository {
       failedAt,
       input.userId,
       input.integrationId,
+      revision,
     ).run();
     if (!result.success) throw new Error("Integration health persistence failed.");
   }
