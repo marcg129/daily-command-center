@@ -177,3 +177,51 @@ test("Events override rejects invalid sources and target workspaces without auth
   assert.equal(database.sqlite.prepare("SELECT count(*) AS count FROM calendar_workspace_overrides").get()?.count, 0);
   database.sqlite.close();
 });
+
+
+test("one-off event workspace correction remains editable without recurring identity", async () => {
+  const database = new TestD1();
+  seed(database);
+  const now = "2026-09-17T18:00:00Z";
+  database.sqlite.prepare(`INSERT INTO projected_calendar_events (
+    event_projection_id,user_id,source_key,google_event_id,series_id,occurrence_key,title,start_at,end_at,all_day,
+    location,source_url,automatic_workspace_key,last_seen_scan_run_id,removed_at,created_at,updated_at
+  ) VALUES (?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,NULL,?,?)`).run(
+    "projection-one-off",
+    "user:marc",
+    "primary_calendar",
+    "event-one-off",
+    "One-off client visit",
+    "2026-09-23T14:00:00-04:00",
+    "2026-09-23T15:00:00-04:00",
+    0,
+    null,
+    "https://calendar.google.com/calendar/event?eid=event-one-off",
+    "personal",
+    "scan-1",
+    now,
+    now,
+  );
+  const api = handler(database);
+
+  const corrected = await api.PATCH(request("https://command.coreyg.dev/api/hosted/events", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sourceKey: "primary_calendar",
+      eventId: "event-one-off",
+      scope: "OCCURRENCE",
+      workspaceId: "indelitech",
+    }),
+  }));
+  assert.equal(corrected.status, 200);
+  assert.equal(
+    database.sqlite.prepare("SELECT identity_key FROM calendar_workspace_overrides WHERE user_id='user:marc' AND source_key='primary_calendar' AND scope='OCCURRENCE'").get()?.identity_key,
+    "event-one-off",
+  );
+
+  const work = await api.GET(request("https://command.coreyg.dev/api/hosted/events?workspaceId=indelitech&fromDate=2026-09-17&throughDate=2026-10-31"));
+  const body = await work.json() as { events: Array<{ googleEventId: string }> };
+  assert.equal(body.events.some((event) => event.googleEventId === "event-one-off"), true);
+  database.sqlite.close();
+});
