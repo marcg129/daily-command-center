@@ -70,8 +70,8 @@ test("month calendar exposes selectable days, overflow drill-down, and keyboard 
 
 
 test("Google event projection preserves event identity and product dates without task semantics", async () => {
-  const module = await import("../lib/task-calendar");
-  const calendarEventEntries = (module as unknown as {
+  const calendarModule = await import("../lib/task-calendar");
+  const calendarEventEntries = (calendarModule as unknown as {
     calendarEventEntries?: (events: readonly ProjectedCalendarEvent[]) => Array<{
       id: string;
       date: string;
